@@ -17,6 +17,8 @@ grep -E "class\(es\)|== totals|unmapped:|unsupported:|stubbed" -A3 /tmp/udon2god
 grep -E "error:" /tmp/udon2godot_coverage_convert.log | head -20
 if [ $CONV -ne 0 ]; then echo "CONVERSION FAILED"; exit 1; fi
 
+mkdir -p "$PROJ/.godot"
+[ -f "$PROJ/.godot/extension_list.cfg" ] || echo "res://addons/godot_sandbox/bin/godot-riscv.gdextension" > "$PROJ/.godot/extension_list.cfg"
 "$GODOT" --headless --path "$PROJ" --import >/dev/null 2>&1 || true
 LOG=$(mktemp)
 timeout 300 "$GODOT" --headless --path "$PROJ" -s coverage_runner.gd -- "$@" >"$LOG" 2>&1

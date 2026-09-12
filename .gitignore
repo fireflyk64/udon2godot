@@ -1,9 +1,19 @@
 /target
 /out
 /refs
-/tools
+# tools/: only the generator scripts are tracked; the Godot binary and release zips are fetched
+# by scripts/setup_deps.sh
+/tools/*
+!/tools/*.py
 /godot_project/.godot
-/godot_project/addons/godot_sandbox
 /godot_project/converted_corpus
 /godot_project/converted
 /godot_project/converted_coverage
+# godot_project/addons/godot_sandbox: the customized plugin scripts, gdscript.elf and the
+# source-built Linux x86_64 library are tracked; the other platform binaries come from the
+# upstream release (scripts/setup_deps.sh)
+/godot_project/addons/godot_sandbox/bin/*.so
+/godot_project/addons/godot_sandbox/bin/*.dll
+/godot_project/addons/godot_sandbox/bin/*.wasm
+/godot_project/addons/godot_sandbox/bin/*.framework/
+!/godot_project/addons/godot_sandbox/bin/libgodot_riscv.linux.template_release.x86_64.so

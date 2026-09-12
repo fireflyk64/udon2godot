@@ -11,6 +11,8 @@ LOGS=$(mktemp -d)
 rm -rf "$PROJ/addons/udon_runtime"
 cp -r runtime/addons/udon_runtime "$PROJ/addons/"
 # class_name registrations need a scan
+mkdir -p "$PROJ/.godot"
+[ -f "$PROJ/.godot/extension_list.cfg" ] || echo "res://addons/godot_sandbox/bin/godot-riscv.gdextension" > "$PROJ/.godot/extension_list.cfg"
 "$GODOT" --headless --path "$PROJ" --import >/dev/null 2>&1 || true
 
 timeout 120 "$GODOT" --headless --path "$PROJ" -s net_test.gd -- host "$PORT" >"$LOGS/host.log" 2>&1 &

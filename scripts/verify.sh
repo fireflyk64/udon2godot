@@ -34,6 +34,13 @@ if [ ! -x "$GODOT" ]; then
   exit 0
 fi
 
+if [ ! -f "$PROJ/.godot/extension_list.cfg" ]; then
+  echo "== godot: first import (registers the sandbox extension and class_name scripts)"
+  mkdir -p "$PROJ/.godot"
+  echo "res://addons/godot_sandbox/bin/godot-riscv.gdextension" > "$PROJ/.godot/extension_list.cfg"
+  "$GODOT" --headless --path "$PROJ" --import >/dev/null 2>&1 || true
+fi
+
 echo "== godot: end-to-end harness"
 LOG=$(mktemp)
 "$GODOT" --headless --path "$PROJ" -s e2e_counter.gd >"$LOG" 2>&1 || true

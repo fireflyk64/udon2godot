@@ -26,8 +26,10 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 | `tests/fixtures/Counter.cs` over ENet, host + client processes | 1 | — | 0 | 1/1 | 28/28 checks |
 
 `SaccAirVehicle` (2,657 lines in one class) needed the upstream godot-sandbox fix for the RISC-V
-direct-jump range ("J-type jump out of reach" beyond 1 MB of code); `refs/godot-sandbox` carries
-that fix plus a `MAX_LEVEL = 16` patch, and the prebuilt library is in `tools/sandbox_build/`.
+direct-jump range ("J-type jump out of reach" beyond 1 MB of code); the `udon2godot` branch of
+[fireflyk64/godot-sandbox](https://github.com/fireflyk64/godot-sandbox) carries that fix plus a
+`MAX_LEVEL = 16` patch, and the library built from it is tracked in
+`godot_project/addons/godot_sandbox/bin/` (`scripts/setup_deps.sh --build-sandbox` rebuilds it).
 
 Across the three corpora the converter maps 20,445 Unity/VRChat API uses with 21 warnings (plain
 C# helper classes emitted as Node scripts, dynamic access on unknown types, two cross-class static
@@ -39,6 +41,12 @@ are `Random` (mapped as `UnityEngine.Random` through `U.random_*`) and operator/
 entries.
 
 ## Building and using
+
+The converter only needs cargo. For the Godot side, `scripts/setup_deps.sh` fetches once what is
+not in git: the Godot 4.6.3 Linux editor into `tools/`, the godot-sandbox release binaries for the
+platforms other than Linux x86_64, and the reference repositories into `refs/` (the
+[unidot_importer fork](https://github.com/fireflyk64/unidot_importer), MS-VRCSA-Billiards, vrcbce,
+SaccFlightAndVehicles). Then `scripts/verify.sh` runs the tests and `scripts/ci.sh` everything.
 
 ```sh
 cargo build --release
@@ -56,8 +64,10 @@ sandbox), `--report`, `--report-json FILE`, `--externs FILE` (custom KnownExtern
 
 Then in the Godot project:
 
-1. Install the Godot Sandbox addon (`addons/godot_sandbox`). A source build with a higher
-   `MAX_LEVEL` is recommended, see *Design notes*.
+1. Install the Godot Sandbox addon (`addons/godot_sandbox`): copy `godot_project/addons/godot_sandbox`
+   from this repo after `scripts/setup_deps.sh` has added the binaries for the other platforms (it
+   carries the `MAX_LEVEL = 16` source build for Linux, see *Design notes*), or install the stock
+   [release](https://github.com/libriscv/godot-sandbox/releases).
 2. Copy `runtime/addons/udon_runtime` into `addons/` and register two autoloads:
    `Udon = res://addons/udon_runtime/udon.gd` and `U = res://addons/udon_runtime/u.gd`.
 3. Attach a converted `.sgd` to a `Node3D` (the node plays the role of the Unity GameObject).
@@ -299,8 +309,9 @@ the first query of each frame.
   nested calls). Guest → base-class GDScript method → guest costs a level, and GDScript
   property accessors cost a host round-trip. The compiler therefore routes `SendCustomEvent`,
   `RequestSerialization` etc. through `U.*` host helpers and emits C# properties as
-  `get_X()` / `set_X()` methods. `tools/sandbox_build/` holds a source build of godot-sandbox
-  with `MAX_LEVEL = 16` (call chains nine levels deep verified); `godot_project` uses it.
+  `get_X()` / `set_X()` methods. `godot_project/addons/godot_sandbox/bin/` holds a source build of
+  godot-sandbox (fork branch `udon2godot`) with `MAX_LEVEL = 16` (call chains nine levels deep
+  verified).
 * **Code size.** One SafeGDScript function body must stay within the RISC-V direct-jump range
   (1 MB of generated code). Very large classes (`SaccAirVehicle`) fail to compile; split them.
 * Strings default to `""` rather than `null` (typed `String` slots cannot hold null) while
@@ -326,10 +337,14 @@ src/            compiler (lexer, parser, ast, program, api catalog, template, lo
 data/api/       API catalog: system*, unity_math, unity_core, unity_physics, unity_misc, unity_2d,
                 unity_extra, vrc, vrc_extra (hand-written) and generated.udon (stubs)
 data/known_externs.txt  Udon extern signatures (from udonweft)
-tools/gen_catalog.py    stub generator; tools/sandbox_build/ source-built godot-sandbox (MAX_LEVEL 16)
+tools/          gen_catalog.py (stub generator), gen_particles.py, gen_ui.py (catalog generators);
+                scripts/setup_deps.sh puts the Godot editor and release zips here (ignored)
 runtime/addons/udon_runtime/   Godot addon: udon_behaviour.gd, udon.gd, u.gd, udon_world_provider.gd,
                 udon_network_provider.gd, udon_player.gd, adapters (pickup, station, object sync/pool, video)
 tests/          Rust integration tests, C# fixtures and tests/coverage/ API fixtures
-godot_project/  Godot 4.6 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd
-scripts/        verify.sh, coverage_test.sh, net_test.sh
+godot_project/  Godot 4.6 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd;
+                addons/godot_sandbox/ (customized plugin scripts + MAX_LEVEL 16 Linux build)
+godot_world_template/  project skeleton for scripts/import_world.sh (world_runner.gd, scenarios/)
+refs/           reference checkouts made by scripts/setup_deps.sh (ignored)
+scripts/        setup_deps.sh, verify.sh, coverage_test.sh, net_test.sh, import_world.sh, ci.sh
 ```
