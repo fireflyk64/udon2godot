@@ -37,6 +37,9 @@ pub const CATALOG_SOURCES: &[(&str, &str)] = &[
     ("vrc_extra.udon", include_str!("../data/api/vrc_extra.udon")),
     ("unity_2d.udon", include_str!("../data/api/unity_2d.udon")),
     ("unity_extra.udon", include_str!("../data/api/unity_extra.udon")),
+    ("unity_particles.udon", include_str!("../data/api/unity_particles.udon")),
+    ("unity_ui.udon", include_str!("../data/api/unity_ui.udon")),
+    ("enums.udon", include_str!("../data/api/enums.udon")),
 ];
 
 /// Generated `!stub` entries for every extern the hand-written files do not map
@@ -90,6 +93,9 @@ pub struct MemberInfo {
     pub unsupported: Option<String>,
     /// A `!stub` mapping: compiles and runs, but only approximates (or ignores) the Unity behaviour.
     pub stub: bool,
+    /// A `!stored` mapping: the value round-trips through `U.prop_get/prop_set` but has no engine
+    /// effect (reported apart from plain stubs).
+    pub stored: bool,
     /// Source line for diagnostics.
     pub line: usize,
 }
@@ -113,6 +119,9 @@ pub struct TypeInfo {
     pub kind: TypeKind,
     pub gd: String,
     pub extern_name: Option<String>,
+    /// Further Udon extern type names mapped onto this catalog type (a re-opened `type` with a
+    /// different `extern=`), e.g. `Random` covers UnityEngine.Random and System.Random.
+    pub extern_aliases: Vec<String>,
     pub members: Vec<MemberInfo>,
     pub enum_members: Vec<(String, i64)>,
     pub file: String,
@@ -247,6 +256,10 @@ impl Catalog {
                         }
                         if existing.extern_name.is_none() {
                             existing.extern_name = ti.extern_name;
+                        } else if let Some(e) = ti.extern_name {
+                            if existing.extern_name.as_deref() != Some(e.as_str()) && !existing.extern_aliases.contains(&e) {
+                                existing.extern_aliases.push(e);
+                            }
                         }
                     } else {
                         self.types.insert(ti.name.clone(), ti);
@@ -329,7 +342,7 @@ impl Catalog {
             TypeKind::Component | TypeKind::Behaviour => "Node".into(),
             _ => "Variant".into(),
         });
-        Ok(TypeInfo { name, base, kind, gd, extern_name, members: vec![], enum_members: vec![], file: file.into() })
+        Ok(TypeInfo { name, base, kind, gd, extern_name, extern_aliases: vec![], members: vec![], enum_members: vec![], file: file.into() })
     }
 
     fn parse_member_line(line: &str, owner: &str, file: &str, lineno: usize) -> Result<Parsed, CatalogError> {
@@ -342,9 +355,13 @@ impl Catalog {
             Some(t) if t.starts_with("!unsupported") => (Some(t.trim_start_matches("!unsupported").trim().to_string()), None),
             _ => (None, template),
         };
+        let (stored, template) = match &template {
+            Some(t) if t.starts_with("!stored") => (true, Some(t.trim_start_matches("!stored").trim().to_string())),
+            _ => (false, template),
+        };
         let (stub, template) = match &template {
             Some(t) if t.starts_with("!stub") => (true, Some(t.trim_start_matches("!stub").trim().to_string())),
-            _ => (false, template),
+            _ => (stored, template),
         };
         let mut head = head;
         // enum member
@@ -381,6 +398,7 @@ impl Catalog {
                 set: None,
                 unsupported,
                 stub,
+                stored,
                 line: lineno,
             }));
         }
@@ -404,6 +422,7 @@ impl Catalog {
                 set: None,
                 unsupported,
                 stub,
+                stored,
                 line: lineno,
             }));
         }
@@ -420,6 +439,7 @@ impl Catalog {
                 set: None,
                 unsupported,
                 stub,
+                stored,
                 line: lineno,
             }));
         }
@@ -441,6 +461,7 @@ impl Catalog {
                 set: None,
                 unsupported,
                 stub,
+                stored,
                 line: lineno,
             }));
         }
@@ -460,10 +481,11 @@ impl Catalog {
                 set: Some(template.unwrap_or_default()),
                 unsupported,
                 stub,
+                stored,
                 line: lineno,
             }));
         }
-        Ok(Parsed::Member(MemberInfo { owner: owner.into(), name, is_static, kind: MemberKind::Field, params: vec![], ret: ty, get: template, set: None, unsupported, stub, line: lineno }))
+        Ok(Parsed::Member(MemberInfo { owner: owner.into(), name, is_static, kind: MemberKind::Field, params: vec![], ret: ty, get: template, set: None, unsupported, stub, stored, line: lineno }))
     }
 
     // ----- lookup -----

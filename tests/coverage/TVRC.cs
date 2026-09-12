@@ -196,6 +196,18 @@ namespace Coverage
             int sc;
             Check(PlayerData.TryGetInt(localPlayer, "score", out sc) && sc == 12, "PlayerData.TryGetInt");
             Check(PlayerData.GetVector3(localPlayer, "pos") == Vector3.one, "PlayerData vector");
+            PlayerData.SetByte("lives", 3);
+            byte lives;
+            Check(PlayerData.TryGetByte(localPlayer, "lives", out lives) && lives == 3, "PlayerData.TryGetByte");
+            string[] keys = PlayerData.GetKeys(localPlayer);
+            Check(keys.Length >= 4, "PlayerData.GetKeys: " + keys.Length);
+            Check(PlayerData.IsType(localPlayer, "name", typeof(string)), "PlayerData.IsType");
+            Check(NetworkStats.RoundTripTime >= 0 && NetworkStats.TimeInRoom >= 0f && NetworkStats.TotalBytes(localPlayer) >= 0 && !NetworkStats.Sleeping(gameObject), "NetworkStats per-object stats");
+            MidiBlock block = new MidiBlock();
+            block.startTimeMs = 500f;
+            block.endTimeMs = 1500f;
+            block.note = 60;
+            Check(Near(block.lengthSec, 1f) && Near(block.startTimeSec, 0.5f) && block.note == 60, "MidiBlock timing");
             PlayerData.Remove("score");
             Check(!PlayerData.HasKey(localPlayer, "score"), "PlayerData.Remove");
 

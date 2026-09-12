@@ -1,0 +1,41 @@
+; udon2godot world project template: converted UdonSharp scripts run in the godot-sandbox, scenes
+; are imported by unidot_importer with the udon_integration plugin.
+config_version=5
+
+[application]
+
+config/name="udon2godot_world"
+config/features=PackedStringArray("4.6")
+
+[autoload]
+
+Udon="*res://addons/udon_runtime/udon.gd"
+U="*res://addons/udon_runtime/u.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_sandbox/plugin.cfg", "res://addons/unidot_importer/plugin.cfg", "res://addons/unidot_importer/headless/plugin.cfg")
+
+[physics]
+
+3d/default_gravity=9.81
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+[udon]
+
+coord_mode="unidot"
+manifest="res://converted/udon_manifest.json"
+import_report="res://udon_import_report.json"
+
+[unidot]
+
+extra_plugins=PackedStringArray("res://addons/unidot_importer/udon_integration.gd")
+shader_ports=PackedStringArray("res://addons/udon_runtime/shader_ports")
+
+[sandbox]
+
+compilation/debug_info=true

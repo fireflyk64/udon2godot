@@ -421,6 +421,13 @@ type Convert
   static IsDBNull(object): bool => ($1 == null)
   static ChangeType(object, Type): object => U.change_type($1, $2)
   static ToBase64String(byte[], int, int): string => Marshalls.raw_to_base64(PackedByteArray($1.slice($2, $2 + $3)))
+  static ToBase64String(byte[]): string => Marshalls.raw_to_base64(PackedByteArray($1))
+  static ToBase64String(byte[], Base64FormattingOptions): string => Marshalls.raw_to_base64(PackedByteArray($1))
+  static ToBase64String(byte[], int, int, Base64FormattingOptions): string => Marshalls.raw_to_base64(PackedByteArray($1.slice($2, $2 + $3)))
+
+type Base64FormattingOptions kind=enum extern=SystemBase64FormattingOptions
+  enum None = 0
+  enum InsertLineBreaks = 1
   static ToHexString(byte[]): string => PackedByteArray($1).hex_encode().to_upper()
   static FromHexString(string): byte[] => Array($1.hex_decode())
 
@@ -472,3 +479,238 @@ type bool
 
 type float
   static Round(float): float => U.round_even($1)
+
+# --- System extras (stub backlog): TimeSpan, Guid, BitConverter, dates, cultures, collections -----
+
+type TimeSpanStyles kind=enum extern=SystemGlobalizationTimeSpanStyles
+  enum None = 0
+  enum AssumeNegative = 1
+
+type DateTimeStyles kind=enum extern=SystemGlobalizationDateTimeStyles
+  enum None = 0
+  enum AllowLeadingWhite = 1
+  enum AllowTrailingWhite = 2
+  enum AllowInnerWhite = 4
+  enum AllowWhiteSpaces = 7
+  enum NoCurrentDateDefault = 8
+  enum AdjustToUniversal = 16
+  enum AssumeLocal = 32
+  enum AssumeUniversal = 64
+  enum RoundtripKind = 128
+
+type TimeSpan
+  ctor(long) => U.timespan_from_seconds($1 / 10000000.0)
+  ctor(int, int, int) => U.timespan_from_seconds($1 * 3600.0 + $2 * 60.0 + $3)
+  ctor(int, int, int, int) => U.timespan_from_seconds($1 * 86400.0 + $2 * 3600.0 + $3 * 60.0 + $4)
+  ctor(int, int, int, int, int) => U.timespan_from_seconds($1 * 86400.0 + $2 * 3600.0 + $3 * 60.0 + $4 + $5 / 1000.0)
+  Add(TimeSpan): TimeSpan => U.timespan_from_seconds($0.total_seconds + $1.total_seconds)
+  Subtract(TimeSpan): TimeSpan => U.timespan_from_seconds($0.total_seconds - $1.total_seconds)
+  Negate(): TimeSpan => U.timespan_from_seconds(-$0.total_seconds)
+  Duration(): TimeSpan => U.timespan_from_seconds(absf($0.total_seconds))
+  CompareTo(TimeSpan): int => int(sign($0.total_seconds - $1.total_seconds))
+  CompareTo(object): int => int(sign($0.total_seconds - $1.total_seconds))
+  Equals(TimeSpan): bool => is_equal_approx($0.total_seconds, $1.total_seconds)
+  static Compare(TimeSpan, TimeSpan): int => int(sign($1.total_seconds - $2.total_seconds))
+  static FromTicks(long): TimeSpan => U.timespan_from_seconds($1 / 10000000.0)
+  static MaxValue: TimeSpan => U.timespan_from_seconds(922337203685.4775)
+  static MinValue: TimeSpan => U.timespan_from_seconds(-922337203685.4775)
+  static TicksPerDay: long => 864000000000
+  static TicksPerHour: long => 36000000000
+  static TicksPerMinute: long => 600000000
+  static TicksPerSecond: long => 10000000
+  static TicksPerMillisecond: long => 10000
+  static Parse(string): TimeSpan => U.timespan_parse($1)
+  static Parse(string, IFormatProvider): TimeSpan => U.timespan_parse($1)
+  static ParseExact(string, string, IFormatProvider): TimeSpan => U.timespan_parse($1)
+  static ParseExact(string, string, IFormatProvider, TimeSpanStyles): TimeSpan => U.timespan_parse($1)
+  static ParseExact(string, string[], IFormatProvider): TimeSpan => U.timespan_parse($1)
+  static ParseExact(string, string[], IFormatProvider, TimeSpanStyles): TimeSpan => U.timespan_parse($1)
+  static TryParse(string, out TimeSpan): bool => $2 = U.timespan_parse($1) ;; $2.get("ok", false)
+  static TryParse(string, IFormatProvider, out TimeSpan): bool => $3 = U.timespan_parse($1) ;; $3.get("ok", false)
+  static TryParseExact(string, string, IFormatProvider, out TimeSpan): bool => $4 = U.timespan_parse($1) ;; $4.get("ok", false)
+  static TryParseExact(string, string, IFormatProvider, TimeSpanStyles, out TimeSpan): bool => $5 = U.timespan_parse($1) ;; $5.get("ok", false)
+  static TryParseExact(string, string[], IFormatProvider, out TimeSpan): bool => $4 = U.timespan_parse($1) ;; $4.get("ok", false)
+  static TryParseExact(string, string[], IFormatProvider, TimeSpanStyles, out TimeSpan): bool => $5 = U.timespan_parse($1) ;; $5.get("ok", false)
+  op ==(TimeSpan, TimeSpan): bool => is_equal_approx($1.total_seconds, $2.total_seconds)
+  op !=(TimeSpan, TimeSpan): bool => not is_equal_approx($1.total_seconds, $2.total_seconds)
+
+type Guid
+  static Empty: Guid => "00000000-0000-0000-0000-000000000000"
+  static Parse(string): Guid => U.guid_parse($1)
+  static ParseExact(string, string): Guid => U.guid_parse($1)
+  static TryParse(string, out Guid): bool => $2 = U.guid_parse($1) ;; $2 != ""
+  static TryParseExact(string, string, out Guid): bool => $3 = U.guid_parse($1) ;; $3 != ""
+  ctor(string) => U.guid_parse($1)
+  ctor(byte[]) => U.guid_from_bytes($1)
+  ctor(int, short, short, byte[]) => U.guid_from_parts($1, $2, $3, $4)
+  ToByteArray(): byte[] => U.guid_to_bytes($0)
+  ToString(string): string => U.guid_format($0, $1)
+  ToString(string, IFormatProvider): string => U.guid_format($0, $1)
+  CompareTo(Guid): int => $0.casecmp_to($1)
+  CompareTo(object): int => $0.casecmp_to(str($1))
+  Equals(Guid): bool => $0 == $1
+  op ==(Guid, Guid): bool => $1 == $2
+  op !=(Guid, Guid): bool => $1 != $2
+
+type BitConverter
+  static IsLittleEndian: bool => true
+  static GetBytes(bool): byte[] => [1 if $1 else 0]
+  static GetBytes(char): byte[] => U.int16_to_bytes($1.unicode_at(0))
+  static GetBytes(short): byte[] => U.int16_to_bytes($1)
+  static GetBytes(ushort): byte[] => U.int16_to_bytes($1)
+  static GetBytes(uint): byte[] => U.int32_to_bytes($1)
+  static GetBytes(long): byte[] => U.int64_to_bytes($1)
+  static GetBytes(ulong): byte[] => U.int64_to_bytes($1)
+  static GetBytes(double): byte[] => U.double_to_bytes($1)
+  static ToBoolean(byte[], int): bool => $1[$2] != 0
+  static ToChar(byte[], int): char => char(U.bytes_to_int16($1, $2) & 65535)
+  static ToInt16(byte[], int): short => U.bytes_to_int16($1, $2)
+  static ToUInt16(byte[], int): ushort => (U.bytes_to_int16($1, $2) & 65535)
+  static ToUInt32(byte[], int): uint => (U.bytes_to_int32($1, $2) & 4294967295)
+  static ToInt64(byte[], int): long => U.bytes_to_int64($1, $2)
+  static ToUInt64(byte[], int): ulong => U.bytes_to_int64($1, $2)
+  static ToDouble(byte[], int): double => U.bytes_to_double($1, $2)
+  static DoubleToInt64Bits(double): long => U.double_to_bits($1)
+  static Int64BitsToDouble(long): double => U.bits_to_double($1)
+
+type NumberFormatInfo kind=class gd=Dictionary extern=SystemGlobalizationNumberFormatInfo
+  static InvariantInfo: NumberFormatInfo => {"decimal": ".", "group": ","}
+  static CurrentInfo: NumberFormatInfo => {"decimal": ".", "group": ","}
+  NumberDecimalSeparator: string => $0.get("decimal", ".")
+  NumberGroupSeparator: string => $0.get("group", ",")
+  CurrencySymbol: string => $0.get("currency", "$")
+
+type DateTimeFormatInfo kind=class gd=Dictionary extern=SystemGlobalizationDateTimeFormatInfo
+  static InvariantInfo: DateTimeFormatInfo => {"short_date": "MM/dd/yyyy", "long_date": "dddd, dd MMMM yyyy"}
+  static CurrentInfo: DateTimeFormatInfo => {"short_date": "MM/dd/yyyy", "long_date": "dddd, dd MMMM yyyy"}
+  ShortDatePattern: string => $0.get("short_date", "MM/dd/yyyy")
+  LongDatePattern: string => $0.get("long_date", "dddd, dd MMMM yyyy")
+
+type CultureInfo
+  static CurrentUICulture: CultureInfo => {"name": ""}
+  static set CurrentUICulture: CultureInfo => pass
+  static GetCultureInfo(string): CultureInfo => {"name": $1}
+  static GetCultureInfo(string, string): CultureInfo => {"name": $1}
+  static GetCultureInfo(int): CultureInfo => {"name": ""}
+  ctor(string) => {"name": $1}
+  ctor(int) => {"name": ""}
+  GetFormat(Type): object => null
+  Name: string => str($0.get("name", ""))
+  DisplayName: string => "Invariant Language (Invariant Country)"
+  EnglishName: string => "Invariant Language (Invariant Country)"
+  NativeName: string => "Invariant Language (Invariant Country)"
+  TwoLetterISOLanguageName: string => "iv"
+  ThreeLetterISOLanguageName: string => "ivl"
+  NumberFormat: NumberFormatInfo => {"decimal": ".", "group": ","}
+  DateTimeFormat: DateTimeFormatInfo => {"short_date": "MM/dd/yyyy", "long_date": "dddd, dd MMMM yyyy"}
+  IsReadOnly: bool => true
+
+type DateTime
+  static FromBinary(long): DateTime => U.datetime_from_unix(($1 & 4611686018427387903) / 10000000.0 - 62135596800.0)
+  static FromFileTime(long): DateTime => U.datetime_from_unix($1 / 10000000.0 - 11644473600.0)
+  static FromFileTimeUtc(long): DateTime => U.datetime_from_unix($1 / 10000000.0 - 11644473600.0)
+  static FromOADate(double): DateTime => U.datetime_from_unix(($1 - 25569.0) * 86400.0)
+  ToBinary(): long => int(($0.get("unix", 0.0) + 62135596800.0) * 10000000.0)
+  ToFileTime(): long => int(($0.get("unix", 0.0) + 11644473600.0) * 10000000.0)
+  ToFileTimeUtc(): long => int(($0.get("unix", 0.0) + 11644473600.0) * 10000000.0)
+  IsDaylightSavingTime(): bool => bool($0.get("dst", false))
+  static SpecifyKind(DateTime, DateTimeKind): DateTime => $1
+  static ParseExact(string, string, IFormatProvider): DateTime => U.datetime_parse($1)
+  static ParseExact(string, string, IFormatProvider, DateTimeStyles): DateTime => U.datetime_parse($1)
+  static ParseExact(string, string[], IFormatProvider, DateTimeStyles): DateTime => U.datetime_parse($1)
+  static TryParseExact(string, string, IFormatProvider, DateTimeStyles, out DateTime): bool => $5 = U.datetime_parse($1) ;; ($5.get("unix", -1.0) >= 0.0)
+  static TryParseExact(string, string[], IFormatProvider, DateTimeStyles, out DateTime): bool => $5 = U.datetime_parse($1) ;; ($5.get("unix", -1.0) >= 0.0)
+
+type DateTimeOffset
+  AddMonths(int): DateTimeOffset => U.datetime_add_months($0, $1)
+  AddYears(int): DateTimeOffset => U.datetime_add_months($0, $1 * 12)
+  static FromFileTime(long): DateTimeOffset => U.datetime_from_unix($1 / 10000000.0 - 11644473600.0)
+  ToFileTime(): long => int(($0.get("unix", 0.0) + 11644473600.0) * 10000000.0)
+  static Parse(string): DateTimeOffset => U.datetime_parse($1)
+  static Parse(string, IFormatProvider): DateTimeOffset => U.datetime_parse($1)
+  static Parse(string, IFormatProvider, DateTimeStyles): DateTimeOffset => U.datetime_parse($1)
+  static ParseExact(string, string, IFormatProvider): DateTimeOffset => U.datetime_parse($1)
+  static ParseExact(string, string, IFormatProvider, DateTimeStyles): DateTimeOffset => U.datetime_parse($1)
+  static ParseExact(string, string[], IFormatProvider, DateTimeStyles): DateTimeOffset => U.datetime_parse($1)
+  static TryParse(string, out DateTimeOffset): bool => $2 = U.datetime_parse($1) ;; ($2.get("unix", -1.0) >= 0.0)
+  static TryParse(string, IFormatProvider, DateTimeStyles, out DateTimeOffset): bool => $4 = U.datetime_parse($1) ;; ($4.get("unix", -1.0) >= 0.0)
+  static TryParseExact(string, string, IFormatProvider, DateTimeStyles, out DateTimeOffset): bool => $5 = U.datetime_parse($1) ;; ($5.get("unix", -1.0) >= 0.0)
+  static TryParseExact(string, string[], IFormatProvider, DateTimeStyles, out DateTimeOffset): bool => $5 = U.datetime_parse($1) ;; ($5.get("unix", -1.0) >= 0.0)
+
+type TimeZoneInfo
+  static ClearCachedData(): void => pass
+  static ConvertTimeBySystemTimeZoneId(DateTime, string): DateTime => $1
+  static ConvertTimeBySystemTimeZoneId(DateTime, string, string): DateTime => $1
+  static ConvertTimeBySystemTimeZoneId(DateTimeOffset, string): DateTimeOffset => $1
+  static CreateCustomTimeZone(string, TimeSpan, string, string): TimeZoneInfo => {"id": $1, "offset": $2.total_seconds, "display": $3, "standard": $4}
+  static CreateCustomTimeZone(string, TimeSpan, string, string, string, object): TimeZoneInfo => {"id": $1, "offset": $2.total_seconds, "display": $3, "standard": $4, "daylight": $5}
+  static CreateCustomTimeZone(string, TimeSpan, string, string, string, object, bool): TimeZoneInfo => {"id": $1, "offset": $2.total_seconds, "display": $3, "standard": $4, "daylight": $5}
+  static FromSerializedString(string): TimeZoneInfo => {"id": $1, "offset": 0.0}
+  ToSerializedString(): string => str($0.get("id", "UTC"))
+  GetAdjustmentRules(): object => []
+  GetAmbiguousTimeOffsets(DateTime): TimeSpan[] => []
+  GetAmbiguousTimeOffsets(DateTimeOffset): TimeSpan[] => []
+  HasSameRules(TimeZoneInfo): bool => $0.get("offset", 0.0) == $1.get("offset", 0.0)
+  IsAmbiguousTime(DateTime): bool => false
+  IsAmbiguousTime(DateTimeOffset): bool => false
+  IsInvalidTime(DateTime): bool => false
+  DaylightName: string => str($0.get("daylight", ""))
+
+type Convert
+  static ToDateTime(string): DateTime => U.datetime_parse($1)
+  static ToDateTime(string, IFormatProvider): DateTime => U.datetime_parse($1)
+  static ToDateTime(DateTime): DateTime => $1
+  static ToDateTime(object): DateTime => U.to_datetime($1)
+  static ToDateTime(object, IFormatProvider): DateTime => U.to_datetime($1)
+  static FromBase64CharArray(char[], int, int): byte[] => Array(Marshalls.base64_to_raw(U.chars_to_string($1.slice($2, $2 + $3))))
+  static ToBase64CharArray(byte[], int, int, char[], int): int => U.base64_chars($1, $2, $3, $4, $5)
+  static ToBase64CharArray(byte[], int, int, char[], int, Base64FormattingOptions): int => U.base64_chars($1, $2, $3, $4, $5)
+
+type Encoding
+  GetMaxByteCount(int): int => ($1 + 1) * 4
+  GetMaxCharCount(int): int => $1 + 1
+  IsAlwaysNormalized(): bool => false
+  IsAlwaysNormalized(NormalizationForm): bool => false
+  static BigEndianUnicode: Encoding => "utf-16be"
+  HeaderName: string => $0
+  IsReadOnly: bool => true
+  IsSingleByte: bool => ($0 == "ascii" or $0 == "latin1")
+
+type NormalizationForm kind=enum extern=SystemTextNormalizationForm
+  enum FormC = 1
+  enum FormD = 2
+  enum FormKC = 5
+  enum FormKD = 6
+
+type Regex
+  static CacheSize: int => 15
+  static set CacheSize: int => pass
+  static InfiniteMatchTimeout: TimeSpan => U.timespan_from_seconds(-0.001)
+  MatchTimeout: TimeSpan => U.timespan_from_seconds(-0.001)
+
+type GroupCollection
+  CopyTo(Array, int): void => U.array_copy($0, 0, $1, $2, $0.size())
+  CopyTo(Group[], int): void => U.array_copy($0, 0, $1, $2, $0.size())
+  IsReadOnly: bool => true
+  IsSynchronized: bool => false
+  SyncRoot: object => $0
+  GetEnumerator(): object => $0
+
+type CaptureCollection
+  CopyTo(Array, int): void => U.array_copy($0, 0, $1, $2, $0.size())
+  CopyTo(Capture[], int): void => U.array_copy($0, 0, $1, $2, $0.size())
+  IsReadOnly: bool => true
+  IsSynchronized: bool => false
+  SyncRoot: object => $0
+  GetEnumerator(): object => $0
+
+type MatchCollection
+  IsReadOnly: bool => true
+  IsSynchronized: bool => false
+  SyncRoot: object => $0
+
+type StringBuilder
+  this[int]: char => U.sb_char_at($0, $1)
+
+type Random extern=UnityEngineRandom
+  NextBytes(byte[]): void => U.random_bytes($1)

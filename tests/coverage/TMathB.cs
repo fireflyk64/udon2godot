@@ -74,6 +74,11 @@ namespace Coverage
             Check(NearV(m.MultiplyPoint(Vector3.zero), new Vector3(1, 2, 3)), "Matrix4x4.TRS translate");
             Check(NearV(m.inverse.MultiplyPoint(new Vector3(1, 2, 3)), Vector3.zero), "Matrix4x4.inverse");
             Check(NearV(m.MultiplyVector(Vector3.up), Vector3.up), "MultiplyVector ignores translation");
+            Check(Near(m.m03, 1f) && Near(m.m13, 2f) && Near(m.m23, 3f) && Near(m.m33, 1f) && Near(m.m00, 1f) && Near(m.m01, 0f), "Matrix4x4 elements");
+            Check(Near(m[1, 3], 2f) && Near(m[13], 2f) && Near(m[0, 0], 1f), "Matrix4x4 indexers (row,col) and column-major index");
+            Vector3 iv = new Vector3(4, 5, 6);
+            Quaternion iq = new Quaternion(0, 0, 0, 1);
+            Check(Near(iv[0], 4f) && Near(iv[2], 6f) && Near(iq[3], 1f), "Vector3/Quaternion indexers");
 
             // Random
             int r = Random.Range(0, 3);

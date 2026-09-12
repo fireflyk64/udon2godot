@@ -10,6 +10,7 @@ use udon2godot::externs::ExternTable;
 use udon2godot::lower::{lower_class, LowerOptions};
 use udon2godot::parser::parse_source;
 use udon2godot::program::Program;
+use udon2godot::types::Ty;
 
 const USAGE: &str = "udon2godot — convert UdonSharp (VRChat Udon C#) scripts to SafeGDScript (.sgd)
 
@@ -25,6 +26,7 @@ OPTIONS:
     --class-name             Emit `class_name` (not allowed in a restricted sandbox)
     --report                 Print a per-class API usage report
     --report-json <FILE>     Write the usage report as JSON
+    --manifest <FILE>        Write a JSON manifest (script GUIDs, output paths, field types) for scene importers
     --check                  Parse and analyze only; write nothing
     --externs <FILE>         Use a custom KnownExterns list (one signature per line)
     --catalog-coverage       Print which Udon externs of catalog types are not mapped
@@ -41,6 +43,7 @@ struct Args {
     class_name: bool,
     report: bool,
     report_json: Option<PathBuf>,
+    manifest: Option<PathBuf>,
     check: bool,
     externs: Option<PathBuf>,
     coverage: bool,
@@ -57,6 +60,7 @@ fn parse_args() -> Result<Args, String> {
         class_name: false,
         report: false,
         report_json: None,
+        manifest: None,
         check: false,
         externs: None,
         coverage: false,
@@ -82,6 +86,7 @@ fn parse_args() -> Result<Args, String> {
             "--class-name" => a.class_name = true,
             "--report" => a.report = true,
             "--report-json" => a.report_json = Some(PathBuf::from(it.next().ok_or("--report-json needs a value")?)),
+            "--manifest" => a.manifest = Some(PathBuf::from(it.next().ok_or("--manifest needs a value")?)),
             "--check" => a.check = true,
             "--externs" => a.externs = Some(PathBuf::from(it.next().ok_or("--externs needs a value")?)),
             "--catalog-coverage" => a.coverage = true,
@@ -244,6 +249,12 @@ fn main() {
             eprintln!("error: cannot write {}: {}", p.display(), e);
         }
     }
+    if let Some(p) = &args.manifest {
+        let json = manifest_json(&prog, &args.res_prefix, &report);
+        if let Err(e) = std::fs::write(p, json) {
+            eprintln!("error: cannot write {}: {}", p.display(), e);
+        }
+    }
     if !args.quiet {
         println!("{} class(es), {} warning(s), {} error(s)", prog.classes.len(), total_warn, total_err);
     }
@@ -281,6 +292,12 @@ fn print_report(report: &BTreeMap<String, ReportEntry>) {
                 println!("     {} x{}", k, v);
             }
         }
+        if !r.usage.stored.is_empty() {
+            println!("   stored (value round-trips, no engine effect):");
+            for (k, v) in &r.usage.stored {
+                println!("     {} x{}", k, v);
+            }
+        }
         if !r.usage.unsupported.is_empty() {
             println!("   unsupported:");
             for (k, v) in &r.usage.unsupported {
@@ -304,6 +321,120 @@ fn print_report(report: &BTreeMap<String, ReportEntry>) {
             println!("     {:5}  {}", n, k);
         }
     }
+}
+
+/// GUID of a C# script from the Unity `.cs.meta` file next to it.
+fn script_guid(source: &str) -> Option<String> {
+    let text = std::fs::read_to_string(format!("{}.meta", source)).ok()?;
+    text.lines().find_map(|l| l.trim().strip_prefix("guid:").map(|g| g.trim().to_string()))
+}
+
+/// Unity classes whose references are project assets (guid + fileID) rather than scene objects.
+fn is_asset_type(name: &str, gd: &str) -> bool {
+    matches!(
+        name,
+        "Material" | "Texture" | "Texture2D" | "RenderTexture" | "Cubemap" | "Sprite" | "AudioClip" | "Mesh" | "AnimationClip" | "RuntimeAnimatorController" | "AnimatorController" | "AnimatorOverrideController" | "Font" | "TMP_FontAsset" | "Shader" | "TextAsset" | "PhysicMaterial" | "PhysicsMaterial2D" | "Avatar" | "ScriptableObject" | "Flare" | "VideoClip" | "AudioMixer" | "AudioMixerGroup" | "ComputeShader" | "LightmapData" | "TerrainData" | "NavMeshData" | "Texture3D" | "Texture2DArray" | "Gradient"
+    ) || gd.starts_with("Texture") || matches!(gd, "Material" | "AudioStream" | "Mesh" | "Animation" | "Font" | "Shader" | "PhysicsMaterial" | "Resource" | "PackedScene" | "AnimationLibrary" | "Curve" | "ArrayMesh" | "ShaderMaterial" | "StandardMaterial3D" | "AudioStreamWAV" | "FontFile" | "VideoStream")
+}
+
+/// JSON description of a field type for scene importers: how serialized values and references
+/// should be converted.
+fn type_json(prog: &Program, ty: &Ty) -> String {
+    let name = ty.name();
+    match ty {
+        Ty::Array(e) => format!("{{\"kind\":\"array\",\"type\":{},\"elem\":{}}}", json_str(&name), type_json(prog, e)),
+        Ty::MultiArray(e, r) => format!("{{\"kind\":\"multiarray\",\"rank\":{},\"type\":{},\"elem\":{}}}", r, json_str(&name), type_json(prog, e)),
+        Ty::Named(n) => {
+            let (kind, gd) = if prog.is_user_class(n) {
+                ("behaviour", "Node")
+            } else if prog.user_enum(n).is_some() {
+                ("enum", "int")
+            } else if let Some(t) = prog.catalog.get(n) {
+                let k = match t.kind {
+                    udon2godot::api::TypeKind::Enum => "enum",
+                    udon2godot::api::TypeKind::Struct => "struct",
+                    udon2godot::api::TypeKind::Component | udon2godot::api::TypeKind::Behaviour => "component",
+                    udon2godot::api::TypeKind::Static => "static",
+                    udon2godot::api::TypeKind::Class => {
+                        if t.name == "GameObject" {
+                            "gameobject"
+                        } else if is_asset_type(&t.name, &t.gd) {
+                            "resource"
+                        } else {
+                            "object"
+                        }
+                    }
+                };
+                (k, t.gd.as_str())
+            } else {
+                ("unknown", "Variant")
+            };
+            format!("{{\"kind\":{},\"type\":{},\"gd\":{}}}", json_str(kind), json_str(&name), json_str(gd))
+        }
+        Ty::String | Ty::Char => format!("{{\"kind\":\"string\",\"type\":{}}}", json_str(&name)),
+        Ty::Bool => "{\"kind\":\"bool\",\"type\":\"bool\"}".to_string(),
+        t if t.is_numeric() => format!("{{\"kind\":\"number\",\"type\":{}}}", json_str(&name)),
+        _ => format!("{{\"kind\":\"unknown\",\"type\":{}}}", json_str(&name)),
+    }
+}
+
+/// Manifest consumed by scene importers (the unidot `udon_integration` plugin): which converted
+/// script belongs to which Unity script GUID, and how each serialized field should be converted.
+fn manifest_json(prog: &Program, res_prefix: &str, report: &BTreeMap<String, ReportEntry>) -> String {
+    let prefix = res_prefix.trim_end_matches('/');
+    let mut s = String::from("{\n  \"version\": 1,\n  \"classes\": {\n");
+    let mut first = true;
+    for class in &prog.classes {
+        if !first {
+            s.push_str(",\n");
+        }
+        first = false;
+        let source = class.source_files.first().cloned().unwrap_or_default();
+        let guid = script_guid(&source).map(|g| json_str(&g)).unwrap_or_else(|| "null".into());
+        let mut chain: Vec<String> = vec![];
+        let mut cur = class.base.clone();
+        while let Some(b) = cur {
+            if !prog.is_user_class(&b) {
+                break;
+            }
+            chain.push(b.clone());
+            cur = prog.classes.iter().find(|c| c.name == b).and_then(|c| c.base.clone());
+        }
+        let errors = report.get(&class.name).map(|r| r.errors).unwrap_or(0);
+        s.push_str(&format!(
+            "    {}: {{\"guid\": {}, \"source\": {}, \"script\": {}, \"behaviour\": {}, \"base\": {}, \"chain\": [{}], \"sync_mode\": {}, \"errors\": {}, \"fields\": {{",
+            json_str(&class.name),
+            guid,
+            json_str(&source),
+            json_str(&format!("{}/{}.sgd", prefix, class.name)),
+            class.is_behaviour,
+            class.base.as_deref().map(json_str).unwrap_or_else(|| "null".into()),
+            chain.iter().map(|c| json_str(c)).collect::<Vec<_>>().join(", "),
+            json_str(&format!("{:?}", class.sync_mode)),
+            errors
+        ));
+        let mut ff = true;
+        for f in &class.fields {
+            if f.is_static || f.is_const {
+                continue;
+            }
+            if !ff {
+                s.push_str(", ");
+            }
+            ff = false;
+            s.push_str(&format!(
+                "{}: {{\"gd\": {}, \"exported\": {}, \"synced\": {}, \"ty\": {}}}",
+                json_str(&f.name),
+                json_str(&f.gd_name),
+                f.serialized && !f.hide_in_inspector,
+                f.synced,
+                type_json(prog, &f.ty)
+            ));
+        }
+        s.push_str("}}");
+    }
+    s.push_str("\n  }\n}\n");
+    s
 }
 
 fn json_str(s: &str) -> String {
@@ -338,6 +469,7 @@ fn report_json(report: &BTreeMap<String, ReportEntry>) -> String {
         s.push_str(&format!("    \"unmapped\": {},\n", map(&r.usage.unmapped)));
         s.push_str(&format!("    \"unsupported\": {},\n", map(&r.usage.unsupported)));
         s.push_str(&format!("    \"stubbed\": {},\n", map(&r.usage.stubbed)));
+        s.push_str(&format!("    \"stored\": {},\n", map(&r.usage.stored)));
         let list = |v: Vec<String>| -> String { format!("[{}]", v.iter().map(|x| json_str(x)).collect::<Vec<_>>().join(", ")) };
         s.push_str(&format!("    \"not_udon_extern\": {},\n", list(r.usage.not_udon_extern.iter().cloned().collect())));
         s.push_str(&format!("    \"unresolved\": {}\n", list(r.usage.unresolved.iter().cloned().collect())));
@@ -354,6 +486,9 @@ fn print_coverage(catalog: &Catalog, externs: &ExternTable, verbose: bool) -> Ve
     let mut by_extern: BTreeMap<String, String> = BTreeMap::new();
     for t in catalog.types() {
         if let Some(e) = &t.extern_name {
+            by_extern.insert(e.clone(), t.name.clone());
+        }
+        for e in &t.extern_aliases {
             by_extern.insert(e.clone(), t.name.clone());
         }
     }
@@ -379,7 +514,9 @@ fn print_coverage(catalog: &Catalog, externs: &ExternTable, verbose: bool) -> Ve
                 array_methods.contains(base) || matches!(base, "Get" | "Set" | "Length" | "LongLength" | "Rank" | "IsFixedSize" | "IsReadOnly" | "IsSynchronized" | "SyncRoot" | "GetEnumerator" | "GetLength" | "GetLongLength" | "GetLowerBound" | "GetUpperBound" | "GetValue" | "SetValue" | "Initialize" | "Address" | "Clone" | "CopyTo" | "Contains")
             } else if let Some(n) = &cat_name {
                 let members = catalog.members(n, base);
-                let has = if m.starts_with("set_") { members.iter().any(|mm| mm.set.is_some() || (mm.is_field() && mm.get.is_none())) } else { !members.is_empty() };
+                let is_enum = catalog.chain(n).iter().any(|t| t.enum_value(base).is_some());
+                let indexer = base == "Item" && catalog.chain(n).iter().any(|t| t.members.iter().any(|mm| mm.name.starts_with("this[")));
+                let has = if m.starts_with("set_") { members.iter().any(|mm| mm.set.is_some() || (mm.is_field() && mm.get.is_none())) || indexer } else { !members.is_empty() || is_enum || indexer };
                 has || component_base.contains(base) && catalog.is_a(n, "Object")
             } else {
                 false

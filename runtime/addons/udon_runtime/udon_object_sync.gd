@@ -10,6 +10,11 @@ func _init(n: Node = null) -> void:
 	node = n
 	if n is Node3D:
 		_spawn_transform = n.global_transform
+	if n != null and n.has_meta("udon_object_sync"):
+		var c: Dictionary = n.get_meta("udon_object_sync")
+		for k in c.keys():
+			if str(k) in self:
+				set(str(k), c[k])
 
 func flag_discontinuity() -> void:
 	if Udon.provider != null and Udon.provider.has_method("flag_discontinuity"):

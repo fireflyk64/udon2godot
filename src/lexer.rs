@@ -31,6 +31,15 @@ fn is_ident_continue(c: char) -> bool {
 }
 
 impl<'a> Lexer<'a> {
+    /// Up to `n` bytes of the remaining source, cut back to a UTF-8 character boundary.
+    fn peek_str(&self, n: usize) -> &'a str {
+        let mut end = std::cmp::min(self.pos + n, self.src.len());
+        while !self.src.is_char_boundary(end) {
+            end -= 1;
+        }
+        &self.src[self.pos..end]
+    }
+
     pub fn new(src: &'a str) -> Self {
         // Skip UTF-8 BOM.
         let src = src.strip_prefix('\u{feff}').unwrap_or(src);
@@ -431,7 +440,7 @@ impl<'a> Lexer<'a> {
             return Ok(Tok::Lit(Lit::Char(ch)));
         }
         // Punctuation
-        let three = &self.src[self.pos..std::cmp::min(self.pos + 3, self.src.len())];
+        let three = self.peek_str(3);
         let p3 = match three {
             "<<=" => Some(P::LtLtEq),
             "??=" => Some(P::QuestionQuestionEq),
@@ -443,7 +452,7 @@ impl<'a> Lexer<'a> {
             }
             return Ok(Tok::Punct(p));
         }
-        let two = &self.src[self.pos..std::cmp::min(self.pos + 2, self.src.len())];
+        let two = self.peek_str(2);
         let p2 = match two {
             "?." => Some(P::QuestionDot),
             "??" => Some(P::QuestionQuestion),

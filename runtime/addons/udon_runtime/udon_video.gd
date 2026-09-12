@@ -12,6 +12,19 @@ var _url: String = ""
 
 func _init(n: Node = null) -> void:
 	node = n
+	if n != null and n.has_meta("udon_video"):
+		apply_config(n.get_meta("udon_video"))
+
+## Settings written by the scene converter (VRC component fields → adapter properties);
+## NodePath values are resolved relative to the node.
+func apply_config(c: Dictionary) -> void:
+	for k in c.keys():
+		if not (str(k) in self):
+			continue
+		var v = c[k]
+		if v is NodePath and node != null:
+			v = node.get_node_or_null(v)
+		set(str(k), v)
 
 func _vp() -> VideoStreamPlayer:
 	if node is VideoStreamPlayer:

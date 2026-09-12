@@ -122,6 +122,77 @@ namespace Coverage
             uiText.gameObject.SetActive(false);
             Check(!uiText.gameObject.activeSelf, "UI SetActive(false)");
             uiText.gameObject.SetActive(true);
+
+            // Selectable state, navigation, colours
+            Check(button.IsInteractable() && button.IsActive(), "Selectable.IsInteractable/IsActive");
+            Navigation nav = button.navigation;
+            nav.mode = Navigation.Mode.Explicit;
+            nav.selectOnDown = slider;
+            button.navigation = nav;
+            Check(button.FindSelectableOnDown() == slider, "navigation.selectOnDown -> FindSelectableOnDown");
+            Check(button.navigation.selectOnDown == slider && button.navigation.mode == Navigation.Mode.Explicit, "navigation round trip");
+            ColorBlock cb = button.colors;
+            cb.normalColor = Color.red;
+            button.colors = cb;
+            Check(button.colors.normalColor == Color.red && Near(button.colors.colorMultiplier, 1f), "ColorBlock round trip");
+            Check(ColorBlock.defaultColorBlock.normalColor == Color.white, "ColorBlock.defaultColorBlock");
+            button.transition = Selectable.Transition.SpriteSwap;
+            Check(button.transition == Selectable.Transition.SpriteSwap, "stored transition");
+
+            // Graphic / Image
+            Check(image.canvas != null, "Graphic.canvas");
+            Check(!image.Raycast(new Vector2(-100, -100), null), "Graphic.Raycast outside");
+            image.SetNativeSize();
+            Check(image.depth >= 0, "Graphic.depth");
+
+            // TMP alignment / overflow / wrapping / alpha
+            tmpText.alignment = TextAlignmentOptions.Center;
+            Check(tmpText.alignment == TextAlignmentOptions.Center && tmpText.horizontalAlignment == HorizontalAlignmentOptions.Center && tmpText.verticalAlignment == VerticalAlignmentOptions.Middle, "TMP alignment " + (int)tmpText.alignment);
+            tmpText.horizontalAlignment = HorizontalAlignmentOptions.Right;
+            Check(tmpText.horizontalAlignment == HorizontalAlignmentOptions.Right, "TMP horizontalAlignment");
+            tmpText.overflowMode = TextOverflowModes.Ellipsis;
+            Check(tmpText.overflowMode == TextOverflowModes.Ellipsis, "TMP overflowMode");
+            tmpText.maxVisibleLines = 2;
+            Check(tmpText.maxVisibleLines == 2, "TMP maxVisibleLines");
+            tmpText.enableWordWrapping = false;
+            Check(!tmpText.enableWordWrapping, "TMP enableWordWrapping");
+            tmpText.alpha = 0.5f;
+            Check(Near(tmpText.alpha, 0.5f), "TMP alpha");
+            tmpText.alpha = 1f;
+            tmpText.isRightToLeftText = true;
+            Check(tmpText.isRightToLeftText, "TMP RTL");
+            tmpText.isRightToLeftText = false;
+            tmpText.wordSpacing = 3f;
+            Check(Near(tmpText.wordSpacing, 3f), "TMP stored wordSpacing");
+            Check((int)TextAlignmentOptions.BottomRight == 1028 && (int)TextAnchor.LowerRight == 8, "UI enum values");
+
+            // Outline effect on the text control
+            Outline ol = tmpText.GetComponent<Outline>();
+            Check(ol != null, "Outline component on the text Control");
+            ol.effectColor = Color.blue;
+            ol.effectDistance = new Vector2(2, -2);
+            Check(ol.effectColor == Color.blue && Near(ol.effectDistance.x, 2f), "Outline effect round trip");
+
+            // Mask / layout
+            Mask mask = rect.GetComponent<Mask>();
+            mask.enabled = true;
+            Check(mask.enabled && mask.MaskEnabled(), "Mask.enabled clips");
+            LayoutElement le = rect.GetComponent<LayoutElement>();
+            le.flexibleWidth = 2f;
+            Check(Near(le.flexibleWidth, 2f), "LayoutElement.flexibleWidth");
+            le.preferredWidth = 120f;
+            Check(Near(LayoutUtility.GetPreferredWidth(rect), 120f), "LayoutUtility.GetPreferredWidth");
+
+            // option data, sprites, text anchors, canvas
+            Dropdown.OptionData od = new Dropdown.OptionData("d");
+            Check(od.text == "d" && od.image == null, "Dropdown.OptionData ctor");
+            Texture2D tex = new Texture2D(4, 4);
+            Sprite sp = Sprite.Create(tex, new Rect(0, 0, 2, 2), new Vector2(0.5f, 0.5f));
+            Check(sp != null && Near(sp.rect.width, 2f) && Near(sp.pixelsPerUnit, 100f), "Sprite.Create rect/ppu");
+            Vector2 pv = Text.GetTextAnchorPivot(TextAnchor.LowerRight);
+            Check(Near(pv.x, 1f) && Near(pv.y, 0f), "Text.GetTextAnchorPivot");
+            Canvas cv = uiText.canvas;
+            Check(cv != null && cv.pixelRect.width > 0f && cv.isRootCanvas, "Canvas.pixelRect/isRootCanvas");
             done = true;
         }
     }

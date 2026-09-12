@@ -134,6 +134,8 @@ type PhysicsMaterial2D kind=class gd=PhysicsMaterial extern=UnityEnginePhysicsMa
   set bounciness: float => $0.bounce = $v
 
 type Collider2D : Behaviour kind=component gd=CollisionObject2D extern=UnityEngineCollider2D
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   enabled: bool => U.collider2d_get_enabled($0)
   set enabled: bool => U.collider2d_set_enabled($0, $v)
   isTrigger: bool => ($0 is Area2D)
@@ -484,10 +486,10 @@ type Physics2D kind=static extern=UnityEnginePhysics2D
   static set queriesHitTriggers: bool => pass
   static queriesStartInColliders: bool => true
   static set queriesStartInColliders: bool => pass
-  static velocityIterations: int => 8
-  static set velocityIterations: int => pass
-  static positionIterations: int => 3
-  static set positionIterations: int => pass
+  static velocityIterations: int => int(U.space2d_get("solver_iterations", 8.0))
+  static set velocityIterations: int => U.space2d_set("solver_iterations", float($v))
+  static positionIterations: int => !stored U.phys_get("2d.positionIterations", 3)
+  static set positionIterations: int => !stored U.phys_set("2d.positionIterations", $v)
   static defaultContactOffset: float => 0.01
   static AllLayers: int => -1
   static DefaultRaycastLayers: int => -5
@@ -496,8 +498,8 @@ type Physics2D kind=static extern=UnityEnginePhysics2D
   static Raycast(Vector2, Vector2, float): RaycastHit2D => U.raycast2d($1, $2, $3, -1)
   static Raycast(Vector2, Vector2, float, int): RaycastHit2D => U.raycast2d($1, $2, $3, $4)
   static Raycast(Vector2, Vector2, float, int, float, float): RaycastHit2D => U.raycast2d($1, $2, $3, $4)
-  static Raycast(Vector2, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.raycast2d_all_into($1, $2, INF, -1, $4)
-  static Raycast(Vector2, Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.raycast2d_all_into($1, $2, $5, -1, $4)
+  static Raycast(Vector2, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.raycast2d_all_into($1, $2, INF, U.filter2d_mask($3), $4)
+  static Raycast(Vector2, Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.raycast2d_all_into($1, $2, $5, U.filter2d_mask($3), $4)
   static RaycastAll(Vector2, Vector2): RaycastHit2D[] => U.raycast2d_all($1, $2, INF, -1)
   static RaycastAll(Vector2, Vector2, float): RaycastHit2D[] => U.raycast2d_all($1, $2, $3, -1)
   static RaycastAll(Vector2, Vector2, float, int): RaycastHit2D[] => U.raycast2d_all($1, $2, $3, $4)
@@ -518,7 +520,6 @@ type Physics2D kind=static extern=UnityEnginePhysics2D
   static BoxCast(Vector2, Vector2, float, Vector2, float, int): RaycastHit2D => U.shapecast2d("box", $1, 0.0, $2, $3, $4, $5, $6)
   static BoxCastAll(Vector2, Vector2, float, Vector2, float, int): RaycastHit2D[] => U.shapecast2d_all("box", $1, 0.0, $2, $3, $4, $5, $6)
   static BoxCastNonAlloc(Vector2, Vector2, float, Vector2, RaycastHit2D[], float, int): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $6, $7, $5)
-  static CapsuleCast(Vector2, Vector2, int, float, Vector2, float, int): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, $2, $4, $5, $6, $7)
   static OverlapPoint(Vector2): Collider2D => U.overlap2d_first("point", $1, 0.0, Vector2.ZERO, 0.0, -1)
   static OverlapPoint(Vector2, int): Collider2D => U.overlap2d_first("point", $1, 0.0, Vector2.ZERO, 0.0, $2)
   static OverlapPointAll(Vector2): Collider2D[] => U.overlap2d("point", $1, 0.0, Vector2.ZERO, 0.0, -1)
@@ -541,9 +542,6 @@ type Physics2D kind=static extern=UnityEnginePhysics2D
   static OverlapArea(Vector2, Vector2, int): Collider2D => U.overlap2d_first("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
   static OverlapAreaAll(Vector2, Vector2): Collider2D[] => U.overlap2d("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, -1)
   static OverlapAreaAll(Vector2, Vector2, int): Collider2D[] => U.overlap2d("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
-  static OverlapCapsule(Vector2, Vector2, int, float): Collider2D => U.overlap2d_first("capsule", $1, 0.0, $2, $4, -1)
-  static OverlapCapsule(Vector2, Vector2, int, float, int): Collider2D => U.overlap2d_first("capsule", $1, 0.0, $2, $4, $5)
-  static OverlapCapsuleAll(Vector2, Vector2, int, float, int): Collider2D[] => U.overlap2d("capsule", $1, 0.0, $2, $4, $5)
   static IgnoreCollision(Collider2D, Collider2D): void => U.ignore_collision2d($1, $2, true)
   static IgnoreCollision(Collider2D, Collider2D, bool): void => U.ignore_collision2d($1, $2, $3)
   static IgnoreLayerCollision(int, int): void => pass
@@ -576,15 +574,15 @@ type RaycastHit2D kind=struct gd=Dictionary extern=UnityEngineRaycastHit2D
   set centroid: Vector2 => $0.centroid = $v
   collider: Collider2D => $0.get("collider", null)
   rigidbody: Rigidbody2D => $0.get("collider", null)
-  transform: Transform => $0.get("collider", null)
+  transform: Transform => U.game_object($0.get("collider", null))
   op implicit_bool(RaycastHit2D): bool => not $1.is_empty()
   cast bool => not $0.is_empty()
 
 type Collision2D kind=struct gd=Dictionary extern=UnityEngineCollision2D
   collider: Collider2D => $0.get("collider", null)
   otherCollider: Collider2D => $0.get("otherCollider", null)
-  gameObject: GameObject => $0.get("collider", null)
-  transform: Transform => $0.get("collider", null)
+  gameObject: GameObject => U.game_object($0.get("collider", null))
+  transform: Transform => U.game_object($0.get("collider", null))
   rigidbody: Rigidbody2D => $0.get("collider", null)
   otherRigidbody: Rigidbody2D => $0.get("otherCollider", null)
   relativeVelocity: Vector2 => $0.get("relativeVelocity", Vector2.ZERO)
@@ -613,7 +611,7 @@ type ColliderDistance2D kind=struct gd=Dictionary extern=UnityEngineColliderDist
   normal: Vector2 => $0.get("normal", Vector2.UP)
   distance: float => $0.get("distance", 0.0)
   isOverlapped: bool => ($0.get("distance", 0.0) < 0.0)
-  isValid: bool => not $0.is_empty()
+  isValid: bool => $0.get("isValid", not $0.is_empty())
 
 type ContactFilter2D kind=struct gd=Dictionary extern=UnityEngineContactFilter2D
   ctor() => {"layerMask": -1, "useLayerMask": false, "useTriggers": true}
@@ -623,24 +621,36 @@ type ContactFilter2D kind=struct gd=Dictionary extern=UnityEngineContactFilter2D
   set useLayerMask: bool => $0.useLayerMask = $v
   useTriggers: bool => $0.get("useTriggers", true)
   set useTriggers: bool => $0.useTriggers = $v
-  useDepth: bool => false
-  set useDepth: bool => pass
-  useNormalAngle: bool => false
-  set useNormalAngle: bool => pass
-  minDepth: float => -INF
-  set minDepth: float => pass
-  maxDepth: float => INF
-  set maxDepth: float => pass
-  minNormalAngle: float => 0.0
-  set minNormalAngle: float => pass
-  maxNormalAngle: float => 359.9999
-  set maxNormalAngle: float => pass
-  isFiltering: bool => $0.get("useLayerMask", false)
+  useDepth: bool => $0.get("useDepth", false)
+  set useDepth: bool => $0.useDepth = $v
+  useOutsideDepth: bool => $0.get("useOutsideDepth", false)
+  set useOutsideDepth: bool => $0.useOutsideDepth = $v
+  useNormalAngle: bool => $0.get("useNormalAngle", false)
+  set useNormalAngle: bool => $0.useNormalAngle = $v
+  useOutsideNormalAngle: bool => $0.get("useOutsideNormalAngle", false)
+  set useOutsideNormalAngle: bool => $0.useOutsideNormalAngle = $v
+  minDepth: float => $0.get("minDepth", -INF)
+  set minDepth: float => $0.minDepth = $v
+  maxDepth: float => $0.get("maxDepth", INF)
+  set maxDepth: float => $0.maxDepth = $v
+  minNormalAngle: float => $0.get("minNormalAngle", 0.0)
+  set minNormalAngle: float => $0.minNormalAngle = $v
+  maxNormalAngle: float => $0.get("maxNormalAngle", 359.9999)
+  set maxNormalAngle: float => $0.maxNormalAngle = $v
+  static NormalAngleUpperLimit: float => 359.9999
+  isFiltering: bool => ($0.get("useLayerMask", false) or $0.get("useDepth", false) or $0.get("useNormalAngle", false) or not $0.get("useTriggers", true))
   SetLayerMask(int): void => $0.layerMask = $1 ;; $0.useLayerMask = true
   ClearLayerMask(): void => $0.useLayerMask = false
-  NoFilter(): void => $0.useLayerMask = false
-  IsFilteringLayerMask(GameObject): bool => false
+  SetDepth(float, float): void => $0.minDepth = $1 ;; $0.maxDepth = $2 ;; $0.useDepth = true
+  ClearDepth(): void => $0.useDepth = false
+  SetNormalAngle(float, float): void => $0.minNormalAngle = $1 ;; $0.maxNormalAngle = $2 ;; $0.useNormalAngle = true
+  ClearNormalAngle(): void => $0.useNormalAngle = false
+  NoFilter(): void => $0.useLayerMask = false ;; $0.useDepth = false ;; $0.useNormalAngle = false ;; $0.useTriggers = true
+  IsFilteringLayerMask(GameObject): bool => ($0.get("useLayerMask", false) and (int($0.get("layerMask", -1)) & (1 << U.get_layer($1))) == 0)
   IsFilteringTrigger(Collider2D): bool => (not $0.get("useTriggers", true) and $1 is Area2D)
+  IsFilteringDepth(GameObject): bool => not U.filter2d_depth_ok($0, U.depth2d($1))
+  IsFilteringNormalAngle(float): bool => not U.filter2d_angle_ok($0, $1)
+  IsFilteringNormalAngle(Vector2): bool => not U.filter2d_angle_ok($0, rad_to_deg(atan2($1.y, $1.x)))
 
 type SpriteRenderer : Renderer kind=component gd=Sprite3D extern=UnityEngineSpriteRenderer
   sprite: Sprite => $0.texture
@@ -681,3 +691,225 @@ type SpriteMask : Renderer kind=component gd=Sprite3D extern=UnityEngineSpriteMa
   set alphaCutoff: float => $0.alpha_scissor_threshold = $v
   isCustomRangeActive: bool => false
   set isCustomRangeActive: bool => pass
+
+# --- 2D physics extras (stub backlog): capsule directions, ray intersections, PhysicsScene2D,
+# ConstantForce2D, joint structs, shape groups, scene settings ------------------------------------
+
+type CapsuleDirection2D kind=enum extern=UnityEngineCapsuleDirection2D
+  enum Vertical = 0
+  enum Horizontal = 1
+
+type ColliderErrorState2D kind=enum extern=UnityEngineColliderErrorState2D
+  enum None = 0
+  enum NoShapes = 1
+  enum RemovedShapes = 2
+
+type JointLimitState2D kind=enum extern=UnityEngineJointLimitState2D
+  enum Inactive = 0
+  enum LowerLimit = 1
+  enum UpperLimit = 2
+  enum EqualLimits = 3
+
+type PhysicsShapeGroup2D kind=class gd=Dictionary extern=UnityEnginePhysicsShapeGroup2D
+  ctor() => {"shapes": []}
+  shapeCount: int => $0.get("shapes", []).size()
+  vertexCount: int => 0
+  Clear(): void => $0.shapes = []
+
+type Collider2D
+  GetShapes(PhysicsShapeGroup2D): int => U.collider2d_shapes($0, $1)
+  GetShapes(PhysicsShapeGroup2D, int, int): int => U.collider2d_shapes($0, $1)
+  errorState: ColliderErrorState2D => (0 if U.shape2d_of($0) != null else 1)
+
+type Rigidbody2D
+  GetShapes(PhysicsShapeGroup2D): int => U.collider2d_shapes($0, $1)
+  OverlapCollider(ContactFilter2D, Collider2D[]): int => U.rb2d_contacts($0, $2)
+  useFullKinematicContacts: bool => !stored U.prop_get($0, "useFullKinematicContacts", false)
+  set useFullKinematicContacts: bool => !stored U.prop_set($0, "useFullKinematicContacts", $v)
+
+type ColliderDistance2D
+  set distance: float => $0.distance = $v
+  set isValid: bool => $0.isValid = $v
+  set pointA: Vector2 => $0.pointA = $v
+  set pointB: Vector2 => $0.pointB = $v
+
+type Collision2D
+  ctor() => {}
+
+type FixedJoint2D
+  referenceAngle: float => 0.0
+
+type JointSuspension2D kind=struct gd=Dictionary extern=UnityEngineJointSuspension2D
+  ctor() => {"angle": 90.0, "dampingRatio": 0.7, "frequency": 2.0}
+  angle: float => $0.get("angle", 90.0)
+  set angle: float => $0.angle = $v
+  dampingRatio: float => $0.get("dampingRatio", 0.7)
+  set dampingRatio: float => $0.dampingRatio = $v
+  frequency: float => $0.get("frequency", 2.0)
+  set frequency: float => $0.frequency = $v
+
+type JointTranslationLimits2D kind=struct gd=Dictionary extern=UnityEngineJointTranslationLimits2D
+  ctor() => {"min": 0.0, "max": 0.0}
+  min: float => $0.get("min", 0.0)
+  set min: float => $0.min = $v
+  max: float => $0.get("max", 0.0)
+  set max: float => $0.max = $v
+
+type WheelJoint2D
+  suspension: JointSuspension2D => !stored U.prop_get($0, "suspension", {"angle": 90.0, "dampingRatio": 0.7, "frequency": 2.0})
+  set suspension: JointSuspension2D => !stored U.prop_set($0, "suspension", $v)
+
+type SliderJoint2D
+  limits: JointTranslationLimits2D => U.slider2d_limits_get($0)
+  set limits: JointTranslationLimits2D => U.slider2d_limits_set($0, $v)
+  motor: JointMotor2D => !stored U.prop_get($0, "motor", {"motorSpeed": 0.0, "maxMotorTorque": 10000.0})
+  set motor: JointMotor2D => !stored U.prop_set($0, "motor", $v)
+  limitState: JointLimitState2D => 0
+  GetMotorForce(float): float => 0.0
+
+type PhysicsMaterial2D
+  name: string => $0.resource_name
+  set name: string => $0.resource_name = $v
+
+# ConstantForce2D lives on the RigidBody2D it drives (Godot's constant_force / constant_torque).
+type ConstantForce2D : Behaviour kind=component gd=RigidBody2D extern=UnityEngineConstantForce2D
+  enabled: bool => U.cf2d_get_enabled($0)
+  set enabled: bool => U.cf2d_set_enabled($0, $v)
+  force: Vector2 => U.v2_from_gd($0.constant_force)
+  set force: Vector2 => $0.constant_force = U.v2_to_gd($v)
+  relativeForce: Vector2 => U.v2_from_gd($0.global_transform.basis_xform_inv($0.constant_force))
+  set relativeForce: Vector2 => $0.constant_force = $0.global_transform.basis_xform(U.v2_to_gd($v))
+  torque: float => -$0.constant_torque
+  set torque: float => $0.constant_torque = -$v
+
+type Physics2D
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, INF, -1)
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, -1)
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int, float): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int, float, float): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, INF, U.filter2d_mask($6), $7)
+  static CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $8, U.filter2d_mask($6), $7)
+  static CapsuleCastAll(Vector2, Vector2, CapsuleDirection2D, float, Vector2): RaycastHit2D[] => U.shapecast2d_all("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, INF, -1)
+  static CapsuleCastAll(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float): RaycastHit2D[] => U.shapecast2d_all("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, -1)
+  static CapsuleCastAll(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int): RaycastHit2D[] => U.shapecast2d_all("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  static CapsuleCastAll(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int, float): RaycastHit2D[] => U.shapecast2d_all("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  static CapsuleCastAll(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int, float, float): RaycastHit2D[] => U.shapecast2d_all("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  static CapsuleCastNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Vector2, RaycastHit2D[]): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, INF, -1, $6)
+  static CapsuleCastNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Vector2, RaycastHit2D[], float): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $7, -1, $6)
+  static CapsuleCastNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Vector2, RaycastHit2D[], float, int): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $7, $8, $6)
+  static CapsuleCastNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Vector2, RaycastHit2D[], float, int, float): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $7, $8, $6)
+  static CapsuleCastNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Vector2, RaycastHit2D[], float, int, float, float): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $7, $8, $6)
+  static OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float): Collider2D => U.overlap2d_first("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), -1)
+  static OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, int): Collider2D => U.overlap2d_first("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  static OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, int, float): Collider2D => U.overlap2d_first("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  static OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, int, float, float): Collider2D => U.overlap2d_first("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  static OverlapCapsuleAll(Vector2, Vector2, CapsuleDirection2D, float): Collider2D[] => U.overlap2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), -1)
+  static OverlapCapsuleAll(Vector2, Vector2, CapsuleDirection2D, float, int): Collider2D[] => U.overlap2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  static OverlapCapsuleAll(Vector2, Vector2, CapsuleDirection2D, float, int, float): Collider2D[] => U.overlap2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  static OverlapCapsuleAll(Vector2, Vector2, CapsuleDirection2D, float, int, float, float): Collider2D[] => U.overlap2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  static OverlapCapsuleNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Collider2D[]): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), -1, $5)
+  static OverlapCapsuleNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Collider2D[], int): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $6, $5)
+  static OverlapCapsuleNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Collider2D[], int, float): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $6, $5)
+  static OverlapCapsuleNonAlloc(Vector2, Vector2, CapsuleDirection2D, float, Collider2D[], int, float, float): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $6, $5)
+  static OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), U.filter2d_mask($5), $6)
+  static GetRayIntersection(Ray): RaycastHit2D => U.ray_intersection2d($1, INF, -1)
+  static GetRayIntersection(Ray, float): RaycastHit2D => U.ray_intersection2d($1, $2, -1)
+  static GetRayIntersection(Ray, float, int): RaycastHit2D => U.ray_intersection2d($1, $2, $3)
+  static GetRayIntersectionAll(Ray): RaycastHit2D[] => U.ray_intersection2d_all($1, INF, -1)
+  static GetRayIntersectionAll(Ray, float): RaycastHit2D[] => U.ray_intersection2d_all($1, $2, -1)
+  static GetRayIntersectionAll(Ray, float, int): RaycastHit2D[] => U.ray_intersection2d_all($1, $2, $3)
+  static GetRayIntersectionNonAlloc(Ray, RaycastHit2D[]): int => U.ray_intersection2d_into($1, INF, -1, $2)
+  static GetRayIntersectionNonAlloc(Ray, RaycastHit2D[], float): int => U.ray_intersection2d_into($1, $3, -1, $2)
+  static GetRayIntersectionNonAlloc(Ray, RaycastHit2D[], float, int): int => U.ray_intersection2d_into($1, $3, $4, $2)
+  static LinecastNonAlloc(Vector2, Vector2, RaycastHit2D[]): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), -1, $3)
+  static LinecastNonAlloc(Vector2, Vector2, RaycastHit2D[], int): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), $4, $3)
+  static LinecastNonAlloc(Vector2, Vector2, RaycastHit2D[], int, float): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), $4, $3)
+  static LinecastNonAlloc(Vector2, Vector2, RaycastHit2D[], int, float, float): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), $4, $3)
+  static Linecast(Vector2, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), U.filter2d_mask($3), $4)
+  static OverlapAreaNonAlloc(Vector2, Vector2, Collider2D[]): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, -1, $3)
+  static OverlapAreaNonAlloc(Vector2, Vector2, Collider2D[], int): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $4, $3)
+  static OverlapAreaNonAlloc(Vector2, Vector2, Collider2D[], int, float): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $4, $3)
+  static OverlapAreaNonAlloc(Vector2, Vector2, Collider2D[], int, float, float): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $4, $3)
+  static OverlapArea(Vector2, Vector2, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, U.filter2d_mask($3), $4)
+  static OverlapCollider(Collider2D, ContactFilter2D, Collider2D[]): int => U.collider2d_overlap($1, $3)
+  static MaxPolygonShapeVertices: int => 8
+  static defaultPhysicsScene: PhysicsScene2D => {}
+  static linearSleepTolerance: float => U.space2d_get("linear_sleep", 0.01)
+  static set linearSleepTolerance: float => U.space2d_set("linear_sleep", $v)
+  static angularSleepTolerance: float => rad_to_deg(U.space2d_get("angular_sleep", deg_to_rad(2.0)))
+  static set angularSleepTolerance: float => U.space2d_set("angular_sleep", deg_to_rad($v))
+  static timeToSleep: float => U.space2d_get("time_to_sleep", 0.5)
+  static set timeToSleep: float => U.space2d_set("time_to_sleep", $v)
+  static baumgarteScale: float => !stored U.phys_get("2d.baumgarteScale", 0.2)
+  static set baumgarteScale: float => !stored U.phys_set("2d.baumgarteScale", $v)
+  static baumgarteTOIScale: float => !stored U.phys_get("2d.baumgarteTOIScale", 0.75)
+  static set baumgarteTOIScale: float => !stored U.phys_set("2d.baumgarteTOIScale", $v)
+  static maxLinearCorrection: float => !stored U.phys_get("2d.maxLinearCorrection", 0.2)
+  static set maxLinearCorrection: float => !stored U.phys_set("2d.maxLinearCorrection", $v)
+  static maxAngularCorrection: float => !stored U.phys_get("2d.maxAngularCorrection", 8.0)
+  static set maxAngularCorrection: float => !stored U.phys_set("2d.maxAngularCorrection", $v)
+  static maxTranslationSpeed: float => !stored U.phys_get("2d.maxTranslationSpeed", 100.0)
+  static set maxTranslationSpeed: float => !stored U.phys_set("2d.maxTranslationSpeed", $v)
+  static maxRotationSpeed: float => !stored U.phys_get("2d.maxRotationSpeed", 360.0)
+  static set maxRotationSpeed: float => !stored U.phys_set("2d.maxRotationSpeed", $v)
+  static velocityThreshold: float => !stored U.phys_get("2d.velocityThreshold", 1.0)
+  static set velocityThreshold: float => !stored U.phys_set("2d.velocityThreshold", $v)
+  static callbacksOnDisable: bool => !stored U.phys_get("2d.callbacksOnDisable", true)
+  static set callbacksOnDisable: bool => !stored U.phys_set("2d.callbacksOnDisable", $v)
+  static reuseCollisionCallbacks: bool => !stored U.phys_get("2d.reuseCollisionCallbacks", false)
+  static set reuseCollisionCallbacks: bool => !stored U.phys_set("2d.reuseCollisionCallbacks", $v)
+
+# PhysicsScene2D: the one Godot 2D world; the methods delegate to the Physics2D helpers.
+type PhysicsScene2D kind=struct gd=Dictionary extern=UnityEnginePhysicsScene2D
+  ctor() => {}
+  IsValid(): bool => true
+  IsEmpty(): bool => false
+  Simulate(float): bool => false
+  op ==(PhysicsScene2D, PhysicsScene2D): bool => true
+  op !=(PhysicsScene2D, PhysicsScene2D): bool => false
+  Raycast(Vector2, Vector2, float, int): RaycastHit2D => U.raycast2d($1, $2, $3, $4)
+  Raycast(Vector2, Vector2, float, ContactFilter2D): RaycastHit2D => U.raycast2d($1, $2, $3, U.filter2d_mask($4))
+  Raycast(Vector2, Vector2, float, ContactFilter2D, RaycastHit2D[]): int => U.raycast2d_all_into($1, $2, $3, U.filter2d_mask($4), $5)
+  Raycast(Vector2, Vector2, float, RaycastHit2D[], int): int => U.raycast2d_all_into($1, $2, $3, $5, $4)
+  Linecast(Vector2, Vector2, int): RaycastHit2D => U.raycast2d($1, $2 - $1, ($2 - $1).length(), $3)
+  Linecast(Vector2, Vector2, ContactFilter2D): RaycastHit2D => U.raycast2d($1, $2 - $1, ($2 - $1).length(), U.filter2d_mask($3))
+  Linecast(Vector2, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), U.filter2d_mask($3), $4)
+  Linecast(Vector2, Vector2, RaycastHit2D[], int): int => U.raycast2d_all_into($1, $2 - $1, ($2 - $1).length(), $4, $3)
+  CircleCast(Vector2, float, Vector2, float, int): RaycastHit2D => U.shapecast2d("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, $5)
+  CircleCast(Vector2, float, Vector2, float, ContactFilter2D): RaycastHit2D => U.shapecast2d("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, U.filter2d_mask($5))
+  CircleCast(Vector2, float, Vector2, float, ContactFilter2D, RaycastHit2D[]): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, U.filter2d_mask($5), $6)
+  CircleCast(Vector2, float, Vector2, float, RaycastHit2D[], int): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, $6, $5)
+  BoxCast(Vector2, Vector2, float, Vector2, float, int): RaycastHit2D => U.shapecast2d("box", $1, 0.0, $2, $3, $4, $5, $6)
+  BoxCast(Vector2, Vector2, float, Vector2, float, ContactFilter2D): RaycastHit2D => U.shapecast2d("box", $1, 0.0, $2, $3, $4, $5, U.filter2d_mask($6))
+  BoxCast(Vector2, Vector2, float, Vector2, float, ContactFilter2D, RaycastHit2D[]): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $5, U.filter2d_mask($6), $7)
+  BoxCast(Vector2, Vector2, float, Vector2, float, RaycastHit2D[], int): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $5, $7, $6)
+  CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, int): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $7)
+  CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, ContactFilter2D): RaycastHit2D => U.shapecast2d("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, U.filter2d_mask($7))
+  CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, ContactFilter2D, RaycastHit2D[]): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, U.filter2d_mask($7), $8)
+  CapsuleCast(Vector2, Vector2, CapsuleDirection2D, float, Vector2, float, RaycastHit2D[], int): int => U.shapecast2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5, $6, $8, $7)
+  GetRayIntersection(Ray, float, int): RaycastHit2D => U.ray_intersection2d($1, $2, $3)
+  GetRayIntersection(Ray, float, RaycastHit2D[], int): int => U.ray_intersection2d_into($1, $2, $4, $3)
+  OverlapPoint(Vector2, int): Collider2D => U.overlap2d_first("point", $1, 0.0, Vector2.ZERO, 0.0, $2)
+  OverlapPoint(Vector2, ContactFilter2D): Collider2D => U.overlap2d_first("point", $1, 0.0, Vector2.ZERO, 0.0, U.filter2d_mask($2))
+  OverlapPoint(Vector2, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("point", $1, 0.0, Vector2.ZERO, 0.0, U.filter2d_mask($2), $3)
+  OverlapPoint(Vector2, Collider2D[], int): int => U.overlap2d_into("point", $1, 0.0, Vector2.ZERO, 0.0, $3, $2)
+  OverlapCircle(Vector2, float, int): Collider2D => U.overlap2d_first("circle", $1, $2, Vector2.ZERO, 0.0, $3)
+  OverlapCircle(Vector2, float, ContactFilter2D): Collider2D => U.overlap2d_first("circle", $1, $2, Vector2.ZERO, 0.0, U.filter2d_mask($3))
+  OverlapCircle(Vector2, float, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("circle", $1, $2, Vector2.ZERO, 0.0, U.filter2d_mask($3), $4)
+  OverlapCircle(Vector2, float, Collider2D[], int): int => U.overlap2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $4, $3)
+  OverlapBox(Vector2, Vector2, float, int): Collider2D => U.overlap2d_first("box", $1, 0.0, $2, $3, $4)
+  OverlapBox(Vector2, Vector2, float, ContactFilter2D): Collider2D => U.overlap2d_first("box", $1, 0.0, $2, $3, U.filter2d_mask($4))
+  OverlapBox(Vector2, Vector2, float, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("box", $1, 0.0, $2, $3, U.filter2d_mask($4), $5)
+  OverlapBox(Vector2, Vector2, float, Collider2D[], int): int => U.overlap2d_into("box", $1, 0.0, $2, $3, $5, $4)
+  OverlapArea(Vector2, Vector2, int): Collider2D => U.overlap2d_first("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
+  OverlapArea(Vector2, Vector2, ContactFilter2D): Collider2D => U.overlap2d_first("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, U.filter2d_mask($3))
+  OverlapArea(Vector2, Vector2, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, U.filter2d_mask($3), $4)
+  OverlapArea(Vector2, Vector2, Collider2D[], int): int => U.overlap2d_into("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $4, $3)
+  OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, int): Collider2D => U.overlap2d_first("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $5)
+  OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, ContactFilter2D): Collider2D => U.overlap2d_first("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), U.filter2d_mask($5))
+  OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), U.filter2d_mask($5), $6)
+  OverlapCapsule(Vector2, Vector2, CapsuleDirection2D, float, Collider2D[], int): int => U.overlap2d_into("capsule", $1, 0.0, U.cap2d_size($2, $3), U.cap2d_angle($4, $3), $6, $5)
+  OverlapCollider(Collider2D, Collider2D[], int): int => U.collider2d_overlap($1, $2)
+  OverlapCollider(Collider2D, ContactFilter2D, Collider2D[]): int => U.collider2d_overlap($1, $3)
+

@@ -40,6 +40,8 @@ pub struct Usage {
     pub unsupported: BTreeMap<String, usize>,
     /// Members mapped by `!stub` templates (approximate or no-op behaviour).
     pub stubbed: BTreeMap<String, usize>,
+    /// Members mapped by `!stored` templates (round-trip only).
+    pub stored: BTreeMap<String, usize>,
     /// Members used that are not Udon externs (would not compile in VRChat either).
     pub not_udon_extern: BTreeSet<String>,
     /// Unresolved identifiers / types.
@@ -72,6 +74,9 @@ pub struct Lowerer<'p> {
     pub(crate) opts: &'p LowerOptions,
     pub(crate) diags: Diagnostics,
     pub(crate) scopes: Vec<HashMap<String, Local>>,
+    /// Every GDScript local name declared so far in the current function: C# block scopes are
+    /// flattened, and SafeGDScript rejects a second `var i` in one function scope.
+    pub(crate) fn_declared: std::collections::HashSet<String>,
     pub(crate) cur_method: Option<&'p MethodInfo>,
     pub(crate) tmp_counter: u32,
     pub(crate) pre: Vec<GStmt>,
@@ -91,6 +96,7 @@ pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> Cl
         opts,
         diags: Diagnostics::new(),
         scopes: vec![],
+        fn_declared: std::collections::HashSet::new(),
         cur_method: None,
         tmp_counter: 0,
         pre: vec![],
@@ -131,16 +137,18 @@ impl<'p> Lowerer<'p> {
 
     pub(crate) fn declare_local(&mut self, name: &str, ty: Ty) -> String {
         let mut gd = mangle_local(name);
-        // avoid shadowing an outer local with the same gd name (GDScript forbids shadowing in nested scopes)
-        let taken = self.scopes.iter().any(|s| s.values().any(|l| l.gd_name == gd)) && !self.scopes.last().map_or(false, |s| s.contains_key(name));
-        if taken {
+        // A gd name is used once per function: no shadowing of outer locals (forbidden in nested
+        // GDScript scopes) and no reuse by sibling C# blocks (flattened into one scope).
+        let redeclare_here = self.scopes.last().map_or(false, |s| s.contains_key(name));
+        if !redeclare_here && self.fn_declared.contains(&gd) {
             let base = gd.clone();
             let mut n = 2;
-            while self.scopes.iter().any(|s| s.values().any(|l| l.gd_name == gd)) {
+            while self.fn_declared.contains(&gd) {
                 gd = format!("{}{}", base, n);
                 n += 1;
             }
         }
+        self.fn_declared.insert(gd.clone());
         if let Some(s) = self.scopes.last_mut() {
             s.insert(name.to_string(), Local { gd_name: gd.clone(), ty });
         }
@@ -430,7 +438,20 @@ impl<'p> Lowerer<'p> {
                 None => format!("[{}]", h),
             });
         }
-        GVar { name: f.gd_name.clone(), ty: self.gd_type(&f.ty), init, export: f.serialized && !f.hide_in_inspector, doc, comment, setter: None, getter: None }
+        let export = f.serialized && !f.hide_in_inspector;
+        let mut ty = self.gd_type(&f.ty);
+        if export {
+            // Scene importers wire exported object references late (nodes of any class, UI
+            // controls included), so exported component/GameObject/behaviour fields are typed `Node`.
+            if let Ty::Named(n) = &f.ty {
+                let nodeish = self.prog.is_user_class(n)
+                    || self.prog.catalog.get(n).map_or(false, |t| matches!(t.kind, crate::api::TypeKind::Component | crate::api::TypeKind::Behaviour) || t.name == "GameObject");
+                if nodeish {
+                    ty = Some("Node".into());
+                }
+            }
+        }
+        GVar { name: f.gd_name.clone(), ty, init, export, doc, comment, setter: None, getter: None }
     }
 
     fn lower_property(&mut self, p: &crate::program::PropInfo) -> GVar {
@@ -485,6 +506,7 @@ impl<'p> Lowerer<'p> {
     }
 
     fn lower_property_funcs(&mut self, p: &crate::program::PropInfo) -> Vec<GFunc> {
+        self.fn_declared.clear();
         let d = &p.decl;
         let mut out = Vec::new();
         let ret = self.gd_type(&p.ty);
@@ -526,6 +548,7 @@ impl<'p> Lowerer<'p> {
 
     fn lower_method(&mut self, m: &'p MethodInfo) -> GFunc {
         self.cur_method = Some(m);
+        self.fn_declared.clear();
         self.in_static = m.is_static;
         self.push_scope();
         let mut params = Vec::new();
@@ -1100,6 +1123,8 @@ impl<'p> Lowerer<'p> {
                         // keep calls, drop pure values.
                         match &e {
                             GExpr::Call(..) | GExpr::MethodCall(..) | GExpr::Raw(_) => out.push(GStmt::Expr(e)),
+                            // `_tN[0]`: the (void) result of a hoisted ref/out call; nothing to keep.
+                            GExpr::Index(b, i) if matches!(&**b, GExpr::Ident(n) if n.starts_with("_t")) && matches!(&**i, GExpr::Int(0)) => {}
                             _ => {
                                 self.warn(span, "expression statement has no effect and was dropped");
                             }

@@ -63,8 +63,8 @@ fn counter_fixture_converts_without_errors() {
     assert!(s.contains("return {\"_phase\": \"set_Phase\"}"));
     assert!(s.contains("enum Phase_ { Idle = 0, Running = 5, Done = 6 }"));
     assert!(s.contains("for i in range(0, positions.size()):"));
-    assert!(s.contains("(target.global_position - self.global_position).normalized()"));
-    assert!(s.contains("hit = U.raycast(self.global_position, dir, 10.0, -1, 0)"));
+    assert!(s.contains("(U.get_position(target) - U.get_position(self)).normalized()"));
+    assert!(s.contains("hit = U.raycast(U.get_position(self), dir, 10.0, -1, 0)"));
     assert!(s.contains("U.send_custom_network_event(self, NetworkEventTarget.All, \"OnBump\", [count])"));
     assert!(s.contains("var _t3 = TryGet(i, v)"));
     assert!(s.contains("Udon.get_key_down(KeyCode.Space)"));
@@ -142,7 +142,7 @@ public class N : UdonSharpBehaviour {
     assert!(s.contains("func OnDeserialization(r: Dictionary) -> void:"));
     assert!(s.contains("r.get(\"receiveTime\", 0.0) - r.get(\"sendTime\", 0.0)"));
     assert!(s.contains("U.send_custom_network_event(self, NetworkEventTarget.Owner, \"Hit\", [1, Vector3.UP])"));
-    assert!(s.contains("U.send_custom_network_event(self, NetworkEventTarget.All, \"Hit\", [2, self.global_position])"));
+    assert!(s.contains("U.send_custom_network_event(self, NetworkEventTarget.All, \"Hit\", [2, U.get_position(self)])"));
 }
 
 fn corpus(rel: &str) -> Option<PathBuf> {

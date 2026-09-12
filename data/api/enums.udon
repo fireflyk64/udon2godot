@@ -1,0 +1,125 @@
+# Enumerations that the generated catalog would otherwise stub with the value 0.
+
+type TextAlignmentOptions kind=enum extern=TMProTextAlignmentOptions
+  enum TopLeft = 257
+  enum Top = 258
+  enum TopRight = 260
+  enum TopJustified = 264
+  enum TopFlush = 272
+  enum TopGeoAligned = 288
+  enum Left = 513
+  enum Center = 514
+  enum Right = 516
+  enum Justified = 520
+  enum Flush = 528
+  enum CenterGeoAligned = 544
+  enum BottomLeft = 1025
+  enum Bottom = 1026
+  enum BottomRight = 1028
+  enum BottomJustified = 1032
+  enum BottomFlush = 1040
+  enum BottomGeoAligned = 1056
+  enum BaselineLeft = 2049
+  enum Baseline = 2050
+  enum BaselineRight = 2052
+  enum BaselineJustified = 2056
+  enum BaselineFlush = 2064
+  enum BaselineGeoAligned = 2080
+  enum MidlineLeft = 4097
+  enum Midline = 4098
+  enum MidlineRight = 4100
+  enum MidlineJustified = 4104
+  enum MidlineFlush = 4112
+  enum MidlineGeoAligned = 4128
+  enum CaplineLeft = 8193
+  enum Capline = 8194
+  enum CaplineRight = 8196
+  enum CaplineJustified = 8200
+  enum CaplineFlush = 8208
+  enum CaplineGeoAligned = 8224
+  enum Converted = 65535
+
+type HorizontalAlignmentOptions kind=enum extern=TMProHorizontalAlignmentOptions
+  enum Left = 1
+  enum Center = 2
+  enum Right = 4
+  enum Justified = 8
+  enum Flush = 16
+  enum Geometry = 32
+
+type VerticalAlignmentOptions kind=enum extern=TMProVerticalAlignmentOptions
+  enum Top = 256
+  enum Middle = 512
+  enum Bottom = 1024
+  enum Baseline = 2048
+  enum Geometry = 4096
+  enum Capline = 8192
+
+type TextOverflowModes kind=enum extern=TMProTextOverflowModes
+  enum Overflow = 0
+  enum Ellipsis = 1
+  enum Masking = 2
+  enum Truncate = 3
+  enum ScrollRect = 4
+  enum Page = 5
+  enum Linked = 6
+
+type TextRenderFlags kind=enum extern=TMProTextRenderFlags
+  enum DontRender = 0
+  enum Render = 255
+
+type VertexSortingOrder kind=enum extern=TMProVertexSortingOrder
+  enum Normal = 0
+  enum Reverse = 1
+
+type CubemapFace kind=enum extern=UnityEngineCubemapFace
+  enum Unknown = -1
+  enum PositiveX = 0
+  enum NegativeX = 1
+  enum PositiveY = 2
+  enum NegativeY = 3
+  enum PositiveZ = 4
+  enum NegativeZ = 5
+
+type VRCImageDownloadState kind=enum extern=VRCSDK3ImageVRCImageDownloadState
+  enum Unknown = 0
+  enum Pending = 1
+  enum Complete = 2
+  enum Error = 3
+  enum Unloaded = 4
+
+type VRCImageDownloadError kind=enum extern=VRCSDK3ImageVRCImageDownloadError
+  enum Unknown = 0
+  enum InvalidURL = 1
+  enum AccessDenied = 2
+  enum InvalidImage = 3
+  enum DownloadError = 4
+  enum TooManyRequests = 5
+
+type MirrorClearFlags kind=enum extern=VRCSDK3ComponentsMirrorClearFlags
+  enum FromReferenceCamera = 0
+  enum CustomSkybox = 1
+  enum SolidColor = 2
+  enum Depth = 3
+  enum Nothing = 4
+
+type CollectObjects kind=enum extern=UnityAINavigationCollectObjects
+  enum All = 0
+  enum Volume = 1
+  enum Children = 2
+  enum MarkedWithModifier = 3
+
+type NavMeshCollectGeometry kind=enum extern=UnityEngineAINavMeshCollectGeometry
+  enum RenderMeshes = 0
+  enum PhysicsColliders = 1
+
+type SpritePackingMode kind=enum extern=UnityEngineSpritePackingMode
+  enum Tight = 0
+  enum Rectangle = 1
+
+type SpritePackingRotation kind=enum extern=UnityEngineSpritePackingRotation
+  enum None = 0
+  enum FlipHorizontal = 1
+  enum FlipVertical = 2
+  enum Rotate180 = 3
+  enum Any = 15

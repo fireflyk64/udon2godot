@@ -1,6 +1,8 @@
 # UnityEngine components: audio, animation, particles, rendering, UI, input.
 
 type AudioSource : Behaviour kind=component gd=AudioStreamPlayer3D extern=UnityEngineAudioSource
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   clip: AudioClip => $0.stream
   set clip: AudioClip => $0.stream = $v
   volume: float => U.audio_get_volume($0)
@@ -76,12 +78,16 @@ type AudioMixerGroup : Object kind=class gd=String extern=UnityEngineAudioAudioM
   name: string => $0
 
 type AudioListener : Behaviour kind=component gd=AudioListener3D extern=UnityEngineAudioListener
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   static volume: float => db_to_linear(AudioServer.get_bus_volume_db(0))
   static set volume: float => AudioServer.set_bus_volume_db(0, linear_to_db($v))
   static pause: bool => false
   static set pause: bool => pass
 
 type Animator : Behaviour kind=component gd=Node extern=UnityEngineAnimator
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   speed: float => U.anim_get_speed($0)
   set speed: float => U.anim_set_speed($0, $v)
   enabled: bool => U.anim_get_enabled($0)
@@ -97,7 +103,6 @@ type Animator : Behaviour kind=component gd=Node extern=UnityEngineAnimator
   layerCount: int => U.anim_layer_count($0)
   parameterCount: int => U.anim_parameter_count($0)
   isInitialized: bool => is_instance_valid($0)
-  gameObject: GameObject => $0
   SetBool(string, bool): void => U.anim_set($0, $1, $2)
   SetBool(int, bool): void => U.anim_set($0, $1, $2)
   GetBool(string): bool => bool(U.anim_get($0, $1, false))
@@ -177,240 +182,9 @@ type Animation : Behaviour kind=component gd=AnimationPlayer extern=UnityEngineA
   Sample(): void => pass
   CrossFade(string, float): void => $0.play($1, $2)
 
-type ParticleSystem : Component kind=component gd=GPUParticles3D extern=UnityEngineParticleSystem
-  isPlaying: bool => $0.emitting
-  isEmitting: bool => $0.emitting
-  isStopped: bool => not $0.emitting
-  isPaused: bool => not $0.emitting
-  particleCount: int => $0.amount
-  time: float => 0.0
-  main: MainModule => U.ps_main($0)
-  emission: EmissionModule => U.ps_emission($0)
-  shape: ShapeModule => U.ps_module($0, "shape")
-  velocityOverLifetime: VelocityOverLifetimeModule => U.ps_module($0, "velocityOverLifetime")
-  colorOverLifetime: ColorOverLifetimeModule => U.ps_module($0, "colorOverLifetime")
-  sizeOverLifetime: SizeOverLifetimeModule => U.ps_module($0, "sizeOverLifetime")
-  trails: TrailModule => U.ps_module($0, "trails")
-  noise: NoiseModule => U.ps_module($0, "noise")
-  forceOverLifetime: ForceOverLifetimeModule => U.ps_module($0, "forceOverLifetime")
-  Play(): void => U.ps_play($0, true)
-  Play(bool): void => U.ps_play($0, $1)
-  Stop(): void => U.ps_stop($0, true, 0)
-  Stop(bool): void => U.ps_stop($0, $1, 0)
-  Stop(bool, ParticleSystemStopBehavior): void => U.ps_stop($0, $1, $2)
-  Pause(): void => U.ps_pause($0, true)
-  Pause(bool): void => U.ps_pause($0, $1)
-  Clear(): void => U.ps_clear($0, true)
-  Clear(bool): void => U.ps_clear($0, $1)
-  Emit(int): void => U.ps_emit($0, $1)
-  Emit(EmitParams, int): void => U.ps_emit_params($0, $1, $2)
-  Simulate(float): void => pass
-  Simulate(float, bool, bool): void => pass
-  IsAlive(): bool => $0.emitting
-  IsAlive(bool): bool => $0.emitting
-  GetParticles(Particle[]): int => 0
-  SetParticles(Particle[], int): void => pass
-
-type ParticleSystemStopBehavior kind=enum extern=UnityEngineParticleSystemStopBehavior
-  enum StopEmittingAndClear = 0
-  enum StopEmitting = 1
-
-type ParticleSystemSimulationSpace kind=enum extern=UnityEngineParticleSystemSimulationSpace
-  enum Local = 0
-  enum World = 1
-  enum Custom = 2
-
-type MainModule kind=struct gd=Object extern=UnityEngineParticleSystemMainModule
-  duration: float => $0.duration
-  set duration: float => $0.duration = $v
-  loop: bool => $0.loop
-  set loop: bool => $0.loop = $v
-  startLifetime: MinMaxCurve => $0.startLifetime
-  set startLifetime: MinMaxCurve => $0.startLifetime = $v
-  startSpeed: MinMaxCurve => $0.startSpeed
-  set startSpeed: MinMaxCurve => $0.startSpeed = $v
-  startSize: MinMaxCurve => $0.startSize
-  set startSize: MinMaxCurve => $0.startSize = $v
-  startColor: MinMaxGradient => $0.startColor
-  set startColor: MinMaxGradient => $0.startColor = $v
-  startRotation: MinMaxCurve => $0.startRotation
-  set startRotation: MinMaxCurve => $0.startRotation = $v
-  gravityModifier: MinMaxCurve => $0.gravityModifier
-  set gravityModifier: MinMaxCurve => $0.gravityModifier = $v
-  simulationSpace: ParticleSystemSimulationSpace => $0.simulationSpace
-  set simulationSpace: ParticleSystemSimulationSpace => $0.simulationSpace = $v
-  simulationSpeed: float => $0.simulationSpeed
-  set simulationSpeed: float => $0.simulationSpeed = $v
-  maxParticles: int => $0.maxParticles
-  set maxParticles: int => $0.maxParticles = $v
-  playOnAwake: bool => $0.playOnAwake
-  set playOnAwake: bool => $0.playOnAwake = $v
-  startLifetimeMultiplier: float => $0.startLifetime
-  set startLifetimeMultiplier: float => $0.startLifetime = $v
-  startSpeedMultiplier: float => $0.startSpeed
-  set startSpeedMultiplier: float => $0.startSpeed = $v
-  startSizeMultiplier: float => $0.startSize
-  set startSizeMultiplier: float => $0.startSize = $v
-
-type EmissionModule kind=struct gd=Object extern=UnityEngineParticleSystemEmissionModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-  rateOverTime: MinMaxCurve => $0.rateOverTime
-  set rateOverTime: MinMaxCurve => $0.rateOverTime = $v
-  rateOverTimeMultiplier: float => $0.rateOverTime
-  set rateOverTimeMultiplier: float => $0.rateOverTime = $v
-  rateOverDistance: MinMaxCurve => $0.rateOverDistance
-  set rateOverDistance: MinMaxCurve => $0.rateOverDistance = $v
-  rateOverDistanceMultiplier: float => $0.rateOverDistance
-  set rateOverDistanceMultiplier: float => $0.rateOverDistance = $v
-  burstCount: int => 0
-  SetBursts(Burst[]): void => pass
-
-type ShapeModule kind=struct gd=Object extern=UnityEngineParticleSystemShapeModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-  radius: float => $0.radius
-  set radius: float => $0.radius = $v
-  angle: float => $0.angle
-  set angle: float => $0.angle = $v
-  scale: Vector3 => $0.scale
-  set scale: Vector3 => $0.scale = $v
-  rotation: Vector3 => $0.rotation
-  set rotation: Vector3 => $0.rotation = $v
-  position: Vector3 => $0.position
-  set position: Vector3 => $0.position = $v
-
-type VelocityOverLifetimeModule kind=struct gd=Object extern=UnityEngineParticleSystemVelocityOverLifetimeModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-  speedModifier: MinMaxCurve => $0.speedModifier
-  set speedModifier: MinMaxCurve => $0.speedModifier = $v
-  speedModifierMultiplier: float => $0.speedModifier
-  set speedModifierMultiplier: float => $0.speedModifier = $v
-  x: MinMaxCurve => $0.x
-  set x: MinMaxCurve => $0.x = $v
-  y: MinMaxCurve => $0.y
-  set y: MinMaxCurve => $0.y = $v
-  z: MinMaxCurve => $0.z
-  set z: MinMaxCurve => $0.z = $v
-  xMultiplier: float => $0.x
-  set xMultiplier: float => $0.x = $v
-  yMultiplier: float => $0.y
-  set yMultiplier: float => $0.y = $v
-  zMultiplier: float => $0.z
-  set zMultiplier: float => $0.z = $v
-
-type ColorOverLifetimeModule kind=struct gd=Object extern=UnityEngineParticleSystemColorOverLifetimeModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-  color: MinMaxGradient => $0.color
-  set color: MinMaxGradient => $0.color = $v
-
-type SizeOverLifetimeModule kind=struct gd=Object extern=UnityEngineParticleSystemSizeOverLifetimeModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-  size: MinMaxCurve => $0.size
-  set size: MinMaxCurve => $0.size = $v
-  sizeMultiplier: float => $0.size
-  set sizeMultiplier: float => $0.size = $v
-
-type TrailModule kind=struct gd=Object extern=UnityEngineParticleSystemTrailModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-
-type NoiseModule kind=struct gd=Object extern=UnityEngineParticleSystemNoiseModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-  strength: MinMaxCurve => $0.strength
-  set strength: MinMaxCurve => $0.strength = $v
-  strengthMultiplier: float => $0.strength
-  set strengthMultiplier: float => $0.strength = $v
-
-type ForceOverLifetimeModule kind=struct gd=Object extern=UnityEngineParticleSystemForceOverLifetimeModule
-  enabled: bool => $0.enabled
-  set enabled: bool => $0.enabled = $v
-
-type MinMaxCurve kind=struct gd=float extern=UnityEngineParticleSystemMinMaxCurve
-  ctor(float) => $1
-  ctor(float, float) => $2
-  constant: float => $0
-  set constant: float => $0 = $v
-  constantMin: float => $0
-  set constantMin: float => $0 = $v
-  constantMax: float => $0
-  set constantMax: float => $0 = $v
-  curveMultiplier: float => $0
-  set curveMultiplier: float => $0 = $v
-  mode: int => 0
-  Evaluate(float): float => $0
-  cast float => $0
-  op implicit_float(float): MinMaxCurve => $1
-
-type MinMaxGradient kind=struct gd=Color extern=UnityEngineParticleSystemMinMaxGradient
-  ctor(Color) => $1
-  ctor(Color, Color) => $1
-  color: Color => $0
-  set color: Color => $0 = $v
-  colorMin: Color => $0
-  set colorMin: Color => $0 = $v
-  colorMax: Color => $0
-  set colorMax: Color => $0 = $v
-  mode: int => 0
-  Evaluate(float): Color => $0
-  op implicit_Color(Color): MinMaxGradient => $1
-
-type EmitParams kind=struct gd=Dictionary extern=UnityEngineParticleSystemEmitParams
-  ctor() => {}
-  position: Vector3 => $0.get("position", Vector3.ZERO)
-  set position: Vector3 => $0.position = $v
-  velocity: Vector3 => $0.get("velocity", Vector3.ZERO)
-  set velocity: Vector3 => $0.velocity = $v
-  startColor: Color => $0.get("startColor", Color.WHITE)
-  set startColor: Color => $0.startColor = $v
-  startSize: float => $0.get("startSize", 1.0)
-  set startSize: float => $0.startSize = $v
-  startLifetime: float => $0.get("startLifetime", 1.0)
-  set startLifetime: float => $0.startLifetime = $v
-  applyShapeToPosition: bool => $0.get("applyShapeToPosition", false)
-  set applyShapeToPosition: bool => $0.applyShapeToPosition = $v
-
-type Burst kind=struct gd=Dictionary extern=UnityEngineParticleSystemBurst
-  ctor(float, short) => {"time": $1, "count": $2}
-  ctor(float, short, short) => {"time": $1, "count": $2}
-  ctor(float, float) => {"time": $1, "count": $2}
-  time: float => $0.get("time", 0.0)
-  set time: float => $0.time = $v
-  count: MinMaxCurve => $0.get("count", 0)
-  set count: MinMaxCurve => $0.count = $v
-  minCount: short => int($0.get("count", 0))
-  set minCount: short => $0.count = $v
-  maxCount: short => int($0.get("count", 0))
-  set maxCount: short => $0.count = $v
-  cycleCount: int => $0.get("cycleCount", 1)
-  set cycleCount: int => $0.cycleCount = $v
-  repeatInterval: float => $0.get("repeatInterval", 0.01)
-  set repeatInterval: float => $0.repeatInterval = $v
-
-type Particle kind=struct gd=Dictionary extern=UnityEngineParticleSystemParticle
-  position: Vector3 => $0.get("position", Vector3.ZERO)
-  set position: Vector3 => $0.position = $v
-  velocity: Vector3 => $0.get("velocity", Vector3.ZERO)
-  set velocity: Vector3 => $0.velocity = $v
-  remainingLifetime: float => $0.get("remainingLifetime", 0.0)
-  set remainingLifetime: float => $0.remainingLifetime = $v
-  startLifetime: float => $0.get("startLifetime", 0.0)
-  startColor: Color32 => $0.get("startColor", Color.WHITE)
-  set startColor: Color32 => $0.startColor = $v
-
-type ParticleSystemRenderer : Renderer kind=component gd=GPUParticles3D extern=UnityEngineParticleSystemRenderer
-  material: Material => U.ps_material($0)
-  set material: Material => U.ps_set_material($0, $v)
-  sharedMaterial: Material => U.ps_material($0)
-  set sharedMaterial: Material => U.ps_set_material($0, $v)
-  trailMaterial: Material => null
-  set trailMaterial: Material => pass
-
 type Renderer : Component kind=component gd=GeometryInstance3D extern=UnityEngineRenderer
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   enabled: bool => $0.visible
   set enabled: bool => $0.visible = $v
   isVisible: bool => $0.visible
@@ -423,7 +197,7 @@ type Renderer : Component kind=component gd=GeometryInstance3D extern=UnityEngin
   sharedMaterials: Material[] => U.renderer_materials($0)
   set sharedMaterials: Material[] => U.renderer_set_materials($0, $v)
   bounds: Bounds => U.renderer_bounds($0)
-  localBounds: Bounds => $0.get_aabb()
+  localBounds: Bounds => U.renderer_local_bounds($0)
   shadowCastingMode: int => $0.cast_shadow
   set shadowCastingMode: int => $0.cast_shadow = $v
   receiveShadows: bool => true
@@ -577,10 +351,10 @@ type Texture : Object kind=class gd=Texture2D extern=UnityEngineTexture
   width: int => $0.get_width()
   height: int => $0.get_height()
   name: string => $0.resource_name
-  wrapMode: int => 0
-  set wrapMode: int => pass
-  filterMode: int => 0
-  set filterMode: int => pass
+  wrapMode: TextureWrapMode => !stored U.prop_get($0, "wrapMode", 0)
+  set wrapMode: TextureWrapMode => !stored U.prop_set($0, "wrapMode", $v)
+  filterMode: FilterMode => !stored U.prop_get($0, "filterMode", 1)
+  set filterMode: FilterMode => !stored U.prop_set($0, "filterMode", $v)
 
 type Texture2D : Texture kind=class gd=Texture2D extern=UnityEngineTexture2D
   ctor(int, int) => U.new_texture($1, $2)
@@ -595,10 +369,22 @@ type Texture2D : Texture kind=class gd=Texture2D extern=UnityEngineTexture2D
   static whiteTexture: Texture2D => U.white_texture()
   static blackTexture: Texture2D => U.black_texture()
 
-type RenderTexture : Texture kind=class gd=ViewportTexture extern=UnityEngineRenderTexture
-  ctor(int, int, int) => U.new_render_texture($1, $2)
+type RenderTexture : Texture kind=class gd=UdonRenderTexture extern=UnityEngineRenderTexture
+  ctor(int, int, int) => U.new_render_texture($1, $2, $3)
+  ctor(int, int, int, RenderTextureFormat) => U.new_render_texture($1, $2, $3)
+  ctor(int, int) => U.new_render_texture($1, $2, 24)
   Release(): void => pass
   Create(): bool => true
+  IsCreated(): bool => true
+  DiscardContents(): void => pass
+  width: int => U.rt_get($0, "width", 0)
+  set width: int => pass
+  height: int => U.rt_get($0, "height", 0)
+  set height: int => pass
+  depth: int => U.rt_get($0, "depth", 24)
+  static GetTemporary(int, int): RenderTexture => U.new_render_texture($1, $2, 0)
+  static GetTemporary(int, int, int): RenderTexture => U.new_render_texture($1, $2, $3)
+  static ReleaseTemporary(RenderTexture): void => pass
   static active: RenderTexture => null
   static set active: RenderTexture => pass
 
@@ -614,7 +400,7 @@ type Mesh : Object kind=class gd=Mesh extern=UnityEngineMesh
   set triangles: int[] => pass
   normals: Vector3[] => U.mesh_normals($0)
   set normals: Vector3[] => pass
-  bounds: Bounds => $0.get_aabb()
+  bounds: Bounds => U.mesh_get_bounds($0)
   name: string => $0.resource_name
   subMeshCount: int => $0.get_surface_count()
   RecalculateNormals(): void => pass
@@ -622,12 +408,16 @@ type Mesh : Object kind=class gd=Mesh extern=UnityEngineMesh
   Clear(): void => pass
 
 type MeshFilter : Component kind=component gd=MeshInstance3D extern=UnityEngineMeshFilter
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   mesh: Mesh => $0.mesh
   set mesh: Mesh => $0.mesh = $v
   sharedMesh: Mesh => $0.mesh
   set sharedMesh: Mesh => $0.mesh = $v
 
 type Camera : Behaviour kind=component gd=Camera3D extern=UnityEngineCamera
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   fieldOfView: float => $0.fov
   set fieldOfView: float => $0.fov = $v
   nearClipPlane: float => $0.near
@@ -649,14 +439,14 @@ type Camera : Behaviour kind=component gd=Camera3D extern=UnityEngineCamera
   set backgroundColor: Color => U.camera_set_bg($0, $v)
   clearFlags: int => 1
   set clearFlags: int => pass
-  targetTexture: RenderTexture => null
+  targetTexture: RenderTexture => U.camera_get_target_texture($0)
   set targetTexture: RenderTexture => U.camera_set_target_texture($0, $v)
   pixelWidth: int => U.camera_pixel_size($0).x
   pixelHeight: int => U.camera_pixel_size($0).y
   rect: Rect => Rect2(0.0, 0.0, 1.0, 1.0)
   set rect: Rect => pass
-  stereoTargetEye: int => 3
-  set stereoTargetEye: int => pass
+  stereoTargetEye: StereoTargetEyeMask => 3
+  set stereoTargetEye: StereoTargetEyeMask => pass
   useOcclusionCulling: bool => true
   set useOcclusionCulling: bool => pass
   allowHDR: bool => true
@@ -678,6 +468,8 @@ type Camera : Behaviour kind=component gd=Camera3D extern=UnityEngineCamera
   static allCamerasCount: int => 1
 
 type Light : Behaviour kind=component gd=Light3D extern=UnityEngineLight
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   intensity: float => $0.light_energy
   set intensity: float => $0.light_energy = $v
   color: Color => $0.light_color
@@ -703,6 +495,8 @@ type LightType kind=enum extern=UnityEngineLightType
   enum Area = 3
 
 type ReflectionProbe : Behaviour kind=component gd=ReflectionProbe extern=UnityEngineReflectionProbe
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   intensity: float => $0.intensity
   set intensity: float => $0.intensity = $v
   RenderProbe(): int => 0
@@ -769,20 +563,14 @@ type TMP_Text : Graphic kind=component gd=Control extern=TMProTMP_Text
   set fontSize: float => U.ui_set_font_size($0, int($v))
   color: Color => U.ui_get_color($0)
   set color: Color => U.ui_set_color($0, $v)
-  alignment: int => 0
-  set alignment: int => pass
   fontStyle: int => 0
   set fontStyle: int => pass
   richText: bool => true
   set richText: bool => pass
   enableAutoSizing: bool => false
   set enableAutoSizing: bool => pass
-  enableWordWrapping: bool => true
-  set enableWordWrapping: bool => pass
   characterSpacing: float => 0.0
   set characterSpacing: float => pass
-  lineSpacing: float => 0.0
-  set lineSpacing: float => pass
   outlineWidth: float => 0.0
   set outlineWidth: float => pass
   outlineColor: Color32 => Color.BLACK
@@ -1215,25 +1003,6 @@ type QualitySettings kind=static extern=UnityEngineQualitySettings
   static set shadowDistance: float => pass
   static GetQualityLevel(): int => 0
 
-alias ParticleSystem.MainModule = MainModule
-alias ParticleSystem.EmissionModule = EmissionModule
-alias ParticleSystem.ShapeModule = ShapeModule
-alias ParticleSystem.VelocityOverLifetimeModule = VelocityOverLifetimeModule
-alias ParticleSystem.ColorOverLifetimeModule = ColorOverLifetimeModule
-alias ParticleSystem.SizeOverLifetimeModule = SizeOverLifetimeModule
-alias ParticleSystem.TrailModule = TrailModule
-alias ParticleSystem.NoiseModule = NoiseModule
-alias ParticleSystem.ForceOverLifetimeModule = ForceOverLifetimeModule
-alias ParticleSystem.MinMaxCurve = MinMaxCurve
-alias ParticleSystem.MinMaxGradient = MinMaxGradient
-alias ParticleSystem.EmitParams = EmitParams
-alias ParticleSystem.Burst = Burst
-alias ParticleSystem.Particle = Particle
-
-type EmissionModule
-  GetBurst(int): Burst => {"time": 0.0, "count": 0}
-  SetBurst(int, Burst): void => pass
-
 type Animator
   WriteDefaultValues(): void => pass
   GetCurrentAnimatorClipInfo(int): Array => []
@@ -1269,11 +1038,36 @@ type Keyframe kind=struct gd=Dictionary extern=UnityEngineKeyframe
 type Gradient kind=class gd=Gradient extern=UnityEngineGradient
   ctor() => Gradient.new()
   Evaluate(float): Color => $0.sample($1)
-  colorKeys: Array => []
-  set colorKeys: Array => pass
-  alphaKeys: Array => []
-  set alphaKeys: Array => pass
-  SetKeys(Array, Array): void => pass
+  colorKeys: GradientColorKey[] => U.gradient_color_keys($0)
+  set colorKeys: GradientColorKey[] => U.gradient_set_keys($0, $v, U.gradient_alpha_keys($0))
+  alphaKeys: GradientAlphaKey[] => U.gradient_alpha_keys($0)
+  set alphaKeys: GradientAlphaKey[] => U.gradient_set_keys($0, U.gradient_color_keys($0), $v)
+  SetKeys(GradientColorKey[], GradientAlphaKey[]): void => U.gradient_set_keys($0, $1, $2)
+  mode: GradientMode => !stored U.prop_get($0, "mode", 0)
+  set mode: GradientMode => !stored U.prop_set($0, "mode", $v)
+  colorSpace: ColorSpace => !stored U.prop_get($0, "colorSpace", -1)
+  set colorSpace: ColorSpace => !stored U.prop_set($0, "colorSpace", $v)
+
+type GradientColorKey kind=struct gd=Dictionary extern=UnityEngineGradientColorKey
+  ctor() => {"color": Color.WHITE, "time": 0.0}
+  ctor(Color, float) => {"color": $1, "time": $2}
+  color: Color => $0.get("color", Color.WHITE)
+  set color: Color => $0.color = $v
+  time: float => $0.get("time", 0.0)
+  set time: float => $0.time = $v
+
+type GradientAlphaKey kind=struct gd=Dictionary extern=UnityEngineGradientAlphaKey
+  ctor() => {"alpha": 1.0, "time": 0.0}
+  ctor(float, float) => {"alpha": $1, "time": $2}
+  alpha: float => $0.get("alpha", 1.0)
+  set alpha: float => $0.alpha = $v
+  time: float => $0.get("time", 0.0)
+  set time: float => $0.time = $v
+
+type GradientMode kind=enum extern=UnityEngineGradientMode
+  enum Blend = 0
+  enum Fixed = 1
+  enum PerceptualBlend = 2
 
 type IConstraint kind=component gd=Node extern=UnityEngineAnimationsIConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
@@ -1290,7 +1084,7 @@ type IConstraint kind=component gd=Node extern=UnityEngineAnimationsIConstraint
 
 type PositionConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimationsPositionConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
-  set constraintActive: bool => U.constraint_set($0, "active", $v)
+  set constraintActive: bool => U.constraint_kind($0, "position") ;; U.constraint_set($0, "active", $v)
   weight: float => U.constraint_get($0, "weight", 1.0)
   set weight: float => U.constraint_set($0, "weight", $v)
   locked: bool => U.constraint_get($0, "locked", false)
@@ -1307,7 +1101,7 @@ type PositionConstraint : Behaviour kind=component gd=Node extern=UnityEngineAni
 
 type RotationConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimationsRotationConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
-  set constraintActive: bool => U.constraint_set($0, "active", $v)
+  set constraintActive: bool => U.constraint_kind($0, "rotation") ;; U.constraint_set($0, "active", $v)
   weight: float => U.constraint_get($0, "weight", 1.0)
   set weight: float => U.constraint_set($0, "weight", $v)
   rotationOffset: Vector3 => U.constraint_get($0, "rotationOffset", Vector3.ZERO)
@@ -1321,7 +1115,7 @@ type RotationConstraint : Behaviour kind=component gd=Node extern=UnityEngineAni
 
 type ParentConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimationsParentConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
-  set constraintActive: bool => U.constraint_set($0, "active", $v)
+  set constraintActive: bool => U.constraint_kind($0, "parent") ;; U.constraint_set($0, "active", $v)
   weight: float => U.constraint_get($0, "weight", 1.0)
   set weight: float => U.constraint_set($0, "weight", $v)
   sourceCount: int => U.constraint_sources($0).size()
@@ -1333,7 +1127,7 @@ type ParentConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnima
 
 type AimConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimationsAimConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
-  set constraintActive: bool => U.constraint_set($0, "active", $v)
+  set constraintActive: bool => U.constraint_kind($0, "aim") ;; U.constraint_set($0, "active", $v)
   weight: float => U.constraint_get($0, "weight", 1.0)
   set weight: float => U.constraint_set($0, "weight", $v)
   sourceCount: int => U.constraint_sources($0).size()
@@ -1343,7 +1137,7 @@ type AimConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimatio
 
 type LookAtConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimationsLookAtConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
-  set constraintActive: bool => U.constraint_set($0, "active", $v)
+  set constraintActive: bool => U.constraint_kind($0, "lookat") ;; U.constraint_set($0, "active", $v)
   weight: float => U.constraint_get($0, "weight", 1.0)
   set weight: float => U.constraint_set($0, "weight", $v)
   sourceCount: int => U.constraint_sources($0).size()
@@ -1353,7 +1147,7 @@ type LookAtConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnima
 
 type ScaleConstraint : Behaviour kind=component gd=Node extern=UnityEngineAnimationsScaleConstraint
   constraintActive: bool => U.constraint_get($0, "active", false)
-  set constraintActive: bool => U.constraint_set($0, "active", $v)
+  set constraintActive: bool => U.constraint_kind($0, "scale") ;; U.constraint_set($0, "active", $v)
   weight: float => U.constraint_get($0, "weight", 1.0)
   set weight: float => U.constraint_set($0, "weight", $v)
 
@@ -1404,3 +1198,39 @@ type Gizmos kind=static extern=UnityEngineGizmos
   static DrawWireCube(Vector3, Vector3): void => pass
   static color: Color => Color.WHITE
   static set color: Color => pass
+
+type StereoTargetEyeMask kind=enum extern=UnityEngineStereoTargetEyeMask
+  enum None = 0
+  enum Left = 1
+  enum Right = 2
+  enum Both = 3
+
+type RenderTextureFormat kind=enum extern=UnityEngineRenderTextureFormat
+  enum ARGB32 = 0
+  enum Depth = 1
+  enum ARGBHalf = 2
+  enum Shadowmap = 3
+  enum RGB565 = 4
+  enum ARGB4444 = 5
+  enum ARGB1555 = 6
+  enum Default = 7
+  enum ARGB2101010 = 8
+  enum DefaultHDR = 9
+  enum ARGB64 = 10
+  enum ARGBFloat = 11
+  enum RGFloat = 12
+  enum RGHalf = 13
+  enum RFloat = 14
+  enum RHalf = 15
+  enum R8 = 16
+  enum ARGBInt = 17
+  enum RGInt = 18
+  enum RInt = 19
+  enum BGRA32 = 20
+  enum RGB111110Float = 22
+  enum RG32 = 23
+  enum RGBAUShort = 24
+  enum RG16 = 25
+  enum BGRA10101010_XR = 26
+  enum BGR101010_XR = 27
+  enum R16 = 28

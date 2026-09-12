@@ -5,13 +5,18 @@
 ## SendCustomEvent family, delayed events, network events and variable sync through the `Udon`
 ## world provider.
 ##
-## A converted script is attached to a Node3D (or any subclass) that plays the role of the
+## A converted script is attached to a Node (usually a Node3D, or a Control for UI) that plays the role of the
 ## Unity GameObject. `gameObject`, `transform` and every component reference resolve to nodes.
-extends Node3D
+extends Node
 
 ## Interaction (VRC_Interactable) surface — the world calls `Interact()` when the local player uses the object.
 var DisableInteractive: bool = false
 var InteractionText: String = "Use"
+## Interaction distance of the UdonBehaviour component (VRChat `proximity`).
+var proximity: float = 2.0
+## Sync method chosen on the UdonBehaviour component in the scene (Networking.SyncType: 0 unknown,
+## 1 none, 2 manual, 3 continuous); overrides the script's [UdonBehaviourSyncMode] when set.
+var udon_sync_method: int = 0
 ## Unity `Behaviour.enabled`: when false, Update/FixedUpdate/LateUpdate are not dispatched.
 var enabled: bool = true:
 	set(v):
@@ -36,6 +41,15 @@ var _udon_pending_ser: bool = false
 # ---------------------------------------------------------------------------
 
 func _ready() -> void:
+	_udon_bind_refs()
+	if has_meta("udon_behaviour"):
+		# settings of the UdonBehaviour component written by the scene converter
+		var cfg: Dictionary = get_meta("udon_behaviour")
+		InteractionText = str(cfg.get("interact_text", InteractionText))
+		proximity = float(cfg.get("proximity", proximity))
+		udon_sync_method = int(cfg.get("sync_method", 0))
+		if cfg.has("enabled"):
+			enabled = bool(cfg["enabled"])
 	for n in ["Start", "Update", "FixedUpdate", "LateUpdate", "PostLateUpdate", "OnEnable", "OnDisable", "OnDestroy", "Interact", "OnDeserialization", "OnPreSerialization", "OnPostSerialization"]:
 		_udon_has[n] = has_method(n)
 	Udon._register_behaviour(self)
@@ -44,6 +58,32 @@ func _ready() -> void:
 		_udon_call("OnEnable")
 	# Unity runs Start right before the first Update of the object (never after an Update).
 	call_deferred("_udon_start")
+
+## Object references written by the scene importer as NodePaths (metadata/udon_refs) become the
+## exported Node values before any event runs. Missing targets stay null.
+func _udon_bind_refs() -> void:
+	if not has_meta("udon_refs"):
+		return
+	var refs: Dictionary = get_meta("udon_refs")
+	for k in refs.keys():
+		var v = refs[k]
+		if v is NodePath:
+			var n: Node = get_node_or_null(v)
+			if n != null:
+				set(str(k), n)
+			else:
+				push_warning("udon2godot: %s.%s: reference %s not found" % [name, str(k), str(v)])
+		elif v is Array:
+			var cur = get(str(k))
+			var arr: Array = cur if cur is Array else []
+			if arr.size() < v.size():
+				arr.resize(v.size())
+			for i in range(v.size()):
+				if v[i] is NodePath:
+					arr[i] = get_node_or_null(v[i])
+					if arr[i] == null:
+						push_warning("udon2godot: %s.%s[%d]: reference %s not found" % [name, str(k), i, str(v[i])])
+			set(str(k), arr)
 
 func _udon_start() -> void:
 	if _udon_started or not is_instance_valid(self):

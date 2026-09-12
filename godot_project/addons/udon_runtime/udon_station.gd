@@ -13,6 +13,19 @@ var occupant = null
 
 func _init(n: Node = null) -> void:
 	node = n
+	if n != null and n.has_meta("udon_station"):
+		apply_config(n.get_meta("udon_station"))
+
+## Settings written by the scene converter (VRC component fields → adapter properties);
+## NodePath values are resolved relative to the node.
+func apply_config(c: Dictionary) -> void:
+	for k in c.keys():
+		if not (str(k) in self):
+			continue
+		var v = c[k]
+		if v is NodePath and node != null:
+			v = node.get_node_or_null(v)
+		set(str(k), v)
 
 func use_station(player) -> void:
 	if occupant != null:

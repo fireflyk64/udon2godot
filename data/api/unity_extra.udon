@@ -16,9 +16,9 @@ type Camera
   set usePhysicalProperties: bool => pass
   projectionMatrix: Matrix4x4 => U.camera_projection($0)
   set projectionMatrix: Matrix4x4 => pass
-  worldToCameraMatrix: Matrix4x4 => $0.global_transform.affine_inverse()
+  worldToCameraMatrix: Matrix4x4 => U.world_to_camera_matrix($0)
   set worldToCameraMatrix: Matrix4x4 => pass
-  cameraToWorldMatrix: Matrix4x4 => $0.global_transform
+  cameraToWorldMatrix: Matrix4x4 => U.world_to_camera_matrix($0).affine_inverse()
   nonJitteredProjectionMatrix: Matrix4x4 => U.camera_projection($0)
   set nonJitteredProjectionMatrix: Matrix4x4 => pass
   previousViewProjectionMatrix: Matrix4x4 => U.camera_projection($0)
@@ -87,7 +87,7 @@ type Camera
   GetGateFittedFieldOfView(): float => $0.fov
   GetGateFittedLensShift(): Vector2 => $0.frustum_offset
   GetStereoProjectionMatrix(int): Matrix4x4 => U.camera_projection($0)
-  GetStereoViewMatrix(int): Matrix4x4 => $0.global_transform.affine_inverse()
+  GetStereoViewMatrix(int): Matrix4x4 => U.world_to_camera_matrix($0)
   GetStereoNonJitteredProjectionMatrix(int): Matrix4x4 => U.camera_projection($0)
   SetStereoProjectionMatrix(int, Matrix4x4): void => pass
   SetStereoViewMatrix(int, Matrix4x4): void => pass
@@ -229,8 +229,8 @@ type Renderer
   set sortingLayerID: int => pass
   sortingLayerName: string => "Default"
   set sortingLayerName: string => pass
-  worldToLocalMatrix: Matrix4x4 => $0.global_transform.affine_inverse()
-  localToWorldMatrix: Matrix4x4 => $0.global_transform
+  worldToLocalMatrix: Matrix4x4 => U.world_to_local_matrix($0)
+  localToWorldMatrix: Matrix4x4 => U.local_to_world_matrix($0)
   staticShadowCaster: bool => false
   set staticShadowCaster: bool => pass
   rayTracingMode: int => 0
@@ -304,7 +304,7 @@ type TrailRenderer
 
 type Texture2D
   format: TextureFormat => 4
-  mipmapCount: int => 1
+  mipmapCount: int => U.texture_mipmap_count($0)
   isReadable: bool => true
   requestedMipmapLevel: int => 0
   set requestedMipmapLevel: int => pass
@@ -455,7 +455,7 @@ type Matrix4x4
   decomposeProjection: object => {}
   isIdentity: bool => $0.is_equal_approx(Transform3D())
   this[int, int]: float => U.matrix_get($0, $1, $2)
-  this[int]: float => U.matrix_get($0, $1 % 4, $1 / 4)
+  this[int]: float => U.matrix_get($0, $1 % 4, $1 >> 2)
   ctor(Vector4, Vector4, Vector4, Vector4) => U.matrix_from_columns($1, $2, $3, $4)
   SetColumn(int, Vector4): void => $0 = U.matrix_set_column($0, $1, $2)
   SetRow(int, Vector4): void => $0 = U.matrix_set_row($0, $1, $2)
@@ -563,7 +563,7 @@ type ReflectionProbe
   set blendDistance: float => pass
   importance: int => 1
   set importance: int => pass
-  bounds: Bounds => AABB($0.global_position - $0.size / 2.0, $0.size)
+  bounds: Bounds => U.from_gd_aabb(AABB($0.global_position - $0.size / 2.0, $0.size))
   isFinishedRendering(int): bool => true
   IsFinishedRendering(int): bool => true
   texture: Texture => null
@@ -896,16 +896,16 @@ type NavMeshAgent : Behaviour kind=component gd=NavigationAgent3D extern=UnityEn
   set agentTypeID: int => pass
   currentOffMeshLinkData: object => {}
   nextOffMeshLinkData: object => {}
-  SetDestination(Vector3): bool => $0.target_position = $1 ;; true
+  SetDestination(Vector3): bool => $0.target_position = U.to_gd_v($1) ;; true
   ResetPath(): void => $0.target_position = $0.get_parent().global_position if $0.get_parent() is Node3D else Vector3.ZERO
   Stop(): void => U.nav_set_stopped($0, true)
   Resume(): void => U.nav_set_stopped($0, false)
   Warp(Vector3): bool => U.nav_warp($0, $1)
   Move(Vector3): void => U.nav_move($0, $1)
   SetPath(NavMeshPath): bool => true
-  CalculatePath(Vector3, NavMeshPath): bool => $2.corners = Array(NavigationServer3D.map_get_path($0.get_navigation_map(), U.nav_origin($0), $1, true)) ;; true
+  CalculatePath(Vector3, NavMeshPath): bool => $2.corners = U.nav_path(U.nav_origin($0), $1) ;; not $2.corners.is_empty()
   SamplePathPosition(int, float, out NavMeshHit): bool => $3 = {"position": $0.get_next_path_position(), "hit": true} ;; true
-  Raycast(Vector3, out NavMeshHit): bool => $2 = {"position": $1, "hit": false} ;; false
+  Raycast(Vector3, out NavMeshHit): bool => $2 = U.nav_raycast(U.nav_origin($0), $1, -1) ;; $2.get("hit", false)
   FindClosestEdge(out NavMeshHit): bool => $1 = {"position": U.nav_origin($0), "hit": false} ;; false
   CompleteOffMeshLink(): void => pass
   ActivateCurrentOffMeshLink(bool): void => pass
@@ -938,13 +938,13 @@ type NavMesh kind=static extern=UnityEngineAINavMesh
   static pathfindingIterationsPerFrame: int => 100
   static set pathfindingIterationsPerFrame: int => pass
   static SamplePosition(Vector3, out NavMeshHit, float, int): bool => $2 = U.nav_sample($1, $3) ;; $2.get("hit", false)
-  static Raycast(Vector3, Vector3, out NavMeshHit, int): bool => $3 = {"position": $2, "hit": false} ;; false
+  static Raycast(Vector3, Vector3, out NavMeshHit, int): bool => $3 = U.nav_raycast($1, $2, $4) ;; $3.get("hit", false)
   static CalculatePath(Vector3, Vector3, int, NavMeshPath): bool => $4.corners = U.nav_path($1, $2) ;; not $4.corners.is_empty()
   static FindClosestEdge(Vector3, out NavMeshHit, int): bool => $2 = U.nav_sample($1, 5.0) ;; $2.get("hit", false)
   static GetAreaCost(int): float => 1.0
   static SetAreaCost(int, float): void => pass
   static GetAreaFromName(string): int => U.name_to_layer($1)
-  static CalculateTriangulation(): object => {}
+  static CalculateTriangulation(): NavMeshTriangulation => U.nav_triangulation()
   static RemoveAllNavMeshData(): void => pass
 
 type NavMeshObstacle : Behaviour kind=component gd=NavigationObstacle3D extern=UnityEngineAINavMeshObstacle
@@ -1228,6 +1228,8 @@ type Font : Object kind=class gd=Font extern=UnityEngineFont
   static GetMaxVertsForString(string): int => $1.length() * 4
 
 type VideoPlayer : Behaviour kind=component gd=VideoStreamPlayer extern=UnityEngineVideoVideoPlayer
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   url: string => U.video_get($0, "url", "")
   set url: string => U.video_set_url($0, $v)
   clip: object => $0.stream
@@ -1414,6 +1416,8 @@ type CanvasScaler : Behaviour kind=component gd=CanvasLayer extern=UnityEngineUI
   set defaultSpriteDPI: float => pass
 
 type CanvasRenderer : Component kind=component gd=CanvasItem extern=UnityEngineCanvasRenderer
+  gameObject: GameObject => U.game_object($0)
+  transform: Transform => U.game_object($0)
   cull: bool => not $0.visible
   set cull: bool => $0.visible = not $v
   hasMoved: bool => false
@@ -1468,7 +1472,7 @@ type CinemachineVirtualCameraBase : Behaviour kind=component gd=Camera3D extern=
   set Follow: Transform => U.cine_set($0, "follow", $v)
   LookAt: Transform => U.cine_get($0, "lookAt", null)
   set LookAt: Transform => U.cine_set($0, "lookAt", $v)
-  State: object => {"position": $0.global_position, "rotation": U.get_global_rotation($0)}
+  State: object => {"position": U.get_position($0), "rotation": U.get_global_rotation($0)}
   IsLive: bool => $0.current
   Name: string => String($0.name)
   Description: string => ""
@@ -1480,7 +1484,7 @@ type CinemachineVirtualCameraBase : Behaviour kind=component gd=Camera3D extern=
   UpdateCameraState(Vector3, float): void => pass
   InternalUpdateCameraState(Vector3, float): void => pass
   OnTargetObjectWarped(Transform, Vector3): void => pass
-  ForceCameraPosition(Vector3, Quaternion): void => $0.global_position = $1 ;; U.set_global_rotation($0, $2)
+  ForceCameraPosition(Vector3, Quaternion): void => U.set_position($0, $1) ;; U.set_global_rotation($0, $2)
   IsLiveChild(object, bool): bool => false
   ResolveFollow(Transform): Transform => $1
   ResolveLookAt(Transform): Transform => $1
@@ -1578,32 +1582,32 @@ type CinemachineSmoothPath : CinemachinePathBase kind=component gd=Path3D extern
   set m_Looped: bool => pass
 
 type Cubemap : Texture kind=class gd=Cubemap extern=UnityEngineCubemap
-  ctor(int, TextureFormat, bool) => null
+  ctor(int, TextureFormat, bool) => U.new_cubemap($1)
   format: TextureFormat => 4
-  mipmapCount: int => 1
-  isReadable: bool => false
+  mipmapCount: int => U.texture_mipmap_count($0)
+  isReadable: bool => true
   Apply(): void => pass
   Apply(bool): void => pass
   Apply(bool, bool): void => pass
-  GetPixel(int, int, int): Color => Color.BLACK
-  GetPixels(int): Color[] => []
-  SetPixel(int, int, int, Color): void => pass
-  SetPixels(Color[], int): void => pass
+  GetPixel(int, int, int): Color => U.cubemap_get_pixel($0, $1, $2, $3)
+  GetPixels(int): Color[] => U.cubemap_get_pixels($0, $1)
+  SetPixel(int, int, int, Color): void => U.cubemap_set_pixel($0, $1, $2, $3, $4)
+  SetPixels(Color[], int): void => U.cubemap_set_pixels($0, $1, $2)
   SmoothEdges(): void => pass
   SmoothEdges(int): void => pass
 
 type Texture3D : Texture kind=class gd=Texture3D extern=UnityEngineTexture3D
-  ctor(int, int, int, TextureFormat, bool) => null
+  ctor(int, int, int, TextureFormat, bool) => U.new_texture3d($1, $2, $3)
   depth: int => $0.get_depth() if $0 != null else 0
   format: TextureFormat => 4
-  isReadable: bool => false
+  isReadable: bool => true
   Apply(): void => pass
   Apply(bool): void => pass
-  GetPixel(int, int, int): Color => Color.BLACK
-  GetPixelBilinear(float, float, float): Color => Color.BLACK
-  GetPixels(): Color[] => []
-  SetPixel(int, int, int, Color): void => pass
-  SetPixels(Color[]): void => pass
+  GetPixel(int, int, int): Color => U.texture3d_get_pixel($0, $1, $2, $3)
+  GetPixelBilinear(float, float, float): Color => U.texture3d_get_pixel($0, int($1 * $0.get_width()), int($2 * $0.get_height()), int($3 * $0.get_depth()))
+  GetPixels(): Color[] => U.texture3d_get_pixels($0)
+  SetPixel(int, int, int, Color): void => U.texture3d_set_pixel($0, $1, $2, $3, $4)
+  SetPixels(Color[]): void => U.texture3d_set_pixels($0, $1)
 
 type CustomRenderTexture : RenderTexture kind=class gd=Texture2D extern=UnityEngineCustomRenderTexture
   ctor(int, int) => U.new_texture($1, $2)
@@ -1872,11 +1876,11 @@ type Animator
   set feetPivotActive: float => pass
   pivotWeight: float => 0.5
   pivotPosition: Vector3 => Vector3.ZERO
-  rootPosition: Vector3 => $0.global_position if $0 is Node3D else Vector3.ZERO
+  rootPosition: Vector3 => U.get_position($0) if $0 is Node3D else Vector3.ZERO
   set rootPosition: Vector3 => pass
   rootRotation: Quaternion => U.get_global_rotation($0) if $0 is Node3D else Quaternion()
   set rootRotation: Quaternion => pass
-  bodyPosition: Vector3 => $0.global_position if $0 is Node3D else Vector3.ZERO
+  bodyPosition: Vector3 => U.get_position($0) if $0 is Node3D else Vector3.ZERO
   set bodyPosition: Vector3 => pass
   bodyRotation: Quaternion => U.get_global_rotation($0) if $0 is Node3D else Quaternion()
   set bodyRotation: Quaternion => pass
@@ -2200,7 +2204,7 @@ type Terrain : Behaviour kind=component gd=Node3D extern=UnityEngineTerrain
   AddTreeInstance(object): void => pass
   Flush(): void => pass
   SetNeighbors(Terrain, Terrain, Terrain, Terrain): void => pass
-  GetPosition(): Vector3 => $0.global_position
+  GetPosition(): Vector3 => U.get_position($0)
   GetSplatMaterialPropertyBlock(MaterialPropertyBlock): void => pass
   SetSplatMaterialPropertyBlock(MaterialPropertyBlock): void => pass
   GetClosestReflectionProbes(Array): void => pass
@@ -2247,3 +2251,1304 @@ type Screen
   static mainWindowDisplayInfo: object => {}
   static MoveMainWindowTo(object, Vector2Int): void => DisplayServer.window_set_position($2)
   static GetDisplayLayout(Array): void => pass
+
+# --- rendering and asset extras (stub backlog): texture sampler state, cubemaps, 3D textures,
+# mesh attributes and combining, renderer bounds, physical camera, frustum utilities, SH, portals ---
+
+type TextureDimension kind=enum extern=UnityEngineRenderingTextureDimension
+  enum Unknown = -1
+  enum None = 0
+  enum Any = 1
+  enum Tex2D = 2
+  enum Tex3D = 3
+  enum Cube = 4
+  enum Tex2DArray = 5
+  enum CubeArray = 6
+
+type TextureWrapMode kind=enum extern=UnityEngineTextureWrapMode
+  enum Repeat = 0
+  enum Clamp = 1
+  enum Mirror = 2
+  enum MirrorOnce = 3
+
+type FilterMode kind=enum extern=UnityEngineFilterMode
+  enum Point = 0
+  enum Bilinear = 1
+  enum Trilinear = 2
+
+type VertexAttribute kind=enum extern=UnityEngineRenderingVertexAttribute
+  enum Position = 0
+  enum Normal = 1
+  enum Tangent = 2
+  enum Color = 3
+  enum TexCoord0 = 4
+  enum TexCoord1 = 5
+  enum TexCoord2 = 6
+  enum TexCoord3 = 7
+  enum TexCoord4 = 8
+  enum TexCoord5 = 9
+  enum TexCoord6 = 10
+  enum TexCoord7 = 11
+  enum BlendWeight = 12
+  enum BlendIndices = 13
+
+type VertexAttributeFormat kind=enum extern=UnityEngineRenderingVertexAttributeFormat
+  enum Float32 = 0
+  enum Float16 = 1
+  enum UNorm8 = 2
+  enum SNorm8 = 3
+  enum UNorm16 = 4
+  enum SNorm16 = 5
+  enum UInt8 = 6
+  enum SInt8 = 7
+  enum UInt16 = 8
+  enum SInt16 = 9
+  enum UInt32 = 10
+  enum SInt32 = 11
+
+type IndexFormat kind=enum extern=UnityEngineRenderingIndexFormat
+  enum UInt16 = 0
+  enum UInt32 = 1
+
+type MeshUpdateFlags kind=enum extern=UnityEngineRenderingMeshUpdateFlags
+  enum Default = 0
+  enum DontValidateIndices = 1
+  enum DontResetBoneBounds = 2
+  enum DontNotifyMeshUsers = 4
+  enum DontRecalculateBounds = 8
+
+type SkinWeights kind=enum extern=UnityEngineSkinWeights
+  enum None = 0
+  enum OneBone = 1
+  enum TwoBones = 2
+  enum FourBones = 4
+  enum Unlimited = 255
+
+type CameraGateFitMode kind=enum extern=UnityEngineCameraGateFitMode
+  enum None = 0
+  enum Vertical = 1
+  enum Horizontal = 2
+  enum Fill = 3
+  enum Overscan = 4
+
+type CameraMonoOrStereoscopicEye kind=enum extern=UnityEngineCameraMonoOrStereoscopicEye
+  enum Left = 0
+  enum Right = 1
+  enum Mono = 2
+
+type CameraStereoscopicEye kind=enum extern=UnityEngineCameraStereoscopicEye
+  enum Left = 0
+  enum Right = 1
+
+type SpriteMaskInteraction kind=enum extern=UnityEngineSpriteMaskInteraction
+  enum None = 0
+  enum VisibleInsideMask = 1
+  enum VisibleOutsideMask = 2
+
+type LightmapBakeType kind=enum extern=UnityEngineLightmapBakeType
+  enum Realtime = 4
+  enum Baked = 2
+  enum Mixed = 1
+
+type MixedLightingMode kind=enum extern=UnityEngineMixedLightingMode
+  enum IndirectOnly = 0
+  enum Shadowmask = 2
+  enum Subtractive = 1
+
+type RenderTextureMemoryless kind=enum extern=UnityEngineRenderTextureMemoryless
+  enum None = 0
+  enum Color = 1
+  enum Depth = 2
+  enum MSAA = 4
+
+type VRTextureUsage kind=enum extern=UnityEngineVRTextureUsage
+  enum None = 0
+  enum OneEye = 1
+  enum TwoEyes = 2
+  enum DeviceSpecific = 3
+
+type ShadowSamplingMode kind=enum extern=UnityEngineRenderingShadowSamplingMode
+  enum CompareDepths = 0
+  enum RawDepth = 1
+  enum None = 2
+
+type RenderTextureCreationFlags kind=enum extern=UnityEngineRenderTextureCreationFlags
+  enum None = 0
+  enum MipMap = 1
+  enum AutoGenerateMips = 2
+  enum SRGB = 4
+  enum EyeTexture = 8
+  enum EnableRandomWrite = 16
+  enum CreatedFromScript = 32
+  enum AllowVerticalFlip = 128
+  enum NoResolvedColorSurface = 256
+  enum DynamicallyScalable = 1024
+  enum BindMS = 2048
+
+type DepthTextureMode kind=enum extern=UnityEngineDepthTextureMode
+  enum None = 0
+  enum Depth = 1
+  enum DepthNormals = 2
+  enum MotionVectors = 4
+
+# Sampler state lives on Godot materials, not textures: wrap / filter / aniso / bias are remembered
+# on the resource (udon_props metadata) so they round-trip.
+type Texture
+  IncrementUpdateCount(): void => U.texture_increment_update($0)
+  updateCount: uint => U.texture_update_count($0)
+  static GenerateAllMips: int => -1
+  anisoLevel: int => !stored U.prop_get($0, "anisoLevel", 1)
+  set anisoLevel: int => !stored U.prop_set($0, "anisoLevel", $v)
+  mipMapBias: float => !stored U.prop_get($0, "mipMapBias", 0.0)
+  set mipMapBias: float => !stored U.prop_set($0, "mipMapBias", $v)
+  wrapModeU: TextureWrapMode => !stored U.prop_get($0, "wrapModeU", U.prop_get($0, "wrapMode", 0))
+  set wrapModeU: TextureWrapMode => !stored U.prop_set($0, "wrapModeU", $v)
+  wrapModeV: TextureWrapMode => !stored U.prop_get($0, "wrapModeV", U.prop_get($0, "wrapMode", 0))
+  set wrapModeV: TextureWrapMode => !stored U.prop_set($0, "wrapModeV", $v)
+  wrapModeW: TextureWrapMode => !stored U.prop_get($0, "wrapModeW", U.prop_get($0, "wrapMode", 0))
+  set wrapModeW: TextureWrapMode => !stored U.prop_set($0, "wrapModeW", $v)
+  dimension: TextureDimension => U.texture_dimension($0)
+  set dimension: TextureDimension => pass
+  isDataSRGB: bool => true
+  isReadable: bool => true
+  mipmapCount: int => U.texture_mipmap_count($0)
+  texelSize: Vector2 => U.texture_texel_size($0)
+  set width: int => U.texture_resize($0, $v, $0.get_height())
+  set height: int => U.texture_resize($0, $0.get_width(), $v)
+
+type Texture2D
+  ClearMinimumMipmapLevel(): void => pass
+  ClearRequestedMipmapLevel(): void => pass
+  SetPixelData(T[], int, int): void => U.texture_set_pixel_data($0, $1)
+  activeMipmapLimit: int => 0
+  calculatedMipmapLevel: int => 0
+  desiredMipmapLevel: int => 0
+  loadedMipmapLevel: int => 0
+  loadingMipmapLevel: int => 0
+  ignoreMipmapLimit: bool => !stored U.prop_get($0, "ignoreMipmapLimit", false)
+  set ignoreMipmapLimit: bool => !stored U.prop_set($0, "ignoreMipmapLimit", $v)
+  minimumMipmapLevel: int => !stored U.prop_get($0, "minimumMipmapLevel", 0)
+  set minimumMipmapLevel: int => !stored U.prop_set($0, "minimumMipmapLevel", $v)
+  mipmapLimitGroup: string => ""
+  streamingMipmapsPriority: int => 0
+  vtOnly: bool => false
+
+type Cubemap
+  ctor(int, TextureFormat, int) => U.new_cubemap($1)
+  width: int => $0.get_width()
+  height: int => $0.get_height()
+  set width: int => pass
+  set height: int => pass
+  GetPixel(CubemapFace, int, int): Color => U.cubemap_get_pixel($0, $1, $2, $3)
+  GetPixels(CubemapFace): Color[] => U.cubemap_get_pixels($0, $1)
+  GetPixels(CubemapFace, int): Color[] => U.cubemap_get_pixels($0, $1)
+  SetPixel(CubemapFace, int, int, Color): void => U.cubemap_set_pixel($0, $1, $2, $3, $4)
+  SetPixels(Color[], CubemapFace): void => U.cubemap_set_pixels($0, $1, $2)
+  SetPixels(Color[], CubemapFace, int): void => U.cubemap_set_pixels($0, $1, $2)
+  SetPixelData(T[], int, CubemapFace, int): void => U.cubemap_set_pixels($0, $1, $3)
+  ClearRequestedMipmapLevel(): void => pass
+  desiredMipmapLevel: int => 0
+  loadedMipmapLevel: int => 0
+  loadingMipmapLevel: int => 0
+  requestedMipmapLevel: int => !stored U.prop_get($0, "requestedMipmapLevel", 0)
+  set requestedMipmapLevel: int => !stored U.prop_set($0, "requestedMipmapLevel", $v)
+  streamingMipmaps: bool => false
+  streamingMipmapsPriority: int => 0
+
+type Texture3D
+  ctor(int, int, int, TextureFormat, int) => U.new_texture3d($1, $2, $3)
+  GetPixel(int, int, int, int): Color => U.texture3d_get_pixel($0, $1, $2, $3)
+  SetPixel(int, int, int, Color, int): void => U.texture3d_set_pixel($0, $1, $2, $3, $4)
+  width: int => $0.get_width()
+  height: int => $0.get_height()
+  set width: int => pass
+  set height: int => pass
+  GetPixels(int): Color[] => U.texture3d_get_pixels($0)
+  GetPixels32(): Color32[] => U.texture3d_get_pixels($0)
+  GetPixels32(int): Color32[] => U.texture3d_get_pixels($0)
+  SetPixels(Color[], int): void => U.texture3d_set_pixels($0, $1)
+  SetPixels32(Color32[]): void => U.texture3d_set_pixels($0, $1)
+  SetPixels32(Color32[], int): void => U.texture3d_set_pixels($0, $1)
+  SetPixelData(T[], int, int): void => U.texture3d_set_pixels($0, $1)
+
+type RenderTexture
+  IncrementUpdateCount(): void => U.texture_increment_update($0)
+  ResolveAntiAliasedSurface(): void => pass
+  ResolveAntiAliasedSurface(RenderTexture): void => pass
+  isPowerOfTwo: bool => (U.rt_get($0, "width", 256) & (U.rt_get($0, "width", 256) - 1)) == 0 and (U.rt_get($0, "height", 256) & (U.rt_get($0, "height", 256) - 1)) == 0
+  set isPowerOfTwo: bool => pass
+  isReadable: bool => false
+  mipmapCount: int => 1
+  bindTextureMS: bool => !stored U.prop_get($0, "bindTextureMS", false)
+  set bindTextureMS: bool => !stored U.prop_set($0, "bindTextureMS", $v)
+
+type RenderTextureDescriptor
+  bindMS: bool => $0.get("bindMS", false)
+  set bindMS: bool => $0.bindMS = $v
+  flags: RenderTextureCreationFlags => $0.get("flags", 0)
+  memoryless: RenderTextureMemoryless => $0.get("memoryless", 0)
+  set memoryless: RenderTextureMemoryless => $0.memoryless = $v
+  mipCount: int => $0.get("mipCount", 1)
+  set mipCount: int => $0.mipCount = $v
+  shadowSamplingMode: ShadowSamplingMode => $0.get("shadowSamplingMode", 2)
+  set shadowSamplingMode: ShadowSamplingMode => $0.shadowSamplingMode = $v
+  useDynamicScale: bool => $0.get("useDynamicScale", false)
+  set useDynamicScale: bool => $0.useDynamicScale = $v
+  vrUsage: VRTextureUsage => $0.get("vrUsage", 0)
+  set vrUsage: VRTextureUsage => $0.vrUsage = $v
+
+type Material
+  HasInteger(string): bool => U.mat_has($0, $1)
+  HasInteger(int): bool => U.mat_has($0, $1)
+  HasConstantBuffer(string): bool => false
+  HasConstantBuffer(int): bool => false
+
+# MaterialPropertyBlock is a dictionary keyed by property name or Shader.PropertyToID id.
+type MaterialPropertyBlock
+  HasProperty(string): bool => $0.has($1)
+  HasProperty(int): bool => $0.has($1)
+  HasFloat(string): bool => $0.has($1)
+  HasFloat(int): bool => $0.has($1)
+  HasInt(string): bool => $0.has($1)
+  HasInt(int): bool => $0.has($1)
+  HasInteger(string): bool => $0.has($1)
+  HasInteger(int): bool => $0.has($1)
+  HasColor(string): bool => $0.has($1)
+  HasColor(int): bool => $0.has($1)
+  HasVector(string): bool => $0.has($1)
+  HasVector(int): bool => $0.has($1)
+  HasMatrix(string): bool => $0.has($1)
+  HasMatrix(int): bool => $0.has($1)
+  HasTexture(string): bool => $0.has($1)
+  HasTexture(int): bool => $0.has($1)
+  HasBuffer(string): bool => false
+  HasBuffer(int): bool => false
+  HasConstantBuffer(string): bool => false
+  HasConstantBuffer(int): bool => false
+  GetInteger(string): int => $0.get($1, 0)
+  GetInteger(int): int => $0.get($1, 0)
+  GetMatrix(string): Matrix4x4 => $0.get($1, Transform3D())
+  GetMatrix(int): Matrix4x4 => $0.get($1, Transform3D())
+  GetFloatArray(string): float[] => $0.get($1, [])
+  GetFloatArray(int): float[] => $0.get($1, [])
+  GetVectorArray(string): Vector4[] => $0.get($1, [])
+  GetVectorArray(int): Vector4[] => $0.get($1, [])
+  GetMatrixArray(string): Matrix4x4[] => $0.get($1, [])
+  GetMatrixArray(int): Matrix4x4[] => $0.get($1, [])
+  SetMatrixArray(string, Matrix4x4[]): void => $0[$1] = $2
+  SetMatrixArray(int, Matrix4x4[]): void => $0[$1] = $2
+  CopySHCoefficientArraysFrom(SphericalHarmonicsL2[]): void => pass
+  CopySHCoefficientArraysFrom(SphericalHarmonicsL2[], int, int, int): void => pass
+  CopyProbeOcclusionArrayFrom(Vector4[]): void => pass
+  CopyProbeOcclusionArrayFrom(Vector4[], int, int, int): void => pass
+
+type BlendShapeBufferRange kind=struct gd=Dictionary extern=UnityEngineBlendShapeBufferRange
+  ctor() => {}
+  startIndex: uint => $0.get("startIndex", 0)
+  endIndex: uint => $0.get("endIndex", 0)
+
+type SubMeshDescriptor kind=struct gd=Dictionary extern=UnityEngineRenderingSubMeshDescriptor
+  ctor() => {}
+  ctor(int, int) => {"indexStart": $1, "indexCount": $2}
+  ctor(int, int, MeshTopology) => {"indexStart": $1, "indexCount": $2, "topology": $3}
+  indexStart: int => $0.get("indexStart", 0)
+  set indexStart: int => $0.indexStart = $v
+  indexCount: int => $0.get("indexCount", 0)
+  set indexCount: int => $0.indexCount = $v
+  topology: MeshTopology => $0.get("topology", 0)
+  set topology: MeshTopology => $0.topology = $v
+  baseVertex: int => $0.get("baseVertex", 0)
+  set baseVertex: int => $0.baseVertex = $v
+  firstVertex: int => $0.get("firstVertex", 0)
+  set firstVertex: int => $0.firstVertex = $v
+  vertexCount: int => $0.get("vertexCount", 0)
+  set vertexCount: int => $0.vertexCount = $v
+  bounds: Bounds => $0.get("bounds", AABB())
+  set bounds: Bounds => $0.bounds = $v
+
+type VertexAttributeDescriptor kind=struct gd=Dictionary extern=UnityEngineRenderingVertexAttributeDescriptor
+  ctor() => {}
+  ctor(VertexAttribute) => {"attribute": $1, "format": 0, "dimension": 3, "stream": 0}
+  ctor(VertexAttribute, VertexAttributeFormat) => {"attribute": $1, "format": $2, "dimension": 3, "stream": 0}
+  ctor(VertexAttribute, VertexAttributeFormat, int) => {"attribute": $1, "format": $2, "dimension": $3, "stream": 0}
+  ctor(VertexAttribute, VertexAttributeFormat, int, int) => {"attribute": $1, "format": $2, "dimension": $3, "stream": $4}
+  attribute: VertexAttribute => $0.get("attribute", 0)
+  set attribute: VertexAttribute => $0.attribute = $v
+  format: VertexAttributeFormat => $0.get("format", 0)
+  set format: VertexAttributeFormat => $0.format = $v
+  dimension: int => $0.get("dimension", 3)
+  set dimension: int => $0.dimension = $v
+  stream: int => $0.get("stream", 0)
+  set stream: int => $0.stream = $v
+
+type Mesh
+  set bounds: Bounds => U.mesh_set_bounds($0, $v)
+  uv3: Vector2[] => !stored U.prop_get($0, "uv3", [])
+  set uv3: Vector2[] => !stored U.prop_set($0, "uv3", $v)
+  uv4: Vector2[] => !stored U.prop_get($0, "uv4", [])
+  set uv4: Vector2[] => !stored U.prop_set($0, "uv4", $v)
+  uv5: Vector2[] => !stored U.prop_get($0, "uv5", [])
+  set uv5: Vector2[] => !stored U.prop_set($0, "uv5", $v)
+  uv6: Vector2[] => !stored U.prop_get($0, "uv6", [])
+  set uv6: Vector2[] => !stored U.prop_set($0, "uv6", $v)
+  uv7: Vector2[] => !stored U.prop_get($0, "uv7", [])
+  set uv7: Vector2[] => !stored U.prop_set($0, "uv7", $v)
+  uv8: Vector2[] => !stored U.prop_get($0, "uv8", [])
+  set uv8: Vector2[] => !stored U.prop_set($0, "uv8", $v)
+  AddBlendShapeFrame(string, float, Vector3[], Vector3[], Vector3[]): void => U.mesh_add_blend_shape($0, $1)
+  ClearBlendShapes(): void => U.mesh_clear_blend_shapes($0)
+  GetBlendShapeBufferRange(int): BlendShapeBufferRange => {"startIndex": 0, "endIndex": 0}
+  GetBlendShapeFrameVertices(int, int, Vector3[], Vector3[], Vector3[]): void => pass
+  GetUVDistributionMetric(int): float => 1.0
+  RecalculateUVDistributionMetric(int, float): void => pass
+  RecalculateUVDistributionMetrics(float): void => pass
+  GetVertexAttribute(int): VertexAttributeDescriptor => {"attribute": $1, "format": 0, "dimension": U.mesh_attribute_dimension($0, $1), "stream": 0}
+  GetVertexAttributes(): VertexAttributeDescriptor[] => []
+  GetVertexAttributes(VertexAttributeDescriptor[]): int => 0
+  GetVertexAttributeDimension(VertexAttribute): int => U.mesh_attribute_dimension($0, $1)
+  GetVertexAttributeFormat(VertexAttribute): VertexAttributeFormat => 0
+  GetVertexAttributeOffset(VertexAttribute): int => 0
+  GetVertexAttributeStream(VertexAttribute): int => 0
+  GetVertexBufferStride(int): int => 32
+  HasVertexAttribute(VertexAttribute): bool => U.mesh_has_attribute($0, $1)
+  SetIndexBufferParams(int, IndexFormat): void => pass
+  SetVertexBufferParams(int, VertexAttributeDescriptor[]): void => pass
+  SetSubMesh(int, SubMeshDescriptor, MeshUpdateFlags): void => pass
+  SetSubMeshes(SubMeshDescriptor[], MeshUpdateFlags): void => pass
+  SetSubMeshes(SubMeshDescriptor[], int, int, MeshUpdateFlags): void => pass
+  bindposeCount: int => 0
+  skinWeightBufferLayout: SkinWeights => 4
+  CombineMeshes(CombineInstance[]): void => U.mesh_combine($0, $1, true, true)
+  CombineMeshes(CombineInstance[], bool): void => U.mesh_combine($0, $1, $2, true)
+  CombineMeshes(CombineInstance[], bool, bool): void => U.mesh_combine($0, $1, $2, $3)
+  CombineMeshes(CombineInstance[], bool, bool, bool): void => U.mesh_combine($0, $1, $2, $3)
+
+type CombineInstance kind=struct gd=Dictionary extern=UnityEngineCombineInstance
+  ctor() => {"subMeshIndex": 0, "transform": Transform3D()}
+  mesh: Mesh => $0.get("mesh", null)
+  set mesh: Mesh => $0.mesh = $v
+  subMeshIndex: int => $0.get("subMeshIndex", 0)
+  set subMeshIndex: int => $0.subMeshIndex = $v
+  transform: Matrix4x4 => $0.get("transform", Transform3D())
+  set transform: Matrix4x4 => $0.transform = $v
+  lightmapScaleOffset: Vector4 => $0.get("lightmapScaleOffset", Vector4(1.0, 1.0, 0.0, 0.0))
+  set lightmapScaleOffset: Vector4 => $0.lightmapScaleOffset = $v
+  realtimeLightmapScaleOffset: Vector4 => $0.get("realtimeLightmapScaleOffset", Vector4(1.0, 1.0, 0.0, 0.0))
+  set realtimeLightmapScaleOffset: Vector4 => $0.realtimeLightmapScaleOffset = $v
+
+type Renderer
+  SetMaterials(Material[]): void => U.renderer_set_materials($0, $1)
+  SetSharedMaterials(Material[]): void => U.renderer_set_materials($0, $1)
+  forceRenderingOff: bool => U.renderer_force_off_get($0)
+  set forceRenderingOff: bool => U.renderer_force_off_set($0, $v)
+  set bounds: Bounds => U.renderer_set_bounds($0, $v)
+  set localBounds: Bounds => U.renderer_set_local_bounds($0, $v)
+  set lightmapIndex: int => !stored U.prop_set($0, "lightmapIndex", $v)
+
+type SkinnedMeshRenderer
+  set rootBone: Transform => !stored U.prop_set($0, "rootBone", $v)
+
+type LineRenderer
+  maskInteraction: SpriteMaskInteraction => !stored U.prop_get($0, "maskInteraction", 0)
+  set maskInteraction: SpriteMaskInteraction => !stored U.prop_set($0, "maskInteraction", $v)
+  textureScale: Vector2 => U.line_get_prop($0, "textureScale", Vector2.ONE)
+  set textureScale: Vector2 => U.line_set_prop($0, "textureScale", $v)
+
+type TrailRenderer
+  GetVisiblePositions(Vector3[]): int => U.line_get_positions($0, $1)
+  maskInteraction: SpriteMaskInteraction => !stored U.prop_get($0, "maskInteraction", 0)
+  set maskInteraction: SpriteMaskInteraction => !stored U.prop_set($0, "maskInteraction", $v)
+  textureScale: Vector2 => U.line_get_prop($0, "textureScale", Vector2.ONE)
+  set textureScale: Vector2 => U.line_set_prop($0, "textureScale", $v)
+
+type ParticleSystemRenderer
+  set bounds: Bounds => U.renderer_set_bounds($0, $v)
+  set localBounds: Bounds => U.renderer_set_local_bounds($0, $v)
+  set lightmapIndex: int => !stored U.prop_set($0, "lightmapIndex", $v)
+
+type Light
+  set type: LightType => U.light_set_type($0, $v)
+
+type LightBakingOutput kind=struct gd=Dictionary extern=UnityEngineLightBakingOutput
+  ctor() => {}
+  isBaked: bool => $0.get("isBaked", false)
+  set isBaked: bool => $0.isBaked = $v
+  lightmapBakeType: LightmapBakeType => $0.get("lightmapBakeType", 4)
+  set lightmapBakeType: LightmapBakeType => $0.lightmapBakeType = $v
+  mixedLightingMode: MixedLightingMode => $0.get("mixedLightingMode", 0)
+  set mixedLightingMode: MixedLightingMode => $0.mixedLightingMode = $v
+  occlusionMaskChannel: int => $0.get("occlusionMaskChannel", -1)
+  set occlusionMaskChannel: int => $0.occlusionMaskChannel = $v
+  probeOcclusionLightIndex: int => $0.get("probeOcclusionLightIndex", -1)
+  set probeOcclusionLightIndex: int => $0.probeOcclusionLightIndex = $v
+
+type ReflectionProbe
+  renderDynamicObjects: bool => !stored U.prop_get($0, "renderDynamicObjects", false)
+  set renderDynamicObjects: bool => !stored U.prop_set($0, "renderDynamicObjects", $v)
+  textureHDRDecodeValues: Vector4 => Vector4(1.0, 1.0, 0.0, 0.0)
+
+type RenderSettings
+  static name: string => "RenderSettings"
+  static set name: string => pass
+
+# Physical camera parameters live on a CameraAttributesPhysical resource attached on first use.
+type Camera
+  aperture: float => U.camera_phys_get($0, "aperture", 16.0)
+  set aperture: float => U.camera_phys_set($0, "aperture", $v)
+  shutterSpeed: float => U.camera_phys_get($0, "shutterSpeed", 0.005)
+  set shutterSpeed: float => U.camera_phys_set($0, "shutterSpeed", $v)
+  iso: int => int(U.camera_phys_get($0, "iso", 200.0))
+  set iso: int => U.camera_phys_set($0, "iso", float($v))
+  focusDistance: float => U.camera_phys_get($0, "focusDistance", 10.0)
+  set focusDistance: float => U.camera_phys_set($0, "focusDistance", $v)
+  anamorphism: float => !stored U.prop_get($0, "anamorphism", 0.0)
+  set anamorphism: float => !stored U.prop_set($0, "anamorphism", $v)
+  barrelClipping: float => !stored U.prop_get($0, "barrelClipping", 0.25)
+  set barrelClipping: float => !stored U.prop_set($0, "barrelClipping", $v)
+  bladeCount: int => !stored U.prop_get($0, "bladeCount", 5)
+  set bladeCount: int => !stored U.prop_set($0, "bladeCount", $v)
+  curvature: Vector2 => !stored U.prop_get($0, "curvature", Vector2(2.0, 11.0))
+  set curvature: Vector2 => !stored U.prop_set($0, "curvature", $v)
+  gateFit: CameraGateFitMode => !stored U.prop_get($0, "gateFit", 2)
+  set gateFit: CameraGateFitMode => !stored U.prop_set($0, "gateFit", $v)
+  set aspect: float => !stored U.prop_set($0, "aspect", $v)
+  cullingMatrix: Matrix4x4 => U.camera_projection($0)
+  set cullingMatrix: Matrix4x4 => pass
+  overrideSceneCullingMask: ulong => !stored U.prop_get($0, "overrideSceneCullingMask", 0)
+  set overrideSceneCullingMask: ulong => !stored U.prop_set($0, "overrideSceneCullingMask", $v)
+  stereoActiveEye: CameraMonoOrStereoscopicEye => 2
+  static kMinAperture: float => 0.7
+  static kMaxAperture: float => 32.0
+  static kMinBladeCount: int => 3
+  static kMaxBladeCount: int => 11
+  RenderDontRestore(): void => pass
+  Reset(): void => pass
+  static SetupCurrent(Camera): void => U.camera_set_enabled($1, true)
+
+type FrustumPlanes kind=struct gd=Dictionary extern=UnityEngineFrustumPlanes
+  ctor() => {}
+  left: float => $0.get("left", -1.0)
+  set left: float => $0.left = $v
+  right: float => $0.get("right", 1.0)
+  set right: float => $0.right = $v
+  bottom: float => $0.get("bottom", -1.0)
+  set bottom: float => $0.bottom = $v
+  top: float => $0.get("top", 1.0)
+  set top: float => $0.top = $v
+  zNear: float => $0.get("zNear", 0.1)
+  set zNear: float => $0.zNear = $v
+  zFar: float => $0.get("zFar", 1000.0)
+  set zFar: float => $0.zFar = $v
+
+type GeometryUtility kind=static extern=UnityEngineGeometryUtility
+  static CalculateFrustumPlanes(Camera): Plane[] => U.frustum_planes($1)
+  static CalculateFrustumPlanes(Camera, Plane[]): void => U.frustum_planes_into($1, $2)
+  static CalculateFrustumPlanes(Matrix4x4): Plane[] => U.frustum_planes_matrix($1)
+  static CalculateFrustumPlanes(Matrix4x4, Plane[]): void => U.frustum_planes_into(U.main_camera(), $2)
+  static TestPlanesAABB(Plane[], Bounds): bool => U.test_planes_aabb($1, $2)
+  static CalculateBounds(Vector3[], Matrix4x4): Bounds => U.calculate_bounds($1, $2)
+  static TryCreatePlaneFromPolygon(Vector3[], out Plane): bool => var $tmp = U.plane_from_polygon($1) ;; $2 = $tmp.get("plane", Plane()) ;; not $tmp.is_empty()
+
+# Gizmos only exist in the Unity editor: every call is inert.
+type Gizmos
+  static DrawFrustum(Vector3, float, float, float, float): void => pass
+  static DrawGUITexture(Rect, Texture): void => pass
+  static DrawGUITexture(Rect, Texture, Material): void => pass
+  static DrawGUITexture(Rect, Texture, int, int, int, int): void => pass
+  static DrawGUITexture(Rect, Texture, int, int, int, int, Material): void => pass
+  static DrawIcon(Vector3, string): void => pass
+  static DrawIcon(Vector3, string, bool): void => pass
+  static DrawIcon(Vector3, string, bool, Color): void => pass
+  static DrawWireMesh(Mesh): void => pass
+  static DrawWireMesh(Mesh, Vector3): void => pass
+  static DrawWireMesh(Mesh, Vector3, Quaternion): void => pass
+  static DrawWireMesh(Mesh, Vector3, Quaternion, Vector3): void => pass
+  static DrawWireMesh(Mesh, int): void => pass
+  static DrawWireMesh(Mesh, int, Vector3): void => pass
+  static DrawWireMesh(Mesh, int, Vector3, Quaternion): void => pass
+  static DrawWireMesh(Mesh, int, Vector3, Quaternion, Vector3): void => pass
+  static matrix: Matrix4x4 => Transform3D()
+  static set matrix: Matrix4x4 => pass
+  static probeSize: float => 0.5
+
+type Debug
+  ctor() => null
+  static DebugBreak(): void => pass
+  static AssertFormat(bool, string, params object[]): void => assert($1, U.format($2, $params))
+  static AssertFormat(bool, Object, string, params object[]): void => assert($1, U.format($3, $params))
+  static LogAssertion(object): void => push_error(str($1))
+  static LogAssertion(object, Object): void => push_error(str($1))
+  static LogAssertionFormat(string, params object[]): void => push_error(U.format($1, $params))
+  static LogAssertionFormat(Object, string, params object[]): void => push_error(U.format($2, $params))
+
+# Three colour channels × nine coefficients, evaluated with the real SH basis.
+type SphericalHarmonicsL2 kind=struct gd=Dictionary extern=UnityEngineRenderingSphericalHarmonicsL2
+  ctor() => U.sh_new()
+  this[int, int]: float => U.sh_get($0, $1, $2)
+  Clear(): void => $0.c = U.sh_new().c
+  AddAmbientLight(Color): void => U.sh_add_ambient($0, $1)
+  AddDirectionalLight(Vector3, Color, float): void => U.sh_add_directional($0, $1, $2, $3)
+  Evaluate(Vector3[], Color[]): void => U.sh_evaluate($0, $1, $2)
+  op ==(SphericalHarmonicsL2, SphericalHarmonicsL2): bool => $1.get("c", []) == $2.get("c", [])
+  op !=(SphericalHarmonicsL2, SphericalHarmonicsL2): bool => $1.get("c", []) != $2.get("c", [])
+
+# OcclusionPortal: an OccluderInstance3D that a closed portal turns on; other nodes remember `open`.
+type OcclusionPortal : Behaviour kind=component gd=Node extern=UnityEngineOcclusionPortal
+  open: bool => U.portal_get_open($0)
+  set open: bool => U.portal_set_open($0, $v)
+
+# Post-processing volumes have no Godot twin (the WorldEnvironment is global): weights round-trip.
+type PostProcessingPostProcessVolume : Behaviour kind=component gd=Node extern=UnityEngineRenderingPostProcessingPostProcessVolume
+  blendDistance: float => !stored U.prop_get($0, "blendDistance", 0.0)
+  set blendDistance: float => !stored U.prop_set($0, "blendDistance", $v)
+  isGlobal: bool => !stored U.prop_get($0, "isGlobal", true)
+  set isGlobal: bool => !stored U.prop_set($0, "isGlobal", $v)
+  priority: float => !stored U.prop_get($0, "priority", 0.0)
+  set priority: float => !stored U.prop_set($0, "priority", $v)
+  weight: float => !stored U.prop_get($0, "weight", 1.0)
+  set weight: float => !stored U.prop_set($0, "weight", $v)
+
+alias Camera.StereoscopicEye = CameraStereoscopicEye
+alias Camera.MonoOrStereoscopicEye = CameraMonoOrStereoscopicEye
+alias Camera.GateFitMode = CameraGateFitMode
+
+# --- navigation extras (stub backlog): links over NavigationLink3D, nav mesh data and link
+# instances, build settings, query filters, triangulation ------------------------------------------
+
+type OffMeshLinkType kind=enum extern=UnityEngineAIOffMeshLinkType
+  enum LinkTypeManual = 0
+  enum LinkTypeDropDown = 1
+  enum LinkTypeJumpAcross = 2
+
+# NavMeshLink (AI Navigation package) and the legacy OffMeshLink both become NavigationLink3D.
+type NavMeshLink : Behaviour kind=component gd=NavigationLink3D extern=UnityAINavigationNavMeshLink
+  startPoint: Vector3 => U.from_gd_v($0.start_position)
+  set startPoint: Vector3 => $0.start_position = U.to_gd_v($v)
+  endPoint: Vector3 => U.from_gd_v($0.end_position)
+  set endPoint: Vector3 => $0.end_position = U.to_gd_v($v)
+  bidirectional: bool => $0.bidirectional
+  set bidirectional: bool => $0.bidirectional = $v
+  area: int => U.nav_area_get($0)
+  set area: int => U.nav_area_set($0, $v)
+  costModifier: int => int(U.nav_cost_get($0))
+  set costModifier: int => U.nav_cost_set($0, float($v))
+  width: float => !stored U.prop_get($0, "width", 0.0)
+  set width: float => !stored U.prop_set($0, "width", $v)
+  autoUpdate: bool => !stored U.prop_get($0, "autoUpdate", false)
+  set autoUpdate: bool => !stored U.prop_set($0, "autoUpdate", $v)
+  agentTypeID: int => 0
+  set agentTypeID: int => pass
+  UpdateLink(): void => pass
+
+type OffMeshLink : Behaviour kind=component gd=NavigationLink3D extern=UnityEngineAIOffMeshLink
+  activated: bool => $0.enabled
+  set activated: bool => $0.enabled = $v
+  occupied: bool => false
+  biDirectional: bool => $0.bidirectional
+  set biDirectional: bool => $0.bidirectional = $v
+  area: int => U.nav_area_get($0)
+  set area: int => U.nav_area_set($0, $v)
+  costOverride: float => U.nav_cost_get($0)
+  set costOverride: float => U.nav_cost_set($0, $v)
+  startTransform: Transform => U.offmesh_transform_get($0, "start")
+  set startTransform: Transform => U.offmesh_transform_set($0, "start", $v)
+  endTransform: Transform => U.offmesh_transform_get($0, "end")
+  set endTransform: Transform => U.offmesh_transform_set($0, "end", $v)
+  autoUpdatePositions: bool => !stored U.prop_get($0, "autoUpdatePositions", false)
+  set autoUpdatePositions: bool => !stored U.prop_set($0, "autoUpdatePositions", $v)
+  UpdatePositions(): void => U.offmesh_update_positions($0)
+
+# Bake-time modifiers: Godot navigation meshes are baked offline, so the settings only round-trip.
+type NavMeshModifier : Behaviour kind=component gd=Node extern=UnityAINavigationNavMeshModifier
+  area: int => !stored U.prop_get($0, "area", 0)
+  set area: int => !stored U.prop_set($0, "area", $v)
+  overrideArea: bool => !stored U.prop_get($0, "overrideArea", false)
+  set overrideArea: bool => !stored U.prop_set($0, "overrideArea", $v)
+  ignoreFromBuild: bool => !stored U.prop_get($0, "ignoreFromBuild", false)
+  set ignoreFromBuild: bool => !stored U.prop_set($0, "ignoreFromBuild", $v)
+  applyToChildren: bool => !stored U.prop_get($0, "applyToChildren", true)
+  set applyToChildren: bool => !stored U.prop_set($0, "applyToChildren", $v)
+  generateLinks: bool => !stored U.prop_get($0, "generateLinks", false)
+  set generateLinks: bool => !stored U.prop_set($0, "generateLinks", $v)
+  overrideGenerateLinks: bool => !stored U.prop_get($0, "overrideGenerateLinks", false)
+  set overrideGenerateLinks: bool => !stored U.prop_set($0, "overrideGenerateLinks", $v)
+
+type NavMeshModifierVolume : Behaviour kind=component gd=Node extern=UnityAINavigationNavMeshModifierVolume
+  area: int => !stored U.prop_get($0, "area", 0)
+  set area: int => !stored U.prop_set($0, "area", $v)
+  center: Vector3 => !stored U.prop_get($0, "center", Vector3.ZERO)
+  set center: Vector3 => !stored U.prop_set($0, "center", $v)
+  size: Vector3 => !stored U.prop_get($0, "size", Vector3.ONE)
+  set size: Vector3 => !stored U.prop_set($0, "size", $v)
+
+type NavMeshBuildDebugSettings kind=struct gd=Dictionary extern=UnityEngineAINavMeshBuildDebugSettings
+  ctor() => {}
+  flags: int => $0.get("flags", 0)
+  set flags: int => $0.flags = $v
+
+type NavMeshBuildSettings kind=struct gd=Dictionary extern=UnityEngineAINavMeshBuildSettings
+  ctor() => U.nav_build_settings(0)
+  agentTypeID: int => $0.get("agentTypeID", 0)
+  set agentTypeID: int => $0.agentTypeID = $v
+  agentRadius: float => $0.get("agentRadius", 0.5)
+  set agentRadius: float => $0.agentRadius = $v
+  agentHeight: float => $0.get("agentHeight", 2.0)
+  set agentHeight: float => $0.agentHeight = $v
+  agentSlope: float => $0.get("agentSlope", 45.0)
+  set agentSlope: float => $0.agentSlope = $v
+  agentClimb: float => $0.get("agentClimb", 0.4)
+  set agentClimb: float => $0.agentClimb = $v
+  ledgeDropHeight: float => $0.get("ledgeDropHeight", 0.0)
+  set ledgeDropHeight: float => $0.ledgeDropHeight = $v
+  maxJumpAcrossDistance: float => $0.get("maxJumpAcrossDistance", 0.0)
+  set maxJumpAcrossDistance: float => $0.maxJumpAcrossDistance = $v
+  minRegionArea: float => $0.get("minRegionArea", 2.0)
+  set minRegionArea: float => $0.minRegionArea = $v
+  overrideVoxelSize: bool => $0.get("overrideVoxelSize", false)
+  set overrideVoxelSize: bool => $0.overrideVoxelSize = $v
+  voxelSize: float => $0.get("voxelSize", 0.1666)
+  set voxelSize: float => $0.voxelSize = $v
+  overrideTileSize: bool => $0.get("overrideTileSize", false)
+  set overrideTileSize: bool => $0.overrideTileSize = $v
+  tileSize: int => $0.get("tileSize", 256)
+  set tileSize: int => $0.tileSize = $v
+  buildHeightMesh: bool => $0.get("buildHeightMesh", false)
+  set buildHeightMesh: bool => $0.buildHeightMesh = $v
+  preserveTilesOutsideBounds: bool => $0.get("preserveTilesOutsideBounds", false)
+  set preserveTilesOutsideBounds: bool => $0.preserveTilesOutsideBounds = $v
+  debug: NavMeshBuildDebugSettings => $0.get("debug", {})
+  set debug: NavMeshBuildDebugSettings => $0.debug = $v
+  ValidationReport(Bounds): string[] => []
+
+type NavMeshData kind=class gd=Dictionary extern=UnityEngineAINavMeshData
+  ctor() => {}
+  name: string => $0.get("name", "")
+  set name: string => $0.name = $v
+  ctor(int) => {"agentTypeID": $1}
+  position: Vector3 => $0.get("position", Vector3.ZERO)
+  set position: Vector3 => $0.position = $v
+  rotation: Quaternion => $0.get("rotation", Quaternion())
+  set rotation: Quaternion => $0.rotation = $v
+  sourceBounds: Bounds => $0.get("sourceBounds", AABB())
+
+type NavMeshDataInstance kind=struct gd=Dictionary extern=UnityEngineAINavMeshDataInstance
+  ctor() => {"valid": false}
+  valid: bool => $0.get("valid", false)
+  owner: Object => $0.get("owner", null)
+  set owner: Object => $0.owner = $v
+  Remove(): void => U.nav_remove_instance($0)
+
+type NavMeshLinkData kind=struct gd=Dictionary extern=UnityEngineAINavMeshLinkData
+  ctor() => {"bidirectional": true, "costModifier": -1.0, "width": 0.0}
+  startPosition: Vector3 => $0.get("startPosition", Vector3.ZERO)
+  set startPosition: Vector3 => $0.startPosition = $v
+  endPosition: Vector3 => $0.get("endPosition", Vector3.ZERO)
+  set endPosition: Vector3 => $0.endPosition = $v
+  bidirectional: bool => $0.get("bidirectional", true)
+  set bidirectional: bool => $0.bidirectional = $v
+  costModifier: float => $0.get("costModifier", -1.0)
+  set costModifier: float => $0.costModifier = $v
+  width: float => $0.get("width", 0.0)
+  set width: float => $0.width = $v
+  area: int => $0.get("area", 0)
+  set area: int => $0.area = $v
+  agentTypeID: int => $0.get("agentTypeID", 0)
+  set agentTypeID: int => $0.agentTypeID = $v
+
+type NavMeshLinkInstance kind=struct gd=Dictionary extern=UnityEngineAINavMeshLinkInstance
+  ctor() => {"valid": false}
+  valid: bool => $0.get("valid", false)
+  owner: Object => $0.get("owner", null)
+  set owner: Object => $0.owner = $v
+  Remove(): void => U.nav_remove_instance($0)
+
+type NavMeshQueryFilter kind=struct gd=Dictionary extern=UnityEngineAINavMeshQueryFilter
+  ctor() => {"agentTypeID": 0, "areaMask": -1, "costs": {}}
+  agentTypeID: int => $0.get("agentTypeID", 0)
+  set agentTypeID: int => $0.agentTypeID = $v
+  areaMask: int => $0.get("areaMask", -1)
+  set areaMask: int => $0.areaMask = $v
+  GetAreaCost(int): float => U.nav_filter_cost_get($0, $1)
+  SetAreaCost(int, float): void => U.nav_filter_cost_set($0, $1, $2)
+
+type NavMeshTriangulation kind=struct gd=Dictionary extern=UnityEngineAINavMeshTriangulation
+  ctor() => {"vertices": [], "indices": [], "areas": []}
+  vertices: Vector3[] => $0.get("vertices", [])
+  set vertices: Vector3[] => $0.vertices = $v
+  indices: int[] => $0.get("indices", [])
+  set indices: int[] => $0.indices = $v
+  areas: int[] => $0.get("areas", [])
+  set areas: int[] => $0.areas = $v
+
+type OffMeshLinkData kind=struct gd=Dictionary extern=UnityEngineAIOffMeshLinkData
+  ctor() => {"valid": false}
+  valid: bool => $0.get("valid", false)
+  activated: bool => $0.get("activated", false)
+  startPos: Vector3 => $0.get("startPos", Vector3.ZERO)
+  endPos: Vector3 => $0.get("endPos", Vector3.ZERO)
+  linkType: OffMeshLinkType => $0.get("linkType", 0)
+  offMeshLink: OffMeshLink => $0.get("offMeshLink", null)
+
+type NavMesh
+  static AddLink(NavMeshLinkData): NavMeshLinkInstance => U.nav_add_link($1, Vector3.ZERO, Quaternion())
+  static AddLink(NavMeshLinkData, Vector3, Quaternion): NavMeshLinkInstance => U.nav_add_link($1, $2, $3)
+  static RemoveLink(NavMeshLinkInstance): void => U.nav_remove_instance($1)
+  static AddNavMeshData(NavMeshData): NavMeshDataInstance => U.nav_add_data($1, Vector3.ZERO, Quaternion())
+  static AddNavMeshData(NavMeshData, Vector3, Quaternion): NavMeshDataInstance => U.nav_add_data($1, $2, $3)
+  static RemoveNavMeshData(NavMeshDataInstance): void => U.nav_remove_instance($1)
+  static CreateSettings(): NavMeshBuildSettings => U.nav_build_settings(1)
+  static GetSettingsByID(int): NavMeshBuildSettings => U.nav_build_settings($1)
+  static GetSettingsByIndex(int): NavMeshBuildSettings => U.nav_build_settings($1)
+  static GetSettingsCount(): int => 1
+  static GetSettingsNameFromID(int): string => "Humanoid"
+  static RemoveSettings(int): void => pass
+  static Raycast(Vector3, Vector3, out NavMeshHit, NavMeshQueryFilter): bool => $3 = U.nav_raycast($1, $2, $4.get("areaMask", -1)) ;; $3.get("hit", false)
+  static SamplePosition(Vector3, out NavMeshHit, float, NavMeshQueryFilter): bool => $2 = U.nav_sample($1, $3) ;; $2.get("hit", false)
+  static CalculatePath(Vector3, Vector3, NavMeshQueryFilter, NavMeshPath): bool => $4.corners = U.nav_path($1, $2) ;; not $4.corners.is_empty()
+
+type NavMeshAgent
+  navMeshOwner: Object => U.nav_region_of($0)
+
+# --- animation, constraint, humanoid and reflection extras (stub backlog) --------------------------
+
+type Axis kind=enum extern=UnityEngineAnimationsAxis
+  enum None = 0
+  enum X = 1
+  enum Y = 2
+  enum Z = 4
+
+type AimConstraintWorldUpType kind=enum extern=UnityEngineAnimationsAimConstraintWorldUpType
+  enum SceneUp = 0
+  enum ObjectUp = 1
+  enum ObjectRotationUp = 2
+  enum Vector = 3
+  enum None = 4
+
+type WrapMode kind=enum extern=UnityEngineWrapMode
+  enum Default = 0
+  enum Once = 1
+  enum Clamp = 1
+  enum Loop = 2
+  enum PingPong = 4
+  enum ClampForever = 8
+
+type AvatarMaskBodyPart kind=enum extern=UnityEngineAvatarMaskBodyPart
+  enum Root = 0
+  enum Body = 1
+  enum Head = 2
+  enum LeftLeg = 3
+  enum RightLeg = 4
+  enum LeftArm = 5
+  enum RightArm = 6
+  enum LeftFingers = 7
+  enum RightFingers = 8
+  enum LeftFootIK = 9
+  enum RightFootIK = 10
+  enum LeftHandIK = 11
+  enum RightHandIK = 12
+  enum LastBodyPart = 13
+
+# The runtime solves constraints each frame (U.solve_constraints); sources and settings live in the
+# constraint store, so every member here is a plain get/set on it.
+type PositionConstraint
+  translationAxis: Axis => U.constraint_get($0, "translationAxis", 7)
+  set translationAxis: Axis => U.constraint_set($0, "translationAxis", $v)
+  GetSources(ConstraintSource[]): void => $1.assign(U.constraint_sources($0))
+  SetSources(ConstraintSource[]): void => U.constraint_set($0, "sources", Array($1))
+
+type RotationConstraint
+  locked: bool => U.constraint_get($0, "locked", false)
+  set locked: bool => U.constraint_set($0, "locked", $v)
+  rotationAxis: Axis => U.constraint_get($0, "rotationAxis", 7)
+  set rotationAxis: Axis => U.constraint_set($0, "rotationAxis", $v)
+  RemoveSource(int): void => U.constraint_remove_source($0, $1)
+  GetSources(ConstraintSource[]): void => $1.assign(U.constraint_sources($0))
+  SetSources(ConstraintSource[]): void => U.constraint_set($0, "sources", Array($1))
+
+type ScaleConstraint
+  locked: bool => U.constraint_get($0, "locked", false)
+  set locked: bool => U.constraint_set($0, "locked", $v)
+  scaleAtRest: Vector3 => U.constraint_get($0, "scaleAtRest", Vector3.ONE)
+  set scaleAtRest: Vector3 => U.constraint_set($0, "scaleAtRest", $v)
+  scaleOffset: Vector3 => U.constraint_get($0, "scaleOffset", Vector3.ONE)
+  set scaleOffset: Vector3 => U.constraint_set($0, "scaleOffset", $v)
+  scalingAxis: Axis => U.constraint_get($0, "scalingAxis", 7)
+  set scalingAxis: Axis => U.constraint_set($0, "scalingAxis", $v)
+  sourceCount: int => U.constraint_sources($0).size()
+  GetSource(int): ConstraintSource => U.constraint_sources($0)[$1]
+  SetSource(int, ConstraintSource): void => U.constraint_set_source($0, $1, $2)
+  AddSource(ConstraintSource): int => U.constraint_add_source($0, $1)
+  RemoveSource(int): void => U.constraint_remove_source($0, $1)
+  GetSources(ConstraintSource[]): void => $1.assign(U.constraint_sources($0))
+  SetSources(ConstraintSource[]): void => U.constraint_set($0, "sources", Array($1))
+
+type ParentConstraint
+  locked: bool => U.constraint_get($0, "locked", false)
+  set locked: bool => U.constraint_set($0, "locked", $v)
+  translationAtRest: Vector3 => U.constraint_get($0, "translationAtRest", Vector3.ZERO)
+  set translationAtRest: Vector3 => U.constraint_set($0, "translationAtRest", $v)
+  rotationAtRest: Vector3 => U.constraint_get($0, "rotationAtRest", Vector3.ZERO)
+  set rotationAtRest: Vector3 => U.constraint_set($0, "rotationAtRest", $v)
+  translationAxis: Axis => U.constraint_get($0, "translationAxis", 7)
+  set translationAxis: Axis => U.constraint_set($0, "translationAxis", $v)
+  rotationAxis: Axis => U.constraint_get($0, "rotationAxis", 7)
+  set rotationAxis: Axis => U.constraint_set($0, "rotationAxis", $v)
+  translationOffsets: Vector3[] => U.constraint_get($0, "translationOffsets", [])
+  set translationOffsets: Vector3[] => U.constraint_set($0, "translationOffsets", Array($v))
+  rotationOffsets: Vector3[] => U.constraint_get($0, "rotationOffsets", [])
+  set rotationOffsets: Vector3[] => U.constraint_set($0, "rotationOffsets", Array($v))
+  GetTranslationOffset(int): Vector3 => U.constraint_offset($0, "translationOffsets", $1)
+  GetRotationOffset(int): Vector3 => U.constraint_offset($0, "rotationOffsets", $1)
+  RemoveSource(int): void => U.constraint_remove_source($0, $1)
+  GetSources(ConstraintSource[]): void => $1.assign(U.constraint_sources($0))
+  SetSources(ConstraintSource[]): void => U.constraint_set($0, "sources", Array($1))
+
+type AimConstraint
+  locked: bool => U.constraint_get($0, "locked", false)
+  set locked: bool => U.constraint_set($0, "locked", $v)
+  aimVector: Vector3 => U.constraint_get($0, "aimVector", U.vec_forward())
+  set aimVector: Vector3 => U.constraint_set($0, "aimVector", $v)
+  upVector: Vector3 => U.constraint_get($0, "upVector", Vector3.UP)
+  set upVector: Vector3 => U.constraint_set($0, "upVector", $v)
+  worldUpVector: Vector3 => U.constraint_get($0, "worldUpVector", Vector3.UP)
+  set worldUpVector: Vector3 => U.constraint_set($0, "worldUpVector", $v)
+  worldUpObject: Transform => U.constraint_get($0, "worldUpObject", null)
+  set worldUpObject: Transform => U.constraint_set($0, "worldUpObject", $v)
+  worldUpType: AimConstraintWorldUpType => U.constraint_get($0, "worldUpType", 0)
+  set worldUpType: AimConstraintWorldUpType => U.constraint_set($0, "worldUpType", $v)
+  rotationAtRest: Vector3 => U.constraint_get($0, "rotationAtRest", Vector3.ZERO)
+  set rotationAtRest: Vector3 => U.constraint_set($0, "rotationAtRest", $v)
+  rotationOffset: Vector3 => U.constraint_get($0, "rotationOffset", Vector3.ZERO)
+  set rotationOffset: Vector3 => U.constraint_set($0, "rotationOffset", $v)
+  rotationAxis: Axis => U.constraint_get($0, "rotationAxis", 7)
+  set rotationAxis: Axis => U.constraint_set($0, "rotationAxis", $v)
+  RemoveSource(int): void => U.constraint_remove_source($0, $1)
+  GetSources(ConstraintSource[]): void => $1.assign(U.constraint_sources($0))
+  SetSources(ConstraintSource[]): void => U.constraint_set($0, "sources", Array($1))
+
+type LookAtConstraint
+  locked: bool => U.constraint_get($0, "locked", false)
+  set locked: bool => U.constraint_set($0, "locked", $v)
+  roll: float => U.constraint_get($0, "roll", 0.0)
+  set roll: float => U.constraint_set($0, "roll", $v)
+  useUpObject: bool => U.constraint_get($0, "useUpObject", false)
+  set useUpObject: bool => U.constraint_set($0, "useUpObject", $v)
+  worldUpObject: Transform => U.constraint_get($0, "worldUpObject", null)
+  set worldUpObject: Transform => U.constraint_set($0, "worldUpObject", $v)
+  rotationAtRest: Vector3 => U.constraint_get($0, "rotationAtRest", Vector3.ZERO)
+  set rotationAtRest: Vector3 => U.constraint_set($0, "rotationAtRest", $v)
+  rotationOffset: Vector3 => U.constraint_get($0, "rotationOffset", Vector3.ZERO)
+  set rotationOffset: Vector3 => U.constraint_set($0, "rotationOffset", $v)
+  RemoveSource(int): void => U.constraint_remove_source($0, $1)
+  GetSources(ConstraintSource[]): void => $1.assign(U.constraint_sources($0))
+  SetSources(ConstraintSource[]): void => U.constraint_set($0, "sources", Array($1))
+
+type AnimationCurve
+  this[int]: Keyframe => U.curve_key($0, $1)
+  set keys: Keyframe[] => U.curve_set_keys($0, $v)
+  ClearKeys(): void => U.curve_clear($0)
+  CopyFrom(AnimationCurve): void => U.curve_copy($0, $1)
+  preWrapMode: WrapMode => !stored U.prop_get($0, "preWrapMode", 8)
+  set preWrapMode: WrapMode => !stored U.prop_set($0, "preWrapMode", $v)
+  postWrapMode: WrapMode => !stored U.prop_get($0, "postWrapMode", 8)
+  set postWrapMode: WrapMode => !stored U.prop_set($0, "postWrapMode", $v)
+
+type Motion : Object kind=class gd=Animation extern=UnityEngineMotion
+  apparentSpeed: float => 0.0
+  averageAngularSpeed: float => 0.0
+  averageDuration: float => $0.length if $0 != null else 0.0
+  averageSpeed: Vector3 => Vector3.ZERO
+  isHumanMotion: bool => false
+  isLooping: bool => ($0.loop_mode != 0) if $0 != null else false
+
+type AnimationClip
+  apparentSpeed: float => 0.0
+  averageAngularSpeed: float => 0.0
+  averageDuration: float => $0.length if $0 != null else 0.0
+  averageSpeed: Vector3 => Vector3.ZERO
+  isHumanMotion: bool => false
+
+type RuntimeAnimatorController
+  animationClips: AnimationClip[] => U.anim_controller_clips($0)
+
+# An override controller is the base controller plus a clip-name → clip map.
+type AnimatorOverrideController : RuntimeAnimatorController kind=class gd=Dictionary extern=UnityEngineAnimatorOverrideController
+  ctor() => {"controller": null, "overrides": {}}
+  ctor(RuntimeAnimatorController) => {"controller": $1, "overrides": {}}
+  this[string]: AnimationClip => $0.get("overrides", {}).get($1, null)
+  this[AnimationClip]: AnimationClip => $0.get("overrides", {}).get(U.anim_clip_name($1), null)
+  runtimeAnimatorController: RuntimeAnimatorController => $0.get("controller", null)
+  set runtimeAnimatorController: RuntimeAnimatorController => $0.controller = $v
+  overridesCount: int => $0.get("overrides", {}).size()
+  animationClips: AnimationClip[] => U.anim_controller_clips($0.get("controller", null))
+  ApplyOverrides(KeyValuePair[]): void => pass
+  GetOverrides(KeyValuePair[]): void => pass
+
+type Animator
+  avatarRoot: Transform => U.game_object($0)
+  keepAnimatorControllerStateOnDisable: bool => !stored U.prop_get($0, "keepAnimatorControllerStateOnDisable", false)
+  set keepAnimatorControllerStateOnDisable: bool => !stored U.prop_set($0, "keepAnimatorControllerStateOnDisable", $v)
+
+type AnimatorControllerParameter
+  ctor() => {"name": "", "type": 1, "defaultFloat": 0.0, "defaultInt": 0, "defaultBool": false}
+
+# Humanoid descriptions are avatar data: dictionaries with Unity's fields and constants.
+type Avatar : Object kind=class gd=Dictionary extern=UnityEngineAvatar
+  humanDescription: HumanDescription => $0.get("humanDescription", {})
+  isHuman: bool => $0.get("isHuman", false)
+  isValid: bool => true
+  name: string => $0.get("name", "")
+
+type HumanBone kind=struct gd=Dictionary extern=UnityEngineHumanBone
+  ctor() => {}
+  boneName: string => $0.get("boneName", "")
+  set boneName: string => $0.boneName = $v
+  humanName: string => $0.get("humanName", "")
+  set humanName: string => $0.humanName = $v
+  limit: HumanLimit => $0.get("limit", {})
+  set limit: HumanLimit => $0.limit = $v
+
+type HumanLimit kind=struct gd=Dictionary extern=UnityEngineHumanLimit
+  ctor() => {"useDefaultValues": true}
+  useDefaultValues: bool => $0.get("useDefaultValues", true)
+  set useDefaultValues: bool => $0.useDefaultValues = $v
+  min: Vector3 => $0.get("min", Vector3.ZERO)
+  set min: Vector3 => $0.min = $v
+  max: Vector3 => $0.get("max", Vector3.ZERO)
+  set max: Vector3 => $0.max = $v
+  center: Vector3 => $0.get("center", Vector3.ZERO)
+  set center: Vector3 => $0.center = $v
+  axisLength: float => $0.get("axisLength", 0.0)
+  set axisLength: float => $0.axisLength = $v
+
+type SkeletonBone kind=struct gd=Dictionary extern=UnityEngineSkeletonBone
+  ctor() => {"scale": Vector3.ONE}
+  name: string => $0.get("name", "")
+  set name: string => $0.name = $v
+  position: Vector3 => $0.get("position", Vector3.ZERO)
+  set position: Vector3 => $0.position = $v
+  rotation: Quaternion => $0.get("rotation", Quaternion())
+  set rotation: Quaternion => $0.rotation = $v
+  scale: Vector3 => $0.get("scale", Vector3.ONE)
+  set scale: Vector3 => $0.scale = $v
+
+type HumanDescription kind=struct gd=Dictionary extern=UnityEngineHumanDescription
+  ctor() => {"human": [], "skeleton": [], "upperArmTwist": 0.5, "lowerArmTwist": 0.5, "upperLegTwist": 0.5, "lowerLegTwist": 0.5, "armStretch": 0.05, "legStretch": 0.05, "feetSpacing": 0.0}
+  human: HumanBone[] => $0.get("human", [])
+  set human: HumanBone[] => $0.human = $v
+  skeleton: SkeletonBone[] => $0.get("skeleton", [])
+  set skeleton: SkeletonBone[] => $0.skeleton = $v
+  upperArmTwist: float => $0.get("upperArmTwist", 0.5)
+  set upperArmTwist: float => $0.upperArmTwist = $v
+  lowerArmTwist: float => $0.get("lowerArmTwist", 0.5)
+  set lowerArmTwist: float => $0.lowerArmTwist = $v
+  upperLegTwist: float => $0.get("upperLegTwist", 0.5)
+  set upperLegTwist: float => $0.upperLegTwist = $v
+  lowerLegTwist: float => $0.get("lowerLegTwist", 0.5)
+  set lowerLegTwist: float => $0.lowerLegTwist = $v
+  armStretch: float => $0.get("armStretch", 0.05)
+  set armStretch: float => $0.armStretch = $v
+  legStretch: float => $0.get("legStretch", 0.05)
+  set legStretch: float => $0.legStretch = $v
+  feetSpacing: float => $0.get("feetSpacing", 0.0)
+  set feetSpacing: float => $0.feetSpacing = $v
+  hasTranslationDoF: bool => $0.get("hasTranslationDoF", false)
+  set hasTranslationDoF: bool => $0.hasTranslationDoF = $v
+
+type HumanTrait kind=class gd=Dictionary extern=UnityEngineHumanTrait
+  ctor() => {}
+  static BoneCount: int => 55
+  static BoneName: string[] => U.HUMAN_BONES.duplicate()
+  static MuscleCount: int => 95
+  static MuscleName: string[] => !stub U.human_muscle_names()
+  static RequiredBoneCount: int => 15
+  static RequiredBone(int): bool => U.HUMAN_REQUIRED.has($1)
+  static GetParentBone(int): int => U.human_parent_bone($1)
+  static MuscleFromBone(int, int): int => -1
+  static BoneFromMuscle(int): int => -1
+  static GetMuscleDefaultMin(int): float => -40.0
+  static GetMuscleDefaultMax(int): float => 40.0
+  static GetBoneDefaultHierarchyMass(int): float => 0.1
+
+type AvatarMask : Object kind=class gd=Dictionary extern=UnityEngineAvatarMask
+  ctor() => {"paths": [], "parts": {}}
+  transformCount: int => U.mask_paths($0).size()
+  set transformCount: int => U.mask_paths($0).resize($v)
+  AddTransformPath(Transform): void => U.mask_add_path($0, $1, true)
+  AddTransformPath(Transform, bool): void => U.mask_add_path($0, $1, $2)
+  RemoveTransformPath(Transform): void => U.mask_remove_path($0, $1, true)
+  RemoveTransformPath(Transform, bool): void => U.mask_remove_path($0, $1, $2)
+  GetTransformPath(int): string => U.mask_paths($0)[$1].get("path", "") if $1 < U.mask_paths($0).size() else ""
+  SetTransformPath(int, string): void => U.mask_paths($0)[$1].path = $2
+  GetTransformActive(int): bool => U.mask_paths($0)[$1].get("active", true) if $1 < U.mask_paths($0).size() else false
+  SetTransformActive(int, bool): void => U.mask_paths($0)[$1].active = $2
+  GetHumanoidBodyPartActive(AvatarMaskBodyPart): bool => $0.get("parts", {}).get($1, true)
+  SetHumanoidBodyPartActive(AvatarMaskBodyPart, bool): void => $0.parts[$1] = $2
+
+type CinemachineVirtualCamera
+  DetachedFollowTargetDamp(float, float, float): float => U.cine_damp($1, $2, $3)
+  DetachedFollowTargetDamp(Vector3, float, float): Vector3 => U.cine_damp_v($1, $2, $3)
+  DetachedFollowTargetDamp(Vector3, Vector3, float): Vector3 => U.cine_damp_v3($1, $2, $3)
+  DetachedLookAtTargetDamp(float, float, float): float => U.cine_damp($1, $2, $3)
+  DetachedLookAtTargetDamp(Vector3, float, float): Vector3 => U.cine_damp_v($1, $2, $3)
+  DetachedLookAtTargetDamp(Vector3, Vector3, float): Vector3 => U.cine_damp_v3($1, $2, $3)
+  FollowTargetAttachment: float => U.cine_get($0, "followAttachment", 1.0)
+  set FollowTargetAttachment: float => U.cine_set($0, "followAttachment", $v)
+  LookAtTargetAttachment: float => U.cine_get($0, "lookAtAttachment", 1.0)
+  set LookAtTargetAttachment: float => U.cine_set($0, "lookAtAttachment", $v)
+  FollowTargetChanged: bool => false
+  LookAtTargetChanged: bool => false
+  FollowTargetAsVcam: CinemachineVirtualCameraBase => null
+  LookAtTargetAsVcam: CinemachineVirtualCameraBase => null
+  AbstractFollowTargetGroup: ICinemachineTargetGroup => null
+  AbstractLookAtTargetGroup: ICinemachineTargetGroup => null
+
+# System.Type is a name string here: reflection answers are the values a plain class would give.
+type Type
+  GetArrayRank(): int => 1
+  GetEnumName(object): string => str($1)
+  GetEnumNames(): string[] => []
+  GetEnumUnderlyingType(): Type => "Int32"
+  GetEnumValues(): Array => []
+  GetGenericArguments(): Type[] => []
+  GetGenericParameterConstraints(): Type[] => []
+  GetGenericTypeDefinition(): Type => $0
+  GetNestedType(string): Type => ($0 + "." + $1)
+  static GetTypeArray(object[]): Type[] => U.type_array($1)
+  IsEnumDefined(object): bool => false
+  IsEquivalentTo(Type): bool => ($0 == $1)
+  MakeArrayType(): Type => ($0 + "[]")
+  MakeArrayType(int): Type => ($0 + "[]")
+  MakeByRefType(): Type => $0
+  MakeGenericType(Type[]): Type => $0
+  ContainsGenericParameters: bool => false
+  DeclaringType: Type => ""
+  GUID: Guid => ""
+  GenericParameterPosition: int => 0
+  GenericTypeArguments: Type[] => []
+  HasElementType: bool => $0.ends_with("[]")
+  IsAnsiClass: bool => true
+  IsAutoClass: bool => false
+  IsAutoLayout: bool => true
+  IsByRef: bool => false
+  IsCOMObject: bool => false
+  IsConstructedGenericType: bool => false
+  IsContextful: bool => false
+  IsExplicitLayout: bool => false
+  IsGenericParameter: bool => false
+  IsGenericTypeDefinition: bool => false
+  IsGenericType: bool => false
+  IsImport: bool => false
+  IsLayoutSequential: bool => false
+  IsMarshalByRef: bool => false
+  IsNested: bool => $0.contains("+")
+  IsNestedAssembly: bool => false
+  IsNestedFamANDAssem: bool => false
+  IsNestedFamORAssem: bool => false
+  IsNestedFamily: bool => false
+  IsNestedPrivate: bool => false
+  IsNestedPublic: bool => $0.contains("+")
+  IsNotPublic: bool => false
+  IsPointer: bool => false
+  IsPublic: bool => true
+  IsSZArray: bool => $0.ends_with("[]")
+  IsSealed: bool => false
+  IsSecurityCritical: bool => false
+  IsSecuritySafeCritical: bool => false
+  IsSecurityTransparent: bool => true
+  IsSerializable: bool => true
+  IsSpecialName: bool => false
+  IsUnicodeClass: bool => false
+  IsVisible: bool => true
+  ReflectedType: Type => $0
+  UnderlyingSystemType: Type => $0
+
+# --- last leftovers: text assets, human poses, small structs, editor-only utilities ------------------
+
+type TextAsset : Object kind=class gd=Variant extern=UnityEngineTextAsset
+  ctor(string) => $1
+  text: string => U.text_asset_text($0)
+  bytes: byte[] => U.text_asset_bytes($0)
+  dataSize: long => U.text_asset_bytes($0).size()
+  name: string => ($0.resource_name if $0 is Resource else "")
+  ToString(): string => U.text_asset_text($0)
+
+type HumanPose kind=struct gd=Dictionary extern=UnityEngineHumanPose
+  ctor() => {"bodyPosition": Vector3.ZERO, "bodyRotation": Quaternion(), "muscles": U.new_array(95, 0.0)}
+  bodyPosition: Vector3 => $0.get("bodyPosition", Vector3.ZERO)
+  set bodyPosition: Vector3 => $0.bodyPosition = $v
+  bodyRotation: Quaternion => $0.get("bodyRotation", Quaternion())
+  set bodyRotation: Quaternion => $0.bodyRotation = $v
+  muscles: float[] => $0.get("muscles", [])
+  set muscles: float[] => $0.muscles = $v
+
+# Godot has no humanoid retargeting at run time: the handler hands back the pose it was given.
+type HumanPoseHandler kind=class gd=Dictionary extern=UnityEngineHumanPoseHandler
+  ctor(Avatar, Transform) => {"avatar": $1, "root": $2, "pose": {"bodyPosition": Vector3.ZERO, "bodyRotation": Quaternion(), "muscles": U.new_array(95, 0.0)}}
+  ctor(Avatar, string[]) => {"avatar": $1, "pose": {"bodyPosition": Vector3.ZERO, "bodyRotation": Quaternion(), "muscles": U.new_array(95, 0.0)}}
+  GetHumanPose(out HumanPose): void => $1 = $0.get("pose", {})
+  GetInternalHumanPose(out HumanPose): void => $1 = $0.get("pose", {})
+  SetHumanPose(out HumanPose): void => $0.pose = $1
+  SetInternalHumanPose(out HumanPose): void => $0.pose = $1
+  Dispose(): void => pass
+
+type MatchTargetWeightMask kind=struct gd=Dictionary extern=UnityEngineMatchTargetWeightMask
+  ctor() => {"positionXYZWeight": Vector3.ONE, "rotationWeight": 1.0}
+  ctor(Vector3, float) => {"positionXYZWeight": $1, "rotationWeight": $2}
+  positionXYZWeight: Vector3 => $0.get("positionXYZWeight", Vector3.ONE)
+  set positionXYZWeight: Vector3 => $0.positionXYZWeight = $v
+  rotationWeight: float => $0.get("rotationWeight", 1.0)
+  set rotationWeight: float => $0.rotationWeight = $v
+
+type CameraGateFitParameters kind=struct gd=Dictionary extern=UnityEngineCameraGateFitParameters
+  ctor() => {"mode": 2, "aspect": 1.777}
+  ctor(CameraGateFitMode, float) => {"mode": $1, "aspect": $2}
+  mode: CameraGateFitMode => $0.get("mode", 2)
+  set mode: CameraGateFitMode => $0.mode = $v
+  aspect: float => $0.get("aspect", 1.777)
+  set aspect: float => $0.aspect = $v
+
+type AsyncOperation kind=class gd=Dictionary extern=UnityEngineAsyncOperation
+  isDone: bool => $0.get("isDone", true)
+  progress: float => $0.get("progress", 1.0)
+  allowSceneActivation: bool => $0.get("allowSceneActivation", true)
+  set allowSceneActivation: bool => $0.allowSceneActivation = $v
+  priority: int => $0.get("priority", 0)
+  set priority: int => $0.priority = $v
+
+type AudioSource
+  SetScheduledStartTime(double): void => pass
+  spatializePostEffects: bool => !stored U.prop_get($0, "spatializePostEffects", false)
+  set spatializePostEffects: bool => !stored U.prop_set($0, "spatializePostEffects", $v)
+
+type AudioClip
+  static Create(string, int, int, int, bool): AudioClip => U.audio_clip_create($1, $2, $3, $4)
+  static Create(string, int, int, int, bool, bool): AudioClip => U.audio_clip_create($1, $2, $3, $4)
+
+type AvatarBuilder kind=static extern=UnityEngineAvatarBuilder
+  ctor() => null
+  static BuildGenericAvatar(GameObject, string): Avatar => {"isHuman": false, "name": U.obj_get_name($1)}
+  static BuildHumanAvatar(GameObject, HumanDescription): Avatar => {"isHuman": true, "humanDescription": $2, "name": U.obj_get_name($1)}
+
+type AnimatorUtility kind=static extern=UnityEngineAnimatorUtility
+  ctor() => null
+  static OptimizeTransformHierarchy(GameObject, string[]): void => pass
+  static DeoptimizeTransformHierarchy(GameObject): void => pass
+
+type AnimationState
+  ctor() => {}
+
+type GameObject
+  set isStatic: bool => !stored U.prop_set($0, "isStatic", $v)
+
+type Time
+  static fixedUnscaledTimeAsDouble: double => Udon._fixed_time
+
+type Transform
+  hierarchyCount: int => U.hierarchy_count($0)
+  set hierarchyCapacity: int => pass
+
+type RendererExtensions kind=static extern=UnityEngineRendererExtensions
+  static UpdateGIMaterials(Renderer): void => pass
+
+type CinemachinePathBase
+  StandardizePathDistance(float): float => $1
+  DistanceCacheSampleStepsPerSegment: int => 10
+
+type Toggle
+  set graphic: Graphic => !stored U.prop_set($0, "graphic", $v)
+  set toggleTransition: int => !stored U.prop_set($0, "toggleTransition", $v)
+
+type ButtonButtonClickedEvent
+  ctor() => Signal()
+  GetPersistentListenerState(int): int => 2
+
+type ToggleToggleEvent
+  ctor() => Signal()
+  GetPersistentListenerState(int): int => 2
+
+type SliderSliderEvent
+  ctor() => Signal()
+  GetPersistentListenerState(int): int => 2
+
+type ScrollbarScrollEvent
+  ctor() => Signal()
+  GetPersistentListenerState(int): int => 2
+
+type ScrollRectScrollRectEvent
+  ctor() => Signal()
+  GetPersistentListenerState(int): int => 2
+
+type Dropdown.DropdownEvent
+  ctor() => Signal()
+  GetPersistentListenerState(int): int => 2
+
+type LayoutRebuilder
+  ctor() => null
+
+type MaskUtilities
+  ctor() => null
+
+type DefaultControlsResources
+  set standard: Sprite => $0.standard = $v
+  set background: Sprite => $0.background = $v
+  set inputField: Sprite => $0.inputField = $v
+  set knob: Sprite => $0.knob = $v
+  set checkmark: Sprite => $0.checkmark = $v
+  set dropdown: Sprite => $0.dropdown = $v
+  set mask: Sprite => $0.mask = $v
+
+type TextGenerationSettings
+  set font: Font => $0.font = $v
+  set color: Color => $0.color = $v
+  set fontSize: int => $0.fontSize = $v
+  set lineSpacing: float => $0.lineSpacing = $v
+  set richText: bool => $0.richText = $v
+  set scaleFactor: float => $0.scaleFactor = $v
+  set fontStyle: FontStyle => $0.fontStyle = $v
+  set textAnchor: TextAnchor => $0.textAnchor = $v
+  set alignByGeometry: bool => $0.alignByGeometry = $v
+  set resizeTextForBestFit: bool => $0.resizeTextForBestFit = $v
+  set resizeTextMinSize: int => $0.resizeTextMinSize = $v
+  set resizeTextMaxSize: int => $0.resizeTextMaxSize = $v
+  set updateBounds: bool => $0.updateBounds = $v
+  set verticalOverflow: VerticalWrapMode => $0.verticalOverflow = $v
+  set horizontalOverflow: HorizontalWrapMode => $0.horizontalOverflow = $v
+  set generationExtents: Vector2 => $0.generationExtents = $v
+  set pivot: Vector2 => $0.pivot = $v
+  set generateOutOfBounds: bool => $0.generateOutOfBounds = $v
+
+type TMP_TextInfo
+  set characterCount: int => $0.characterCount = $v
+  set spriteCount: int => $0.spriteCount = $v
+  set spaceCount: int => $0.spaceCount = $v
+  set wordCount: int => $0.wordCount = $v
+  set linkCount: int => $0.linkCount = $v
+  set lineCount: int => $0.lineCount = $v
+  set pageCount: int => $0.pageCount = $v
+  set materialCount: int => $0.materialCount = $v
+  set textComponent: TMP_Text => $0.textComponent = $v
+  set characterInfo: TMP_CharacterInfo[] => $0.characterInfo = $v
+  set wordInfo: TMP_WordInfo[] => $0.wordInfo = $v
+  set linkInfo: TMP_LinkInfo[] => $0.linkInfo = $v
+  set lineInfo: TMP_LineInfo[] => $0.lineInfo = $v
+  set pageInfo: TMP_PageInfo[] => $0.pageInfo = $v
+  set meshInfo: TMP_MeshInfo[] => $0.meshInfo = $v
+
+type TMP_MeshInfo
+  set mesh: Mesh => $0.mesh = $v
+  set material: Material => $0.material = $v
+  set vertexCount: int => $0.vertexCount = $v
+  set vertices: Vector3[] => $0.vertices = $v
+  set normals: Vector3[] => $0.normals = $v
+  set tangents: Vector4[] => $0.tangents = $v
+  set uvs0: Vector2[] => $0.uvs0 = $v
+  set uvs2: Vector2[] => $0.uvs2 = $v
+  set colors32: Color32[] => $0.colors32 = $v
+  set triangles: int[] => $0.triangles = $v
+
+type Group
+  static Synchronized(Group): Group => $1
+
+type Match
+  static Synchronized(Match): Match => $1

@@ -14,3 +14,7 @@ U="*res://addons/udon_runtime/u.gd"
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/godot_sandbox/plugin.cfg")
+
+[sandbox]
+
+compilation/debug_info=true

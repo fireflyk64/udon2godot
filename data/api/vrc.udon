@@ -32,6 +32,9 @@ type UdonSharpBehaviour : UdonBehaviour kind=behaviour gd=Node extern=UdonSharpU
   static VRCInstantiate(GameObject): GameObject => Udon.instantiate($1)
   static GetUdonTypeID(): long => 0
   static GetUdonTypeName(): string => ""
+  GetUdonTypeName(): string => $0.udon_class()
+  GetUdonTypeID(): long => hash($0.udon_class())
+  static GetUdonTypeID(): long => 0
   RequestSerialization(): void => U.request_serialization($0)
 
 type EventTiming kind=enum extern=VRCUdonCommonEnumsEventTiming
@@ -401,6 +404,7 @@ type VRCInputMethod kind=enum extern=VRCSDKBaseVRCInputMethod
   enum SteamVR2 = 15
   enum Touch = 16
   enum Count = 17
+  enum Generic = 4
 
 type UdonInputEventArgs kind=struct gd=Dictionary extern=VRCUdonCommonUdonInputEventArgs
   handType: HandType => $0.get("handType", 0)
@@ -455,7 +459,6 @@ type VRCCameraSettings kind=class gd=Object extern=VRCSDK3RenderingVRCCameraSett
   PixelHeight: int => $0.pixel_height
 
 type VRCQualitySettings kind=static extern=VRCSDK3RenderingVRCQualitySettings
-  static ShadowDistance: float => 100.0
   static VSyncCount: int => 1
 
 type PlayerData kind=static extern=VRCSDK3PersistencePlayerData

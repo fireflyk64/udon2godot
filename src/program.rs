@@ -472,7 +472,9 @@ impl Program {
                 if self.is_user_class(n) {
                     n.clone()
                 } else if let Some(t) = self.catalog.get(n) {
-                    if t.gd == "Variant" || t.gd == "Node" && t.name != "Node" {
+                    // generic Godot classes (Node, Control, CanvasLayer ...) say nothing about the Unity
+                    // component; the runtime resolves the Unity name through its alias table instead
+                    if t.gd == "Variant" || (matches!(t.gd.as_str(), "Node" | "Control" | "CanvasLayer" | "CanvasItem" | "Container") && t.name != t.gd) {
                         t.name.clone()
                     } else {
                         t.gd.clone()

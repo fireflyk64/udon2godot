@@ -4,12 +4,13 @@
 # `gameObject`, `transform` and any component-typed expression therefore all denote that node.
 
 type Object kind=component gd=Node extern=UnityEngineObject
-  name: string => String($0.name)
-  set name: string => $0.name = $v
+  name: string => U.obj_get_name($0)
+  set name: string => U.obj_set_name($0, $v)
   hideFlags: int => 0
   GetInstanceID(): int => $0.get_instance_id()
   ToString(): string => String($0.name)
   Equals(object): bool => $0 == $1
+  static ReferenceEquals(object, object): bool => $1 == $2
   GetHashCode(): int => $0.get_instance_id()
   static Instantiate(Object): Object => Udon.instantiate($1)
   static Instantiate(Object, Transform): Object => Udon.instantiate_in($1, $2)
@@ -27,6 +28,7 @@ type Object kind=component gd=Node extern=UnityEngineObject
   op implicit_bool(Object): bool => is_instance_valid($1)
 
 type Component : Object kind=component gd=Node extern=UnityEngineComponent
+  destroyCancellationToken: CancellationToken => null
   gameObject: GameObject => $0
   transform: Transform => $0
   tag: string => U.get_tag($0)
@@ -112,21 +114,21 @@ type Scene kind=struct gd=Variant extern=UnityEngineSceneManagementScene
   name: string => "main"
 
 type Transform : Component kind=component gd=Node3D extern=UnityEngineTransform
-  position: Vector3 => $0.global_position
-  set position: Vector3 => $0.global_position = $v
-  localPosition: Vector3 => $0.position
-  set localPosition: Vector3 => $0.position = $v
+  position: Vector3 => U.get_position($0)
+  set position: Vector3 => U.set_position($0, $v)
+  localPosition: Vector3 => U.get_local_position($0)
+  set localPosition: Vector3 => U.set_local_position($0, $v)
   rotation: Quaternion => U.get_global_rotation($0)
   set rotation: Quaternion => U.set_global_rotation($0, $v)
-  localRotation: Quaternion => $0.quaternion
-  set localRotation: Quaternion => $0.quaternion = $v
+  localRotation: Quaternion => U.get_local_rotation($0)
+  set localRotation: Quaternion => U.set_local_rotation($0, $v)
   eulerAngles: Vector3 => U.quat_to_euler(U.get_global_rotation($0))
   set eulerAngles: Vector3 => U.set_global_rotation($0, U.euler_v($v))
-  localEulerAngles: Vector3 => U.quat_to_euler($0.quaternion)
-  set localEulerAngles: Vector3 => $0.quaternion = U.euler_v($v)
-  localScale: Vector3 => $0.scale
-  set localScale: Vector3 => $0.scale = $v
-  lossyScale: Vector3 => $0.global_transform.basis.get_scale()
+  localEulerAngles: Vector3 => U.quat_to_euler(U.get_local_rotation($0))
+  set localEulerAngles: Vector3 => U.set_local_rotation($0, U.euler_v($v))
+  localScale: Vector3 => U.get_local_scale($0)
+  set localScale: Vector3 => U.set_local_scale($0, $v)
+  lossyScale: Vector3 => U.lossy_scale($0)
   forward: Vector3 => U.forward($0)
   set forward: Vector3 => U.set_global_rotation($0, U.look_rotation($v, Vector3.UP))
   right: Vector3 => U.right($0)
@@ -136,14 +138,14 @@ type Transform : Component kind=component gd=Node3D extern=UnityEngineTransform
   parent: Transform => $0.get_parent()
   set parent: Transform => U.set_parent($0, $v, true)
   root: Transform => U.root_of($0)
-  childCount: int => $0.get_child_count()
-  localToWorldMatrix: Matrix4x4 => $0.global_transform
-  worldToLocalMatrix: Matrix4x4 => $0.global_transform.affine_inverse()
+  childCount: int => U.go_child_count($0)
+  localToWorldMatrix: Matrix4x4 => U.local_to_world_matrix($0)
+  worldToLocalMatrix: Matrix4x4 => U.world_to_local_matrix($0)
   hasChanged: bool => true
   set hasChanged: bool => pass
   hierarchyCapacity: int => 0
-  GetChild(int): Transform => $0.get_child($1)
-  Find(string): Transform => $0.get_node_or_null($1)
+  GetChild(int): Transform => U.go_child($0, $1)
+  Find(string): Transform => U.find_transform($0, $1)
   IsChildOf(Transform): bool => U.is_child_of($0, $1)
   SetParent(Transform): void => U.set_parent($0, $1, true)
   SetParent(Transform, bool): void => U.set_parent($0, $1, $2)
@@ -152,18 +154,18 @@ type Transform : Component kind=component gd=Node3D extern=UnityEngineTransform
   SetAsLastSibling(): void => U.set_sibling_index($0, -1)
   SetSiblingIndex(int): void => U.set_sibling_index($0, $1)
   GetSiblingIndex(): int => $0.get_index()
-  TransformPoint(Vector3): Vector3 => $0.to_global($1)
-  TransformPoint(float, float, float): Vector3 => $0.to_global(Vector3($1, $2, $3))
-  InverseTransformPoint(Vector3): Vector3 => $0.to_local($1)
-  InverseTransformPoint(float, float, float): Vector3 => $0.to_local(Vector3($1, $2, $3))
+  TransformPoint(Vector3): Vector3 => U.transform_point($0, $1)
+  TransformPoint(float, float, float): Vector3 => U.transform_point($0, Vector3($1, $2, $3))
+  InverseTransformPoint(Vector3): Vector3 => U.inverse_transform_point($0, $1)
+  InverseTransformPoint(float, float, float): Vector3 => U.inverse_transform_point($0, Vector3($1, $2, $3))
   TransformDirection(Vector3): Vector3 => U.transform_direction($0, $1)
   TransformDirection(float, float, float): Vector3 => U.transform_direction($0, Vector3($1, $2, $3))
   InverseTransformDirection(Vector3): Vector3 => U.inverse_transform_direction($0, $1)
   InverseTransformDirection(float, float, float): Vector3 => U.inverse_transform_direction($0, Vector3($1, $2, $3))
-  TransformVector(Vector3): Vector3 => ($0.global_transform.basis * $1)
-  InverseTransformVector(Vector3): Vector3 => ($0.global_transform.basis.inverse() * $1)
-  LookAt(Transform): void => U.look_at($0, $1.global_position, Vector3.UP)
-  LookAt(Transform, Vector3): void => U.look_at($0, $1.global_position, $2)
+  TransformVector(Vector3): Vector3 => U.transform_vector($0, $1)
+  InverseTransformVector(Vector3): Vector3 => U.inverse_transform_vector($0, $1)
+  LookAt(Transform): void => U.look_at($0, U.get_position($1), Vector3.UP)
+  LookAt(Transform, Vector3): void => U.look_at($0, U.get_position($1), $2)
   LookAt(Vector3): void => U.look_at($0, $1, Vector3.UP)
   LookAt(Vector3, Vector3): void => U.look_at($0, $1, $2)
   Rotate(Vector3): void => U.rotate_euler($0, $1, 0)
@@ -180,9 +182,9 @@ type Transform : Component kind=component gd=Node3D extern=UnityEngineTransform
   Translate(Vector3, Transform): void => U.translate_relative($0, $1, $2)
   SetPositionAndRotation(Vector3, Quaternion): void => U.set_position_and_rotation($0, $1, $2)
   SetLocalPositionAndRotation(Vector3, Quaternion): void => U.set_local_position_and_rotation($0, $1, $2)
-  GetPositionAndRotation(out Vector3, out Quaternion): void => $1 = $0.global_position ;; $2 = U.get_global_rotation($0)
-  GetLocalPositionAndRotation(out Vector3, out Quaternion): void => $1 = $0.position ;; $2 = $0.quaternion
-  GetEnumerator(): object => $0.get_children()
+  GetPositionAndRotation(out Vector3, out Quaternion): void => $1 = U.get_position($0) ;; $2 = U.get_global_rotation($0)
+  GetLocalPositionAndRotation(out Vector3, out Quaternion): void => $1 = U.get_local_position($0) ;; $2 = U.get_local_rotation($0)
+  GetEnumerator(): object => U.go_children($0)
 
 type RectTransform : Transform kind=component gd=Control extern=UnityEngineRectTransform
   anchoredPosition: Vector2 => $0.position

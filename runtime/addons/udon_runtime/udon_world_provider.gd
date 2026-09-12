@@ -180,12 +180,21 @@ const _SURFACE_METHOD: Dictionary = {"pickup": "drop", "station": "use_station",
 func has_adapter(node: Node, kind: String) -> bool:
 	if node == null or not is_instance_valid(node):
 		return false
-	if node.is_in_group("udon_" + kind):
+	if node.is_in_group("udon_" + kind) or node.has_meta("udon_" + kind):
 		return true
 	if _SURFACE_METHOD.has(kind) and node.has_method(_SURFACE_METHOD[kind]):
 		return true
-	var d: Dictionary = _adapters.get(node.get_instance_id(), {})
-	return d.has(kind)
+	# adapters created lazily by scripts (Udon.pickup(node) on an arbitrary node) do not count
+	return false
+
+## Declare that `node` carries a VRC component (the scene converter does this through the
+## `udon_<kind>` group; worlds built by hand call it from GDScript).
+func register_component(node: Node, kind: String, config: Dictionary = {}) -> void:
+	if node == null:
+		return
+	node.add_to_group("udon_" + kind, true)
+	if not config.is_empty():
+		node.set_meta("udon_" + kind, config)
 
 ## Pickup adapter. Override to return your own object implementing the UdonPickup surface;
 ## the default returns the node itself when it exposes the surface, else a generic adapter.
@@ -238,7 +247,46 @@ func load_url_string(_url: String, _behaviour: Node):
 func keycode_to_key(keycode: int) -> Key:
 	return U.keycode_to_godot_key(keycode)
 
+# --- simulated input (tests, bots, replay) --------------------------------------------------
+# Values set here take precedence over the real devices until cleared.
+var _sim_keys: Dictionary = {}          # keycode → bool
+var _sim_axes: Dictionary = {}          # axis name → float
+var _sim_buttons: Dictionary = {}       # action name → {held, pressed_frame, released_frame}
+var _sim_mouse: Dictionary = {}         # index → bool
+var _sim_mouse_position = null          # Vector2 (Unity origin: bottom-left) or null
+
+func simulate_key(keycode: int, pressed: bool) -> void:
+	_sim_keys[keycode] = pressed
+
+func simulate_axis(axis: String, value: float) -> void:
+	_sim_axes[axis] = value
+
+func simulate_button(button: String, pressed: bool) -> void:
+	var f: int = Engine.get_process_frames()
+	var st: Dictionary = _sim_buttons.get(button, {"held": false, "pressed_frame": -1, "released_frame": -1})
+	if pressed and not st["held"]:
+		st["pressed_frame"] = f
+	if not pressed and st["held"]:
+		st["released_frame"] = f
+	st["held"] = pressed
+	_sim_buttons[button] = st
+
+func simulate_mouse_button(index: int, pressed: bool) -> void:
+	_sim_mouse[index] = pressed
+
+func simulate_mouse_position(p) -> void:
+	_sim_mouse_position = p
+
+func clear_simulated_input() -> void:
+	_sim_keys.clear()
+	_sim_axes.clear()
+	_sim_buttons.clear()
+	_sim_mouse.clear()
+	_sim_mouse_position = null
+
 func get_key(keycode: int) -> bool:
+	if _sim_keys.has(keycode):
+		return _sim_keys[keycode]
 	var k: Key = keycode_to_key(keycode)
 	if k == KEY_NONE:
 		return false
@@ -264,6 +312,8 @@ func get_key_up(keycode: int) -> bool:
 
 ## Unity axis names → Godot input actions. Override to map to your project's actions.
 func get_axis(axis: String) -> float:
+	if _sim_axes.has(axis):
+		return float(_sim_axes[axis])
 	match axis:
 		"Horizontal":
 			return Input.get_axis("ui_left", "ui_right")
@@ -280,6 +330,16 @@ func get_axis(axis: String) -> float:
 
 ## mode: 0 = held, 1 = pressed this frame, 2 = released this frame
 func get_button(button: String, mode: int) -> bool:
+	if _sim_buttons.has(button):
+		var st: Dictionary = _sim_buttons[button]
+		var f: int = Engine.get_process_frames()
+		match mode:
+			1:
+				return int(st["pressed_frame"]) == f
+			2:
+				return int(st["released_frame"]) == f
+			_:
+				return bool(st["held"])
 	if not InputMap.has_action(button):
 		return false
 	match mode:
@@ -292,7 +352,7 @@ func get_button(button: String, mode: int) -> bool:
 
 func get_mouse_button(index: int, mode: int) -> bool:
 	var b: MouseButton = (index + 1) as MouseButton
-	var now: bool = Input.is_mouse_button_pressed(b)
+	var now: bool = _sim_mouse[index] if _sim_mouse.has(index) else Input.is_mouse_button_pressed(b)
 	var key: int = 100000 + index
 	var prev: bool = _keys_prev.get(key, false)
 	_keys_down[key] = now
@@ -305,6 +365,8 @@ func get_mouse_button(index: int, mode: int) -> bool:
 			return now
 
 func mouse_position() -> Vector2:
+	if _sim_mouse_position != null:
+		return _sim_mouse_position
 	var vp := get_viewport()
 	if vp == null:
 		return Vector2.ZERO
@@ -345,6 +407,11 @@ func player_data_has(player, key: String) -> bool:
 	if player == null:
 		return false
 	return _player_data.get(player.player_id, {}).has(key)
+
+func player_data_keys(player) -> Array:
+	if player == null:
+		return []
+	return _player_data.get(player.player_id, {}).keys()
 
 func player_data_remove(key: String) -> void:
 	var lp = _local_player

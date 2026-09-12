@@ -42,24 +42,24 @@ func is_player_grounded() -> bool:
 	return true
 
 func get_position() -> Vector3:
-	return node.global_position if node != null else Vector3.ZERO
+	return U.get_position(node) if node != null else Vector3.ZERO
 
 func get_rotation() -> Quaternion:
 	return U.get_global_rotation(node) if node != null else Quaternion()
 
 func get_velocity() -> Vector3:
 	if node is CharacterBody3D:
-		return node.velocity
+		return U.from_gd_v(node.velocity)
 	if node is RigidBody3D:
-		return node.linear_velocity
+		return U.from_gd_v(node.linear_velocity)
 	return _velocity
 
 func set_velocity(v: Vector3) -> void:
 	_velocity = v
 	if node is CharacterBody3D:
-		node.velocity = v
+		node.velocity = U.to_gd_v(v)
 	elif node is RigidBody3D:
-		node.linear_velocity = v
+		node.linear_velocity = U.to_gd_v(v)
 
 ## Returns {"position": Vector3, "rotation": Quaternion} for a TrackingDataType.
 func get_tracking_data(kind: int) -> Dictionary:
@@ -69,9 +69,9 @@ func get_tracking_data(kind: int) -> Dictionary:
 		TRACKING_HEAD:
 			pos += Vector3(0.0, _eye_height, 0.0)
 		TRACKING_LEFT_HAND:
-			pos += rot * Vector3(-0.3, _eye_height * 0.6, 0.3 * U.forward_sign())
+			pos += rot * Vector3(-0.3, _eye_height * 0.6, 0.3)
 		TRACKING_RIGHT_HAND:
-			pos += rot * Vector3(0.3, _eye_height * 0.6, 0.3 * U.forward_sign())
+			pos += rot * Vector3(0.3, _eye_height * 0.6, 0.3)
 		_:
 			pass
 	return {"position": pos, "rotation": rot}
@@ -84,7 +84,7 @@ func get_bone_rotation(_bone: int) -> Quaternion:
 
 func teleport_to(pos: Vector3, rot: Quaternion, _orientation: int = 0, _lerp_on_remote: bool = false) -> void:
 	if node != null:
-		node.global_position = pos
+		U.set_position(node, pos)
 		U.set_global_rotation(node, rot)
 
 func respawn(_index: int = 0) -> void:

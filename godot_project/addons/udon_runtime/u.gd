@@ -1,20 +1,43 @@
 ## `U` autoload — Unity engine shims that do not depend on the world (math, transforms,
 ## components, physics queries, audio, animation, particles, materials, UI, strings, time).
 ##
-## Coordinate conventions: Unity is left-handed with +Z forward; Godot is right-handed with
-## -Z forward. `coord_mode` selects how `transform.forward`, `Vector3.forward`, Euler angles
-## and LookRotation are interpreted. UNITY keeps all numbers identical to the source (use it
-## when your scene was imported preserving Unity axes); GODOT maps forward to -Z.
+## Coordinate conventions: scripts always compute in Unity numbers (left-handed, +Z forward).
+## `coord_mode` says how the Godot scene was derived from the Unity one, and every value that
+## crosses between a script and a node (positions, directions, rotations, velocities, ray hits)
+## is mapped by `to_gd_*` / `from_gd_*`:
+##   UNITY  – the scene keeps Unity axes verbatim (test scenes built by hand); identity.
+##   UNIDOT – the scene was imported by unidot_importer, which mirrors X (positions x → -x,
+##            quaternions (x,y,z,w) → (x,-y,-z,w)); the default for imported worlds.
+##   GODOT  – the scene was rotated a half-turn about Y so Unity's +Z forward became Godot's -Z.
+## Godot cameras and lights look down -Z, so their nodes carry an extra half-turn (see
+## `unity_basis`). The mode comes from the project setting `udon/coord_mode` when present.
 extends Node
 
-enum CoordMode { UNITY, GODOT }
+enum CoordMode { UNITY, GODOT, UNIDOT }
 var coord_mode: CoordMode = CoordMode.UNITY
+
+func _init() -> void:
+	# Godot's physics layer names (written by the scene importer from Unity's TagManager) override
+	# the VRChat default table.
+	for i in range(1, 33):
+		var nm = ProjectSettings.get_setting("layer_names/3d_physics/layer_%d" % i, "")
+		if str(nm) != "":
+			_layer_names[str(nm)] = i - 1
+	var m = ProjectSettings.get_setting("udon/coord_mode", "")
+	match str(m).to_lower():
+		"unidot", "mirror_x":
+			coord_mode = CoordMode.UNIDOT
+		"godot":
+			coord_mode = CoordMode.GODOT
+		"unity":
+			coord_mode = CoordMode.UNITY
 
 var _noise: FastNoiseLite = null
 var _debug_lines: Array = []
 var _line_data: Dictionary = {}     # node id → Dictionary for LineRenderer emulation
 var _anim_params: Dictionary = {}   # node id → Dictionary of animator parameters
 var _ps_modules: Dictionary = {}    # node id → Dictionary of particle module adapters
+var _ps_states: Dictionary = {}     # GPUParticles3D id → {start, playing, paused, offset}
 var _tags: Dictionary = {}          # node id → tag
 var _layers: Dictionary = {}        # node id → Unity layer number
 var _layer_names: Dictionary = {"Default": 0, "TransparentFX": 1, "Ignore Raycast": 2, "Water": 4, "UI": 5, "Player": 9, "PlayerLocal": 10, "Environment": 11, "UiMenu": 12, "Pickup": 13, "PickupNoEnvironment": 14, "StereoLeft": 15, "StereoRight": 16, "Walkthrough": 17, "MirrorReflection": 18, "reserved2": 19, "reserved3": 20, "reserved4": 21}
@@ -258,52 +281,274 @@ func random_rotation() -> Quaternion:
 # Vectors, quaternions, coordinate conventions
 # ---------------------------------------------------------------------------
 
-func forward_sign() -> float:
-	return 1.0 if coord_mode == CoordMode.UNITY else -1.0
+# --- script space ⇄ Godot space -----------------------------------------------------------
+
+## Linear map from script (Unity) space to Godot space; an involution in every mode.
+func _mode_basis() -> Basis:
+	match coord_mode:
+		CoordMode.UNIDOT:
+			return Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, 1.0))
+		CoordMode.GODOT:
+			return Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, -1.0))
+		_:
+			return Basis()
+
+## Positions and directions.
+func to_gd_v(v: Vector3) -> Vector3:
+	match coord_mode:
+		CoordMode.UNIDOT:
+			return Vector3(-v.x, v.y, v.z)
+		CoordMode.GODOT:
+			return Vector3(-v.x, v.y, -v.z)
+		_:
+			return v
+
+func from_gd_v(v: Vector3) -> Vector3:
+	return to_gd_v(v)
+
+## Rotations (conjugation by the mode basis).
+func to_gd_q(q: Quaternion) -> Quaternion:
+	match coord_mode:
+		CoordMode.UNIDOT:
+			return Quaternion(q.x, -q.y, -q.z, q.w)
+		CoordMode.GODOT:
+			return Quaternion(-q.x, q.y, -q.z, q.w)
+		_:
+			return q
+
+func from_gd_q(q: Quaternion) -> Quaternion:
+	return to_gd_q(q)
+
+## Axial vectors (angular velocity, torque): a reflection flips them on top of the mirror.
+func to_gd_axial(w: Vector3) -> Vector3:
+	match coord_mode:
+		CoordMode.UNIDOT:
+			return Vector3(w.x, -w.y, -w.z)
+		CoordMode.GODOT:
+			return Vector3(-w.x, w.y, -w.z)
+		_:
+			return w
+
+func from_gd_axial(w: Vector3) -> Vector3:
+	return to_gd_axial(w)
+
+func to_gd_t(t: Transform3D) -> Transform3D:
+	if coord_mode == CoordMode.UNITY:
+		return t
+	var m: Basis = _mode_basis()
+	return Transform3D(m * t.basis * m, m * t.origin)
+
+func from_gd_t(t: Transform3D) -> Transform3D:
+	return to_gd_t(t)
+
+func from_gd_aabb(b: AABB) -> AABB:
+	if coord_mode == CoordMode.UNITY:
+		return b
+	var p0: Vector3 = from_gd_v(b.position)
+	var p1: Vector3 = from_gd_v(b.end)
+	return AABB(Vector3(minf(p0.x, p1.x), minf(p0.y, p1.y), minf(p0.z, p1.z)), (p1 - p0).abs())
+
+func to_gd_aabb(b: AABB) -> AABB:
+	return from_gd_aabb(b)
+
+## Godot cameras and lights look down -Z while Unity's look along +Z: their node carries an
+## extra half-turn about Y relative to the Unity transform they stand for.
+const _LOOK_FIX: Basis = Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, -1.0))
+
+func _looks_down_z(n: Node) -> bool:
+	return n is Camera3D or n is Light3D
+
+## Orientation of the Unity transform a node stands for, in Godot space (scale removed).
+func unity_basis(n_: Node) -> Basis:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Basis()
+	var b: Basis = n.global_transform.basis.orthonormalized()
+	return b * _LOOK_FIX if _looks_down_z(n) else b
+
+## The Unity transform a node stands for, in Godot space (scale kept).
+func unity_transform(n_: Node) -> Transform3D:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Transform3D()
+	var t: Transform3D = n.global_transform
+	return Transform3D(t.basis * _LOOK_FIX, t.origin) if _looks_down_z(n) else t
 
 func vec_forward() -> Vector3:
-	return Vector3(0.0, 0.0, forward_sign())
+	return Vector3(0.0, 0.0, 1.0)
 
 func vec_back() -> Vector3:
-	return Vector3(0.0, 0.0, -forward_sign())
+	return Vector3(0.0, 0.0, -1.0)
 
-func forward(n: Node3D) -> Vector3:
-	# Godot cameras and lights look down -Z whatever the coordinate mode; Unity's do so along +Z.
-	if n is Camera3D or n is Light3D:
-		return -n.global_transform.basis.z.normalized()
-	return n.global_transform.basis.z.normalized() * forward_sign()
+func forward(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_basis(n) * to_gd_v(Vector3(0.0, 0.0, 1.0))).normalized()
 
-func right(n: Node3D) -> Vector3:
-	return n.global_transform.basis.x.normalized()
+func right(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_basis(n) * to_gd_v(Vector3(1.0, 0.0, 0.0))).normalized()
 
-func up(n: Node3D) -> Vector3:
-	return n.global_transform.basis.y.normalized()
+func up(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_basis(n) * to_gd_v(Vector3(0.0, 1.0, 0.0))).normalized()
 
-func get_global_rotation(n: Node3D) -> Quaternion:
-	return n.global_transform.basis.get_rotation_quaternion()
+## Godot cannot invert a parent transform with a zero scale (Unity tolerates it); positions under
+## such parents are left where they are.
+func _parent_invertible(n: Node3D) -> bool:
+	var p := n.get_parent() as Node3D
+	return p == null or not is_zero_approx(p.global_transform.basis.determinant())
 
-func set_global_rotation(n: Node3D, q: Quaternion) -> void:
+func get_position(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		if n_ is Control:
+			# UI elements: canvas pixels, Y up like Unity's RectTransform
+			var gp: Vector2 = n_.global_position
+			return Vector3(gp.x, -gp.y, 0.0)
+		return Vector3.ZERO
+	return from_gd_v(n.global_position)
+
+func set_position(n_: Node, p: Vector3) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		if n_ is Control:
+			n_.global_position = Vector2(p.x, -p.y)
+		return
+	if not _parent_invertible(n):
+		return
+	n.global_position = to_gd_v(p)
+
+func get_local_position(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(n.position)
+
+func set_local_position(n_: Node, p: Vector3) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
+	n.position = to_gd_v(p)
+
+func get_global_rotation(n_: Node) -> Quaternion:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Quaternion()
+	return from_gd_q(unity_basis(n).get_rotation_quaternion())
+
+func set_global_rotation(n_: Node, q: Quaternion) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
+	if not _parent_invertible(n):
+		return
 	var s: Vector3 = n.global_transform.basis.get_scale()
 	var t: Transform3D = n.global_transform
-	t.basis = Basis(q.normalized()).scaled(s)
+	var b: Basis = Basis(to_gd_q(q).normalized())
+	if _looks_down_z(n):
+		b = b * _LOOK_FIX
+	t.basis = b.scaled(s)
 	n.global_transform = t
 
-func set_right(n: Node3D, r: Vector3) -> void:
+func get_local_rotation(n_: Node) -> Quaternion:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Quaternion()
+	var b: Basis = Basis(n.quaternion)
+	if _looks_down_z(n):
+		b = b * _LOOK_FIX
+	return from_gd_q(b.get_rotation_quaternion())
+
+func set_local_rotation(n_: Node, q: Quaternion) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
+	var b: Basis = Basis(to_gd_q(q).normalized())
+	if _looks_down_z(n):
+		b = b * _LOOK_FIX
+	n.quaternion = b.get_rotation_quaternion()
+
+## Unity worlds hide physics objects by scaling them to zero; Godot bodies cannot be scaled (and
+## a zero scale makes their transforms singular), so such nodes are hidden instead and report the
+## requested scale back.
+func get_local_scale(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		if n_ is Control:
+			return Vector3(n_.scale.x, n_.scale.y, 1.0)
+		return Vector3.ONE
+	if n.has_meta("udon_zero_scale"):
+		return n.get_meta("udon_zero_scale")
+	return n.scale
+
+func set_local_scale(n_: Node, s: Vector3) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		if n_ is Control:
+			n_.scale = Vector2(s.x, s.y)
+		return
+	var degenerate: bool = absf(s.x) < 1e-5 or absf(s.y) < 1e-5 or absf(s.z) < 1e-5
+	if n is CollisionObject3D:
+		if degenerate:
+			n.set_meta("udon_zero_scale", s)
+			n.visible = false
+			return
+		if n.has_meta("udon_zero_scale"):
+			n.remove_meta("udon_zero_scale")
+			n.visible = true
+		n.scale = Vector3(absf(s.x), absf(s.y), absf(s.z)).max(Vector3(1e-5, 1e-5, 1e-5)) if not s.is_equal_approx(Vector3.ONE) else Vector3.ONE
+		return
+	if degenerate:
+		n.set_meta("udon_zero_scale", s)
+		n.scale = Vector3(1e-5, 1e-5, 1e-5).max(s.abs())
+		return
+	if n.has_meta("udon_zero_scale"):
+		n.remove_meta("udon_zero_scale")
+	n.scale = s
+
+func lossy_scale(n_: Node) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return n.global_transform.basis.get_scale()
+
+## Unity localToWorldMatrix / worldToLocalMatrix in script space.
+func local_to_world_matrix(n_: Node) -> Transform3D:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Transform3D()
+	return from_gd_t(unity_transform(n))
+
+func world_to_local_matrix(n_: Node) -> Transform3D:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Transform3D()
+	return from_gd_t(unity_transform(n).affine_inverse())
+
+func set_right(n_: Node, r: Vector3) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	set_global_rotation(n, from_to_rotation(right(n), r) * get_global_rotation(n))
 
-func set_up(n: Node3D, u_: Vector3) -> void:
+func set_up(n_: Node, u_: Vector3) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	set_global_rotation(n, from_to_rotation(up(n), u_) * get_global_rotation(n))
 
-## Unity Quaternion.Euler (degrees, applied Z then X then Y).
+## Unity Quaternion.Euler (degrees, applied Z then X then Y). Script-space maths never depends
+## on the coordinate mode; only values crossing to nodes are converted.
 func euler(x: float, y: float, z: float) -> Quaternion:
 	var qx := Quaternion(Vector3.RIGHT, deg_to_rad(x))
 	var qy := Quaternion(Vector3.UP, deg_to_rad(y))
 	var qz := Quaternion(Vector3(0.0, 0.0, 1.0), deg_to_rad(z))
-	if coord_mode == CoordMode.UNITY:
-		return (qy * qx * qz).normalized()
-	# Mirrored handedness: rotations about X and Y flip sign.
-	qx = Quaternion(Vector3.RIGHT, -deg_to_rad(x))
-	qy = Quaternion(Vector3.UP, -deg_to_rad(y))
 	return (qy * qx * qz).normalized()
 
 func euler_v(v: Vector3) -> Quaternion:
@@ -313,18 +558,12 @@ func euler_v(v: Vector3) -> Quaternion:
 func quat_to_euler(q: Quaternion) -> Vector3:
 	var e: Vector3 = Basis(q.normalized()).get_euler(EULER_ORDER_YXZ)
 	var deg := Vector3(rad_to_deg(e.x), rad_to_deg(e.y), rad_to_deg(e.z))
-	if coord_mode == CoordMode.GODOT:
-		deg.x = -deg.x
-		deg.y = -deg.y
 	return Vector3(fposmod(deg.x, 360.0), fposmod(deg.y, 360.0), fposmod(deg.z, 360.0))
 
 func angle_axis(angle_deg: float, axis: Vector3) -> Quaternion:
 	if axis.length_squared() < 1e-12:
 		return Quaternion()
-	var a: float = deg_to_rad(angle_deg)
-	if coord_mode == CoordMode.GODOT:
-		a = -a
-	return Quaternion(axis.normalized(), a)
+	return Quaternion(axis.normalized(), deg_to_rad(angle_deg))
 
 func quat_axis(q: Quaternion) -> Vector3:
 	var a: Vector3 = q.get_axis()
@@ -337,7 +576,7 @@ func look_rotation(fwd: Vector3, up_: Vector3) -> Quaternion:
 	var f: Vector3 = fwd.normalized()
 	if up_.length_squared() < 1e-12 or absf(f.dot(up_.normalized())) > 0.9999:
 		up_ = Vector3.UP if absf(f.dot(Vector3.UP)) < 0.9999 else Vector3(0.0, 0.0, 1.0)
-	var z: Vector3 = f * forward_sign()
+	var z: Vector3 = f
 	var x: Vector3 = up_.cross(z).normalized()
 	var y: Vector3 = z.cross(x)
 	return Basis(x, y, z).get_rotation_quaternion()
@@ -421,58 +660,112 @@ func aabb_closest_point(b: AABB, p: Vector3) -> Vector3:
 # Transform
 # ---------------------------------------------------------------------------
 
-func transform_direction(n: Node3D, v: Vector3) -> Vector3:
-	return n.global_transform.basis.orthonormalized() * v
+func transform_direction(n_: Node, v: Vector3) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_basis(n) * to_gd_v(v))
 
-func inverse_transform_direction(n: Node3D, v: Vector3) -> Vector3:
-	return n.global_transform.basis.orthonormalized().inverse() * v
+func inverse_transform_direction(n_: Node, v: Vector3) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_basis(n).inverse() * to_gd_v(v))
 
-func look_at(n: Node3D, target: Vector3, up_: Vector3) -> void:
-	var d: Vector3 = target - n.global_position
+func transform_vector(n_: Node, v: Vector3) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_transform(n).basis * to_gd_v(v))
+
+func inverse_transform_vector(n_: Node, v: Vector3) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_transform(n).basis.inverse() * to_gd_v(v))
+
+func transform_point(n_: Node, p: Vector3) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_transform(n) * to_gd_v(p))
+
+func inverse_transform_point(n_: Node, p: Vector3) -> Vector3:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return Vector3.ZERO
+	return from_gd_v(unity_transform(n).affine_inverse() * to_gd_v(p))
+
+func look_at(n_: Node, target: Vector3, up_: Vector3) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
+	var d: Vector3 = target - get_position(n)
 	if d.length_squared() < 1e-12:
 		return
 	set_global_rotation(n, look_rotation(d, up_))
 
 ## space: 0 = Self (Unity default), 1 = World
-func rotate_euler(n: Node3D, euler_deg: Vector3, space: int) -> void:
+func rotate_euler(n_: Node, euler_deg: Vector3, space: int) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	var q: Quaternion = euler_v(euler_deg)
 	if space == 0:
-		n.quaternion = (n.quaternion * q).normalized()
+		set_local_rotation(n, (get_local_rotation(n) * q).normalized())
 	else:
 		set_global_rotation(n, (q * get_global_rotation(n)).normalized())
 
-func rotate_axis(n: Node3D, axis: Vector3, angle_deg: float, space: int) -> void:
+func rotate_axis(n_: Node, axis: Vector3, angle_deg: float, space: int) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	var q: Quaternion = angle_axis(angle_deg, axis)
 	if space == 0:
-		n.quaternion = (n.quaternion * q).normalized()
+		set_local_rotation(n, (get_local_rotation(n) * q).normalized())
 	else:
 		set_global_rotation(n, (q * get_global_rotation(n)).normalized())
 
-func rotate_around(n: Node3D, point: Vector3, axis: Vector3, angle_deg: float) -> void:
+func rotate_around(n_: Node, point: Vector3, axis: Vector3, angle_deg: float) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	var q: Quaternion = angle_axis(angle_deg, axis)
-	var dir: Vector3 = n.global_position - point
-	n.global_position = point + q * dir
+	var dir: Vector3 = get_position(n) - point
+	set_position(n, point + q * dir)
 	set_global_rotation(n, (q * get_global_rotation(n)).normalized())
 
-func translate(n: Node3D, v: Vector3, space: int) -> void:
+func translate(n_: Node, v: Vector3, space: int) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	if space == 0:
-		n.global_position += transform_direction(n, v)
+		set_position(n, get_position(n) + transform_direction(n, v))
 	else:
-		n.global_position += v
+		set_position(n, get_position(n) + v)
 
-func translate_relative(n: Node3D, v: Vector3, relative_to: Node3D) -> void:
+func translate_relative(n_: Node, v: Vector3, relative_to: Node) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
 	if relative_to == null:
-		n.global_position += v
+		set_position(n, get_position(n) + v)
 	else:
-		n.global_position += transform_direction(relative_to, v)
+		set_position(n, get_position(n) + transform_direction(relative_to, v))
 
-func set_position_and_rotation(n: Node3D, p: Vector3, q: Quaternion) -> void:
-	n.global_position = p
+func set_position_and_rotation(n_: Node, p: Vector3, q: Quaternion) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
+	set_position(n, p)
 	set_global_rotation(n, q)
 
-func set_local_position_and_rotation(n: Node3D, p: Vector3, q: Quaternion) -> void:
-	n.position = p
-	n.quaternion = q
+func set_local_position_and_rotation(n_: Node, p: Vector3, q: Quaternion) -> void:
+	var n: Node3D = n_ as Node3D
+	if n == null:
+		return
+	set_local_position(n, p)
+	set_local_rotation(n, q)
 
 func set_parent(n: Node, parent: Node, world_stays: bool) -> void:
 	if n == null:
@@ -627,7 +920,34 @@ const _TYPE_ALIASES: Dictionary = {
 	"CapsuleCollider": ["CollisionObject3D", "CollisionShape3D"], "MeshCollider": ["CollisionObject3D", "CollisionShape3D"],
 	"Animator": ["AnimationPlayer", "AnimationTree"],
 	"LineRenderer": ["MeshInstance3D"], "TrailRenderer": ["MeshInstance3D", "GPUParticles3D"],
+	"ParticleSystem": ["GPUParticles3D"], "ParticleSystemRenderer": ["GPUParticles3D"],
 	"TextMeshPro": ["Label3D"], "EventSystem": ["Node"],
+	# bake-time / editor components whose settings only round-trip: they "live" on the nodes that
+	# carry the geometry they would have affected
+	"NavMeshModifier": ["NavigationRegion3D", "MeshInstance3D", "@meta:udon_navmesh_modifier"],
+	# constraints are solved by the runtime for any Node3D a script configures them on
+	"IConstraint": ["Node3D"], "PositionConstraint": ["Node3D"], "RotationConstraint": ["Node3D"], "ScaleConstraint": ["Node3D"],
+	"ParentConstraint": ["Node3D"], "AimConstraint": ["Node3D"], "LookAtConstraint": ["Node3D"],
+	"VRCConstraintBase": ["Node3D"], "VRCPositionConstraint": ["Node3D"], "VRCRotationConstraint": ["Node3D"], "VRCScaleConstraint": ["Node3D"],
+	"VRCParentConstraint": ["Node3D"], "VRCAimConstraint": ["Node3D"], "VRCLookAtConstraint": ["Node3D"],
+	"NavMeshModifierVolume": ["NavigationRegion3D", "@meta:udon_navmesh_volume"],
+	"OcclusionPortal": ["OccluderInstance3D", "@meta:udon_occlusion_portal"],
+	"PostProcessingPostProcessVolume": ["WorldEnvironment", "@meta:udon_post_process"], "PostProcessVolume": ["WorldEnvironment", "@meta:udon_post_process"],
+	# uGUI / TextMeshPro: the converter passes the Unity names for Control-based components.
+	# "@clip" = a clipping Control, "@meta:x" = a node carrying metadata x (set by the importer).
+	"Graphic": ["Control"], "MaskableGraphic": ["Control"], "RectTransform": ["Control"], "CanvasRenderer": ["Control"],
+	"LayoutElement": ["Control"], "ContentSizeFitter": ["Control"], "AspectRatioFitter": ["Control"],
+	"Text": ["Label", "RichTextLabel"], "TMP_Text": ["Label", "RichTextLabel"], "TextMeshProUGUI": ["Label", "RichTextLabel"],
+	"Image": ["TextureRect", "Panel", "ColorRect", "BaseButton", "@meta:udon_image"], "RawImage": ["TextureRect"],
+	"Selectable": ["BaseButton", "Range", "LineEdit", "OptionButton", "TextEdit"], "Button": ["BaseButton"], "Toggle": ["BaseButton"],
+	"Slider": ["Range"], "Scrollbar": ["ScrollBar"], "Dropdown": ["OptionButton"], "TMP_Dropdown": ["OptionButton"],
+	"InputField": ["LineEdit", "TextEdit"], "TMP_InputField": ["LineEdit", "TextEdit"], "VRCUrlInputField": ["LineEdit", "TextEdit"],
+	"ScrollRect": ["ScrollContainer"], "Mask": ["@clip", "Control"], "RectMask2D": ["@clip", "Control"],
+	"CanvasGroup": ["@meta:udon_canvas_group", "Control"], "Outline": ["@meta:udon_effect_outline", "Label", "RichTextLabel", "Button"],
+	"Shadow": ["@meta:udon_effect_shadow", "Label", "RichTextLabel", "Button"], "BaseMeshEffect": ["Label", "RichTextLabel", "Button"],
+	"Canvas": ["@meta:udon_canvas", "CanvasLayer"], "CanvasScaler": ["@meta:udon_canvas", "CanvasLayer"], "GraphicRaycaster": ["@meta:udon_canvas", "CanvasLayer"],
+	"HorizontalLayoutGroup": ["HBoxContainer", "BoxContainer"], "VerticalLayoutGroup": ["VBoxContainer", "BoxContainer"],
+	"HorizontalOrVerticalLayoutGroup": ["BoxContainer"], "GridLayoutGroup": ["GridContainer"], "LayoutGroup": ["Container"],
 }
 
 ## VRC components are provider adapters: a node "has" one when the world registered it
@@ -649,10 +969,18 @@ func node_is_type(n, type_name: String) -> bool:
 		return true
 	if _VRC_COMPONENTS.has(type_name):
 		return n is Node and Udon.has_component(n, _VRC_COMPONENTS[type_name])
+	if (type_name == "Canvas" or type_name == "CanvasLayer") and n is Node and n.has_meta("udon_canvas"):
+		return true  # world-space canvas container (udon_integration); GetComponent passes Godot class names
 	if _TYPE_ALIASES.has(type_name):
 		for a in _TYPE_ALIASES[type_name]:
 			if a == "@udon":
 				if n is Node and n.has_method("udon_class"):
+					return true
+			elif a == "@clip":
+				if n is Control and n.clip_contents:
+					return true
+			elif a.begins_with("@meta:"):
+				if n is Node and n.has_meta(a.substr(6)):
 					return true
 			elif n.is_class(a):
 				return true
@@ -666,11 +994,22 @@ func node_is_type(n, type_name: String) -> bool:
 	return false
 
 ## Unity GetComponent: the node itself, then direct children that are "component-like".
+## The root Control of a world-space canvas container, null for other nodes.
+func canvas_root(n: Node) -> Control:
+	if n == null or not n.has_meta("udon_canvas"):
+		return null
+	var cfg: Dictionary = n.get_meta("udon_canvas")
+	return n.get_node_or_null(cfg.get("root", NodePath())) as Control
+
 func get_component(n: Node, type_name: String):
 	if n == null or not is_instance_valid(n):
 		return null
 	if node_is_type(n, type_name):
 		return n
+	# UI components of a world-space canvas live on its root Control
+	var croot := canvas_root(n)
+	if croot != null and node_is_type(croot, type_name):
+		return croot
 	for c in n.get_children():
 		if _is_component_child(c) and node_is_type(c, type_name):
 			return c
@@ -678,9 +1017,55 @@ func get_component(n: Node, type_name: String):
 
 ## A child that stands for a separate GameObject (physics body/area, plain spatial, scripted
 ## behaviour) is not a component of its parent; helper nodes (shapes, meshes, audio, lights...) are.
-func _is_component_child(c: Node) -> bool:
-	if c is CollisionObject3D or c is CollisionObject2D:
+const _UNIDOT_COLLIDER_NAMES: Array = ["BoxCollider", "SphereCollider", "CapsuleCollider", "MeshCollider", "WheelCollider", "TerrainCollider", "CharacterController"]
+# helper children unidot_importer creates for non-collider components of a GameObject
+const _UNIDOT_HELPER_NAMES: Array = ["MeshRenderer", "SkinnedMeshRenderer", "Camera", "Light", "AudioSource", "ParticleSystem", "LineRenderer", "TrailRenderer", "ReflectionProbe", "VideoPlayer", "CanvasPlane", "Viewport"]
+
+## True for a node that unidot_importer (or udon_integration) created to hold one component of
+## its parent GameObject.
+func _is_helper_child(c: Node) -> bool:
+	if c == null or c.get_parent() == null:
 		return false
+	if c is CollisionShape3D or c is CollisionShape2D or c.has_meta("udon_component_child"):
+		return true
+	var nm := String(c.name)
+	return nm.trim_suffix("2") in _UNIDOT_COLLIDER_NAMES or nm in _UNIDOT_HELPER_NAMES or nm.begins_with("UiShape")
+
+## Component.gameObject / Component.transform: the GameObject node owning a component node.
+## Hand-built scenes put components on the object node itself, so those map to themselves.
+func game_object(n: Node) -> Node:
+	var cur: Node = n
+	for _i in range(4):
+		if cur == null or not _is_helper_child(cur):
+			break
+		cur = cur.get_parent()
+	return cur
+
+## Transform.childCount / GetChild: only child GameObjects count, not the helper nodes the scene
+## importer adds for components (MeshRenderer, colliders, audio ...).
+func go_children(n: Node) -> Array:
+	var out: Array = []
+	if n == null:
+		return out
+	for c in n.get_children():
+		if not _is_component_child(c):
+			out.append(c)
+	return out
+
+func go_child_count(n: Node) -> int:
+	return go_children(n).size()
+
+func go_child(n: Node, i: int) -> Node:
+	var kids: Array = go_children(n)
+	return kids[i] if i >= 0 and i < kids.size() else null
+
+func _is_component_child(c: Node) -> bool:
+	if c.has_meta("udon_component_child"):
+		return true  # a second UdonSharp behaviour of the same GameObject
+	if c is CollisionObject3D or c is CollisionObject2D:
+		# unidot_importer turns a Collider without a Rigidbody into a StaticBody3D/Area3D child
+		# named after the collider type; those are components, other bodies are objects
+		return String(c.name).trim_suffix("2") in _UNIDOT_COLLIDER_NAMES or String(c.name).begins_with("UiShape")
 	var cls: String = c.get_class()
 	if cls == "Node3D" or cls == "Node2D" or cls == "Node":
 		return false
@@ -699,20 +1084,38 @@ func get_components(n: Node, type_name: String) -> Array:
 			out.append(c)
 	return out
 
+## Unity GetComponentInChildren: the object itself is always considered; inactive descendants
+## are skipped unless include_inactive.
 func get_component_in_children(n: Node, type_name: String, include_inactive: bool):
 	if n == null:
 		return null
-	if node_is_type(n, type_name) and (include_inactive or is_active(n)):
+	if node_is_type(n, type_name):
 		return n
 	for c in n.get_children():
-		var r = get_component_in_children(c, type_name, include_inactive)
+		var r = _find_in_children(c, type_name, include_inactive)
+		if r != null:
+			return r
+	return null
+
+func _find_in_children(n: Node, type_name: String, include_inactive: bool):
+	if not include_inactive and not is_active(n):
+		return null
+	if node_is_type(n, type_name):
+		return n
+	for c in n.get_children():
+		var r = _find_in_children(c, type_name, include_inactive)
 		if r != null:
 			return r
 	return null
 
 func get_components_in_children(n: Node, type_name: String, include_inactive: bool) -> Array:
 	var out: Array = []
-	_collect_children(n, type_name, include_inactive, out)
+	if n == null:
+		return out
+	if node_is_type(n, type_name):
+		out.append(n)
+	for c in n.get_children():
+		_collect_children(c, type_name, include_inactive, out)
 	return out
 
 func _collect_children(n: Node, type_name: String, include_inactive: bool, out: Array) -> void:
@@ -751,13 +1154,54 @@ func add_component(n: Node, type_name: String):
 	push_warning("AddComponent: cannot create " + type_name)
 	return null
 
+## Unity names may contain characters Godot node names cannot (`.`, `:`, `@`, `%`); Godot
+## replaced them with `_` when the scene was built, so paths from scripts are mapped the same way.
+func node_path_from_unity(path: String) -> String:
+	var parts: PackedStringArray = path.split("/")
+	for i in range(parts.size()):
+		if parts[i] != "" and parts[i] != "." and parts[i] != "..":
+			parts[i] = parts[i].validate_node_name()
+	return "/".join(parts)
+
+## Transform.Find: a child (or child path) by Unity name. Children of a converted Canvas live in
+## its viewport (`udon_canvas` metadata), so each step also looks there.
+func find_transform(n: Node, path: String) -> Node:
+	if n == null or path == "":
+		return null
+	var np: String = node_path_from_unity(path)
+	var r: Node = n.get_node_or_null(np)
+	if r != null:
+		return r
+	var cur: Node = n
+	for seg in np.split("/"):
+		if seg == "" or seg == ".":
+			continue
+		if seg == "..":
+			cur = cur.get_parent()
+			if cur == null:
+				return null
+			continue
+		var next: Node = cur.get_node_or_null(seg)
+		if next == null and cur.has_meta("udon_canvas"):
+			var croot: Node = cur.get_node_or_null(cur.get_meta("udon_canvas").get("root", NodePath()))
+			if croot != null:
+				next = croot.get_node_or_null(seg)
+		if next == null:
+			return null
+		cur = next
+	return cur
+
 func find_object(name_: String) -> Node:
 	var scene: Node = get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
+	var np: String = node_path_from_unity(name_)
 	if name_.begins_with("/"):
-		return scene.get_node_or_null(name_.substr(1))
-	return scene.find_child(name_, true, false)
+		return scene.get_node_or_null(np.substr(1))
+	if np.contains("/"):
+		var first: Node = scene.find_child(np.get_slice("/", 0), true, false)
+		return first.get_node_or_null(np.substr(np.find("/") + 1)) if first != null else null
+	return scene.find_child(np, true, false)
 
 func find_with_tag(tag: String) -> Node:
 	var all: Array = find_all_with_tag(tag)
@@ -849,10 +1293,10 @@ func type_is_subclass(a: String, b: String) -> bool:
 	return ClassDB.is_parent_class(a, b)
 
 func string_to_hash(s: String) -> int:
-	return s.hash()
+	return shader_prop_id(s)
 
 func set_global_shader_param(id, value) -> void:
-	RenderingServer.global_shader_parameter_set(str(id), value)
+	RenderingServer.global_shader_parameter_set(_shader_param_name(id), value)
 
 func find_shader(_name: String) -> Shader:
 	return null
@@ -899,7 +1343,25 @@ func rb_set_constraints(rb: RigidBody3D, c: int) -> void:
 
 func rb_set_center_of_mass(rb: RigidBody3D, v: Vector3) -> void:
 	rb.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	rb.center_of_mass = v
+	rb.center_of_mass = to_gd_v(v)
+
+func rb_get_center_of_mass(rb: RigidBody3D) -> Vector3:
+	return from_gd_v(rb.center_of_mass)
+
+func rb_world_center_of_mass(rb: RigidBody3D) -> Vector3:
+	return from_gd_v(rb.to_global(rb.center_of_mass))
+
+func rb_get_velocity(rb: RigidBody3D) -> Vector3:
+	return from_gd_v(rb.linear_velocity)
+
+func rb_set_velocity(rb: RigidBody3D, v: Vector3) -> void:
+	rb.linear_velocity = to_gd_v(v)
+
+func rb_get_angular_velocity(rb: RigidBody3D) -> Vector3:
+	return from_gd_axial(rb.angular_velocity)
+
+func rb_set_angular_velocity(rb: RigidBody3D, w: Vector3) -> void:
+	rb.angular_velocity = to_gd_axial(w)
 
 func rb_get_max_angular_velocity(_rb: RigidBody3D) -> float:
 	return 7.0
@@ -913,7 +1375,9 @@ func rb_set_detect_collisions(rb: RigidBody3D, v: bool) -> void:
 			c.disabled = not v
 
 ## ForceMode: Force=0 Impulse=1 VelocityChange=2 Acceleration=5
-func rb_add_force(rb: RigidBody3D, f: Vector3, mode: int) -> void:
+func rb_add_force(rb: RigidBody3D, f_u: Vector3, mode: int) -> void:
+	var f: Vector3 = to_gd_v(f_u)
+	_rb_track(rb, _rb_force_equiv(rb, f, mode), Vector3.ZERO)
 	match mode:
 		1:
 			rb.apply_central_impulse(f)
@@ -924,7 +1388,9 @@ func rb_add_force(rb: RigidBody3D, f: Vector3, mode: int) -> void:
 		_:
 			rb.apply_central_force(f)
 
-func rb_add_torque(rb: RigidBody3D, t: Vector3, mode: int) -> void:
+func rb_add_torque(rb: RigidBody3D, t_u: Vector3, mode: int) -> void:
+	var t: Vector3 = to_gd_axial(t_u)
+	_rb_track(rb, Vector3.ZERO, _rb_force_equiv(rb, t, mode))
 	match mode:
 		1:
 			rb.apply_torque_impulse(t)
@@ -935,8 +1401,11 @@ func rb_add_torque(rb: RigidBody3D, t: Vector3, mode: int) -> void:
 		_:
 			rb.apply_torque(t)
 
-func rb_add_force_at_position(rb: RigidBody3D, f: Vector3, pos: Vector3, mode: int) -> void:
-	var offset: Vector3 = pos - rb.global_position
+func rb_add_force_at_position(rb: RigidBody3D, f_u: Vector3, pos: Vector3, mode: int) -> void:
+	var f: Vector3 = to_gd_v(f_u)
+	var offset: Vector3 = to_gd_v(pos) - rb.global_position
+	var fe: Vector3 = _rb_force_equiv(rb, f, mode)
+	_rb_track(rb, fe, offset.cross(fe))
 	match mode:
 		1:
 			rb.apply_impulse(f, offset)
@@ -948,7 +1417,7 @@ func rb_add_force_at_position(rb: RigidBody3D, f: Vector3, pos: Vector3, mode: i
 			rb.apply_force(f, offset)
 
 func rb_add_explosion_force(rb: RigidBody3D, force: float, origin: Vector3, radius: float, upwards: float, mode: int) -> void:
-	var p: Vector3 = rb.global_position
+	var p: Vector3 = get_position(rb)
 	var d: Vector3 = p - origin
 	var dist: float = d.length()
 	if radius > 0.0 and dist > radius:
@@ -959,10 +1428,10 @@ func rb_add_explosion_force(rb: RigidBody3D, force: float, origin: Vector3, radi
 
 func rb_move_position(rb: RigidBody3D, p: Vector3) -> void:
 	if rb.freeze:
-		rb.global_position = p
+		set_position(rb, p)
 	else:
 		var dt: float = fixed_delta_time()
-		rb.linear_velocity = (p - rb.global_position) / dt
+		rb.linear_velocity = (to_gd_v(p) - rb.global_position) / dt
 
 func rb_move_rotation(rb: RigidBody3D, q: Quaternion) -> void:
 	if rb.freeze:
@@ -974,12 +1443,20 @@ func rb_move_rotation(rb: RigidBody3D, q: Quaternion) -> void:
 		var ang: float = delta.get_angle()
 		if ang > PI:
 			ang -= TAU
-		rb.angular_velocity = axis * ang / dt if axis.length_squared() > 0.0 else Vector3.ZERO
+		rb.angular_velocity = to_gd_axial(axis * ang / dt) if axis.length_squared() > 0.0 else Vector3.ZERO
 
 func rb_point_velocity(rb: RigidBody3D, p: Vector3) -> Vector3:
-	return rb.linear_velocity + rb.angular_velocity.cross(p - rb.to_global(rb.center_of_mass))
+	return from_gd_v(rb.linear_velocity + rb.angular_velocity.cross(to_gd_v(p) - rb.to_global(rb.center_of_mass)))
 
-func rb_sweep_test(rb: RigidBody3D, dir: Vector3, dist: float) -> Dictionary:
+func rb_relative_point_velocity(rb: RigidBody3D, local_p: Vector3) -> Vector3:
+	return from_gd_v(rb.linear_velocity + rb.angular_velocity.cross(rb.to_global(to_gd_v(local_p)) - rb.to_global(rb.center_of_mass)))
+
+func rb_sweep_test_all(rb: RigidBody3D, dir_u: Vector3, dist: float) -> Array:
+	var h: Dictionary = rb_sweep_test(rb, dir_u, dist)
+	return [h] if not h.is_empty() else []
+
+func rb_sweep_test(rb: RigidBody3D, dir_u: Vector3, dist: float) -> Dictionary:
+	var dir: Vector3 = to_gd_v(dir_u)
 	var space := rb.get_world_3d().direct_space_state
 	var params := PhysicsShapeQueryParameters3D.new()
 	for c in rb.get_children():
@@ -989,13 +1466,19 @@ func rb_sweep_test(rb: RigidBody3D, dir: Vector3, dist: float) -> Dictionary:
 			break
 	if params.shape == null:
 		return {}
-	params.motion = dir.normalized() * (dist if is_finite(dist) else 1000.0)
 	params.exclude = [rb.get_rid()]
-	var m: PackedFloat32Array = space.cast_motion(params)
-	if m.size() < 2 or m[0] >= 1.0:
+	var res: Array = _cast_refined3d(space, params, dir.normalized(), dist if is_finite(dist) else 100000.0)
+	if res.is_empty():
 		return {}
-	var frac: float = m[0]
-	return {"position": rb.global_position + params.motion * frac, "normal": -dir.normalized(), "distance": params.motion.length() * frac, "collider": null}
+	var hit: Dictionary = {"position": from_gd_v(rb.global_position + dir.normalized() * res[0]), "normal": -dir_u.normalized(), "distance": res[0], "collider": null}
+	params.transform = Transform3D(params.transform.basis, res[1])
+	params.motion = Vector3.ZERO
+	var rest: Dictionary = space.get_rest_info(params)
+	if rest.has("collider_id"):
+		hit["collider"] = instance_from_id(rest["collider_id"])
+		hit["position"] = from_gd_v(rest.get("point", hit["position"]))
+		hit["normal"] = from_gd_v(rest.get("normal", -dir.normalized()))
+	return hit
 
 # ---------------------------------------------------------------------------
 # Colliders / physics queries
@@ -1043,6 +1526,9 @@ func collider_set_trigger(_n: Node, _v: bool) -> void:
 	push_warning("Collider.isTrigger cannot be changed at run time in Godot (use an Area3D)")
 
 func collider_bounds(n: Node) -> AABB:
+	return from_gd_aabb(_collider_bounds_gd(n))
+
+func _collider_bounds_gd(n: Node) -> AABB:
 	var co := _collision_object(n)
 	var aabb := AABB()
 	var first: bool = true
@@ -1154,9 +1640,10 @@ func mesh_of(n: Node) -> Mesh:
 func gravity() -> Vector3:
 	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 	var v: Vector3 = ProjectSettings.get_setting("physics/3d/default_gravity_vector", Vector3.DOWN)
-	return v * g
+	return from_gd_v(v * g)
 
-func set_gravity(g: Vector3) -> void:
+func set_gravity(g_u: Vector3) -> void:
+	var g: Vector3 = to_gd_v(g_u)
 	PhysicsServer3D.area_set_param(get_viewport().world_3d.space, PhysicsServer3D.AREA_PARAM_GRAVITY, g.length())
 	PhysicsServer3D.area_set_param(get_viewport().world_3d.space, PhysicsServer3D.AREA_PARAM_GRAVITY_VECTOR, g.normalized())
 
@@ -1176,14 +1663,25 @@ func raycast(origin: Vector3, dir: Vector3, max_dist: float, mask: int, trigger:
 	if space == null or dir.length_squared() < 1e-12:
 		return {}
 	var d: float = max_dist if is_finite(max_dist) else 100000.0
-	var q := PhysicsRayQueryParameters3D.create(origin, origin + dir.normalized() * d, _godot_mask(mask))
+	var o: Vector3 = to_gd_v(origin)
+	var q := PhysicsRayQueryParameters3D.create(o, o + to_gd_v(dir).normalized() * d, _godot_mask(mask))
 	q.collide_with_areas = trigger != 1
 	q.collide_with_bodies = true
 	var r: Dictionary = space.intersect_ray(q)
 	if r.is_empty():
 		return {}
+	_hit_from_gd(r)
 	r["distance"] = origin.distance_to(r["position"])
 	r["origin"] = origin
+	return r
+
+## Godot hit dictionaries carry Godot-space vectors; scripts read them in script space.
+func _hit_from_gd(r: Dictionary) -> Dictionary:
+	if coord_mode != CoordMode.UNITY:
+		if r.has("position"):
+			r["position"] = from_gd_v(r["position"])
+		if r.has("normal"):
+			r["normal"] = from_gd_v(r["normal"])
 	return r
 
 func raycast_all(origin: Vector3, dir: Vector3, max_dist: float, mask: int, trigger: int) -> Array:
@@ -1193,13 +1691,15 @@ func raycast_all(origin: Vector3, dir: Vector3, max_dist: float, mask: int, trig
 	if space == null:
 		return out
 	var d: float = max_dist if is_finite(max_dist) else 100000.0
+	var o: Vector3 = to_gd_v(origin)
 	for _i in range(32):
-		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir.normalized() * d, _godot_mask(mask))
+		var q := PhysicsRayQueryParameters3D.create(o, o + to_gd_v(dir).normalized() * d, _godot_mask(mask))
 		q.collide_with_areas = trigger != 1
 		q.exclude = exclude
 		var r: Dictionary = space.intersect_ray(q)
 		if r.is_empty():
 			break
+		_hit_from_gd(r)
 		r["distance"] = origin.distance_to(r["position"])
 		out.append(r)
 		exclude.append(r["rid"])
@@ -1212,46 +1712,129 @@ func raycast_non_alloc(origin: Vector3, dir: Vector3, results: Array, max_dist: 
 		results[i] = hits[i]
 	return n
 
-func sphere_cast(origin: Vector3, radius: float, dir: Vector3, max_dist: float, mask: int, trigger: int) -> Dictionary:
+## Bounding radius of a shape around its origin (any orientation).
+func _shape_radius(shape: Shape3D) -> float:
+	if shape is SphereShape3D:
+		return shape.radius
+	if shape is BoxShape3D:
+		return shape.size.length() * 0.5
+	if shape is CapsuleShape3D:
+		return shape.height * 0.5
+	if shape is CylinderShape3D:
+		return Vector2(shape.height * 0.5, shape.radius).length()
+	var mesh: Mesh = shape.get_debug_mesh()
+	return mesh.get_aabb().size.length() * 0.5 if mesh != null else 1.0
+
+## cast_motion bisects to ~1/256 of the motion, so a long sweep is imprecise and can skip thin
+## obstacles. A ray along the sweep bounds the length, then the sweep is repeated from the safe
+## point over the safe→unsafe gap until the gap is negligible. Returns [distance, unsafe origin]
+## in Godot space, or [] when nothing is hit within `max_len`.
+func _cast_refined3d(space: PhysicsDirectSpaceState3D, params: PhysicsShapeQueryParameters3D, dir: Vector3, max_len: float) -> Array:
+	var basis: Basis = params.transform.basis
+	var origin: Vector3 = params.transform.origin
+	var remaining: float = max_len
+	var reach: float = _shape_radius(params.shape)
+	var ray := PhysicsRayQueryParameters3D.create(origin, origin + dir * max_len, params.collision_mask)
+	ray.collide_with_areas = params.collide_with_areas
+	ray.exclude = params.exclude
+	var r: Dictionary = space.intersect_ray(ray)
+	if not r.is_empty():
+		remaining = minf(remaining, origin.distance_to(r["position"]) + reach * 2.0 + 0.01)
+	var total: float = 0.0
+	var gap: float = 0.0
+	for pass_ in range(5):
+		params.transform = Transform3D(basis, origin)
+		params.motion = dir * remaining
+		var m: PackedFloat32Array = space.cast_motion(params)
+		if m.size() < 2 or m[0] >= 1.0:
+			if pass_ == 0:
+				return []
+			break
+		total += remaining * m[0]
+		origin += dir * remaining * m[0]
+		gap = remaining * (m[1] - m[0])
+		if gap <= 0.0002:
+			break
+		remaining = gap * 1.5 + 0.0002
+	return [total, origin + dir * gap]
+
+## Sweep a shape (Godot transform) along a Unity direction; a Unity RaycastHit dictionary or {}.
+func _shape_cast(shape: Shape3D, xform: Transform3D, dir: Vector3, max_dist: float, mask: int, trigger: int) -> Dictionary:
 	var space := _space()
 	if space == null:
 		return {}
-	var shape := SphereShape3D.new()
-	shape.radius = radius
 	var params := PhysicsShapeQueryParameters3D.new()
 	params.shape = shape
-	params.transform = Transform3D(Basis(), origin)
+	params.transform = xform
 	var d: float = max_dist if is_finite(max_dist) else 100000.0
-	params.motion = dir.normalized() * d
+	var dir_gd: Vector3 = to_gd_v(dir).normalized()
 	params.collision_mask = _godot_mask(mask)
 	params.collide_with_areas = trigger != 1
-	var m: PackedFloat32Array = space.cast_motion(params)
-	if m.size() < 2 or m[0] >= 1.0:
+	var res: Array = _cast_refined3d(space, params, dir_gd, d)
+	if res.is_empty():
 		return {}
-	var frac: float = m[0]
-	params.transform = Transform3D(Basis(), origin + params.motion * frac)
+	var distance: float = res[0]
+	# rest info at the unsafe position: the safe one leaves a gap and reports nothing
+	params.transform = Transform3D(xform.basis, res[1])
+	params.motion = Vector3.ZERO
 	var rest: Dictionary = space.get_rest_info(params)
-	var hit: Dictionary = {"position": rest.get("point", origin + params.motion * frac), "normal": rest.get("normal", -dir.normalized()), "distance": d * frac, "collider": rest.get("collider_id", 0)}
+	var hit: Dictionary = {"position": from_gd_v(rest.get("point", xform.origin + dir_gd * distance)), "normal": from_gd_v(rest.get("normal", -dir_gd)), "distance": distance, "collider": null}
 	if rest.has("collider_id"):
 		hit["collider"] = instance_from_id(rest["collider_id"])
+	else:
+		for r in space.intersect_shape(params, 1):
+			hit["collider"] = r.get("collider")
 	return hit
+
+func _fill_hits(hits: Array, results: Array) -> int:
+	var n: int = mini(hits.size(), results.size())
+	for i in range(n):
+		results[i] = hits[i]
+	return n
+
+func sphere_cast(origin: Vector3, radius: float, dir: Vector3, max_dist: float, mask: int, trigger: int) -> Dictionary:
+	var shape := SphereShape3D.new()
+	shape.radius = radius
+	return _shape_cast(shape, Transform3D(Basis(), to_gd_v(origin)), dir, max_dist, mask, trigger)
 
 func sphere_cast_all(origin: Vector3, radius: float, dir: Vector3, max_dist: float, mask: int, trigger: int) -> Array:
 	var h: Dictionary = sphere_cast(origin, radius, dir, max_dist, mask, trigger)
 	return [h] if not h.is_empty() else []
 
 func sphere_cast_non_alloc(origin: Vector3, radius: float, dir: Vector3, results: Array, max_dist: float, mask: int, trigger: int) -> int:
-	var hits: Array = sphere_cast_all(origin, radius, dir, max_dist, mask, trigger)
-	var n: int = mini(hits.size(), results.size())
-	for i in range(n):
-		results[i] = hits[i]
-	return n
+	return _fill_hits(sphere_cast_all(origin, radius, dir, max_dist, mask, trigger), results)
 
-func capsule_cast(p1: Vector3, p2: Vector3, radius: float, dir: Vector3, max_dist: float, mask: int) -> Dictionary:
-	return sphere_cast((p1 + p2) * 0.5, radius, dir, max_dist, mask, 0)
+func _capsule(p1: Vector3, p2: Vector3, radius: float) -> Array:
+	var s := CapsuleShape3D.new()
+	s.radius = radius
+	s.height = p1.distance_to(p2) + radius * 2.0
+	var b := Basis()
+	if p1.distance_squared_to(p2) > 1e-9:
+		b = Basis(from_to_rotation(Vector3.UP, to_gd_v(p2 - p1).normalized()))
+	return [s, Transform3D(b, to_gd_v((p1 + p2) * 0.5))]
 
-func box_cast(center: Vector3, half: Vector3, dir: Vector3, _rot: Quaternion, max_dist: float, mask: int) -> Dictionary:
-	return sphere_cast(center, maxf(half.x, maxf(half.y, half.z)), dir, max_dist, mask, 0)
+func capsule_cast(p1: Vector3, p2: Vector3, radius: float, dir: Vector3, max_dist: float, mask: int, trigger: int = 0) -> Dictionary:
+	var c: Array = _capsule(p1, p2, radius)
+	return _shape_cast(c[0], c[1], dir, max_dist, mask, trigger)
+
+func capsule_cast_all(p1: Vector3, p2: Vector3, radius: float, dir: Vector3, max_dist: float, mask: int, trigger: int) -> Array:
+	var h: Dictionary = capsule_cast(p1, p2, radius, dir, max_dist, mask, trigger)
+	return [h] if not h.is_empty() else []
+
+func capsule_cast_non_alloc(p1: Vector3, p2: Vector3, radius: float, dir: Vector3, results: Array, max_dist: float, mask: int, trigger: int) -> int:
+	return _fill_hits(capsule_cast_all(p1, p2, radius, dir, max_dist, mask, trigger), results)
+
+func box_cast(center: Vector3, half: Vector3, dir: Vector3, rot: Quaternion, max_dist: float, mask: int, trigger: int = 0) -> Dictionary:
+	var shape := BoxShape3D.new()
+	shape.size = half * 2.0
+	return _shape_cast(shape, Transform3D(Basis(to_gd_q(rot)), to_gd_v(center)), dir, max_dist, mask, trigger)
+
+func box_cast_all(center: Vector3, half: Vector3, dir: Vector3, rot: Quaternion, max_dist: float, mask: int, trigger: int) -> Array:
+	var h: Dictionary = box_cast(center, half, dir, rot, max_dist, mask, trigger)
+	return [h] if not h.is_empty() else []
+
+func box_cast_non_alloc(center: Vector3, half: Vector3, dir: Vector3, results: Array, rot: Quaternion, max_dist: float, mask: int, trigger: int) -> int:
+	return _fill_hits(box_cast_all(center, half, dir, rot, max_dist, mask, trigger), results)
 
 func _overlap(shape: Shape3D, xform: Transform3D, mask: int, trigger: int) -> Array:
 	var space := _space()
@@ -1270,7 +1853,7 @@ func _overlap(shape: Shape3D, xform: Transform3D, mask: int, trigger: int) -> Ar
 func overlap_sphere(pos: Vector3, radius: float, mask: int, trigger: int) -> Array:
 	var s := SphereShape3D.new()
 	s.radius = radius
-	return _overlap(s, Transform3D(Basis(), pos), mask, trigger)
+	return _overlap(s, Transform3D(Basis(), to_gd_v(pos)), mask, trigger)
 
 func overlap_sphere_non_alloc(pos: Vector3, radius: float, results: Array, mask: int, trigger: int) -> int:
 	var hits: Array = overlap_sphere(pos, radius, mask, trigger)
@@ -1282,7 +1865,7 @@ func overlap_sphere_non_alloc(pos: Vector3, radius: float, results: Array, mask:
 func overlap_box(center: Vector3, half: Vector3, rot: Quaternion, mask: int, trigger: int) -> Array:
 	var s := BoxShape3D.new()
 	s.size = half * 2.0
-	return _overlap(s, Transform3D(Basis(rot), center), mask, trigger)
+	return _overlap(s, Transform3D(Basis(to_gd_q(rot)), to_gd_v(center)), mask, trigger)
 
 func overlap_box_non_alloc(center: Vector3, half: Vector3, results: Array, rot: Quaternion, mask: int, trigger: int) -> int:
 	var hits: Array = overlap_box(center, half, rot, mask, trigger)
@@ -1292,14 +1875,18 @@ func overlap_box_non_alloc(center: Vector3, half: Vector3, results: Array, rot: 
 	return n
 
 func overlap_capsule(p1: Vector3, p2: Vector3, radius: float, mask: int, trigger: int) -> Array:
-	var s := CapsuleShape3D.new()
-	s.radius = radius
-	s.height = p1.distance_to(p2) + radius * 2.0
-	var center: Vector3 = (p1 + p2) * 0.5
-	var b := Basis()
-	if p1.distance_squared_to(p2) > 1e-9:
-		b = Basis(from_to_rotation(Vector3.UP, (p2 - p1).normalized()))
-	return _overlap(s, Transform3D(b, center), mask, trigger)
+	var c: Array = _capsule(p1, p2, radius)
+	return _overlap(c[0], c[1], mask, trigger)
+
+func overlap_capsule_non_alloc(p1: Vector3, p2: Vector3, radius: float, results: Array, mask: int, trigger: int) -> int:
+	return _fill_hits(overlap_capsule(p1, p2, radius, mask, trigger), results)
+
+func get_ignore_collision(a: Node, b: Node) -> bool:
+	var ca := _collision_object(a)
+	var cb := _collision_object(b)
+	if ca == null or cb == null:
+		return false
+	return ca.get_collision_exceptions().has(cb)
 
 func ignore_collision(a: Node, b: Node, ignore: bool) -> void:
 	var ca := _collision_object(a)
@@ -1325,7 +1912,8 @@ func hinge_set_motor(j: HingeJoint3D, m: Dictionary) -> void:
 	j.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, float(m.get("force", 0.0)))
 
 func wheel_ground_hit(w: VehicleWheel3D) -> Dictionary:
-	return {"point": w.get_contact_point(), "normal": w.get_contact_normal(), "collider": w.get_contact_body(), "force": 0.0, "forwardSlip": 0.0, "sidewaysSlip": w.get_skidinfo()}
+	var b: Basis = w.global_transform.basis
+	return {"point": from_gd_v(w.get_contact_point()), "normal": from_gd_v(w.get_contact_normal()), "collider": w.get_contact_body(), "force": 0.0, "forwardSlip": 0.0, "sidewaysSlip": w.get_skidinfo(), "forwardDir": from_gd_v(-b.z), "sidewaysDir": from_gd_v(b.x)}
 
 # ---------------------------------------------------------------------------
 # Audio
@@ -1420,7 +2008,7 @@ func audio_play_at_point(clip: AudioStream, pos: Vector3, volume: float) -> void
 	p.stream = clip
 	p.volume_db = linear_to_db(maxf(volume, 0.0001))
 	get_tree().current_scene.add_child(p)
-	p.global_position = pos
+	p.global_position = to_gd_v(pos)
 	p.finished.connect(p.queue_free)
 	p.play()
 
@@ -1459,6 +2047,10 @@ func anim_set(n: Node, key, value) -> void:
 	_params(n)[k] = value
 	var t := _anim_tree(n)
 	if t != null:
+		if t.has_method("_setup_blend_to_meta"):
+			# unidot_importer's runtime/anim_tree.gd keeps Unity animator parameters as metadata
+			# and fans them out to the blend/condition parameters of the converted controller.
+			t.set(StringName("metadata/" + k), value)
 		var path: String = "parameters/" + k
 		if t.get(path) != null:
 			t.set(path, value)
@@ -1466,6 +2058,8 @@ func anim_set(n: Node, key, value) -> void:
 			t.set(path + "/blend_amount", value)
 		elif t.get(path + "/blend_position") != null:
 			t.set(path + "/blend_position", value)
+		elif t.get(path + "/condition") != null:
+			t.set(path + "/condition", bool(value))
 	if n.has_method("udon_anim_set"):
 		n.udon_anim_set(k, value)
 
@@ -1477,6 +2071,9 @@ func anim_set_damped(n: Node, key, value: float, damp_time: float, dt: float) ->
 func anim_get(n: Node, key, default):
 	if n == null:
 		return default
+	var t := _anim_tree(n)
+	if t != null and t.has_meta(str(key)):
+		return t.get_meta(str(key))
 	return _params(n).get(str(key), default)
 
 func anim_trigger(n: Node, key) -> void:
@@ -1616,6 +2213,28 @@ func blend_shape_set(m: MeshInstance3D, i: int, v: float) -> void:
 # Particles
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# ParticleSystem → GPUParticles3D (+ ParticleProcessMaterial)
+#
+# Unity module structs (`ps.main`, `ps.shape`, ...) are PsModule objects. Values set by scripts live
+# in `data`; `_ps_apply` pushes the ones Godot can express onto the GPUParticles3D / process
+# material, `_ps_read` reads those back so scripts see the imported state; everything else only
+# round-trips (`!stored` in the catalog). The importer seeds `data` through the `udon_particles`
+# metadata ({module: {prop: value}}).
+#
+# MinMaxCurve is a float (constant) or {mode, constant, constantMin, constantMax, curve, curveMin,
+# curveMax, multiplier}; MinMaxGradient a Color or {mode, color, colorMin, colorMax, gradient,
+# gradientMin, gradientMax}. Modes follow ParticleSystemCurveMode / ParticleSystemGradientMode.
+# ---------------------------------------------------------------------------
+
+class PsModule:
+	var node: Node
+	var kind: String
+	var data: Dictionary = {}
+	func _init(n: Node, k: String) -> void:
+		node = n
+		kind = k
+
 func _gpu(n: Node) -> GPUParticles3D:
 	if n is GPUParticles3D:
 		return n
@@ -1625,18 +2244,485 @@ func _gpu(n: Node) -> GPUParticles3D:
 				return c
 	return null
 
+func _ps_pm(p: GPUParticles3D) -> ParticleProcessMaterial:
+	if p == null:
+		return null
+	if p.process_material is ParticleProcessMaterial:
+		return p.process_material
+	if p.process_material == null:
+		var pm := ParticleProcessMaterial.new()
+		p.process_material = pm
+		return pm
+	return null
+
+func _ps_draw_material(p: GPUParticles3D) -> Material:
+	if p == null:
+		return null
+	if p.material_override != null:
+		return p.material_override
+	if p.draw_pass_1 != null and p.draw_pass_1.get_surface_count() > 0:
+		return p.draw_pass_1.surface_get_material(0)
+	return null
+
+func _ps_state(p: GPUParticles3D) -> Dictionary:
+	var id: int = p.get_instance_id()
+	if not _ps_states.has(id):
+		_ps_states[id] = {"start": Time.get_ticks_msec(), "playing": p.emitting, "paused": false, "offset": 0.0}
+	return _ps_states[id]
+
+func ps_module(n: Node, kind: String) -> PsModule:
+	var p := _gpu(n)
+	var target: Node = p if p != null else n
+	if target == null:
+		return null
+	var id: int = target.get_instance_id()
+	if not _ps_modules.has(id):
+		_ps_modules[id] = {}
+	var mods: Dictionary = _ps_modules[id]
+	if not mods.has(kind):
+		var m := PsModule.new(target, kind)
+		if target.has_meta("udon_particles"):
+			var all: Dictionary = target.get_meta("udon_particles")
+			if all.has(kind) and all[kind] is Dictionary:
+				m.data = (all[kind] as Dictionary).duplicate()
+		mods[kind] = m
+	return mods[kind]
+
+func ps_main(n: Node) -> PsModule:
+	return ps_module(n, "main")
+
+func ps_emission(n: Node) -> PsModule:
+	return ps_module(n, "emission")
+
+## Module property: script-set values first, then the live engine value, then the default.
+func ps_get(m, prop: String, default = null):
+	if m == null:
+		return default
+	if m.data.has(prop):
+		return m.data[prop]
+	var v = _ps_read(m, prop)
+	if v != null:
+		return v
+	return default
+
+func ps_set(m, prop: String, value) -> void:
+	if m == null:
+		return
+	m.data[prop] = value
+	_ps_apply(m, prop, value)
+
+func _ps_read(m: PsModule, prop: String):
+	var p := _gpu(m.node)
+	if p == null:
+		return null
+	var pm: ParticleProcessMaterial = p.process_material as ParticleProcessMaterial
+	match m.kind:
+		"main":
+			match prop:
+				"loop":
+					return not p.one_shot
+				"startLifetime", "startLifetimeMultiplier":
+					return p.lifetime
+				"startSpeed", "startSpeedMultiplier":
+					return pm.initial_velocity_max if pm != null else 0.0
+				"startSize", "startSizeMultiplier", "startSizeX":
+					return pm.scale_max if pm != null else 1.0
+				"startColor":
+					return pm.color if pm != null else Color.WHITE
+				"startRotation", "startRotationMultiplier":
+					return deg_to_rad(pm.angle_max) if pm != null else 0.0
+				"gravityModifier", "gravityModifierMultiplier":
+					return (-pm.gravity.y / 9.81) if pm != null else 0.0
+				"simulationSpace":
+					return 0 if p.local_coords else 1
+				"simulationSpeed":
+					return p.speed_scale
+				"maxParticles":
+					return p.amount
+				"playOnAwake":
+					return p.get_meta("udon_play_on_awake") if p.has_meta("udon_play_on_awake") else p.emitting
+				"prewarm":
+					return p.preprocess > 0.0
+		"emission":
+			match prop:
+				"enabled":
+					return p.emitting
+				"rateOverTime", "rateOverTimeMultiplier":
+					return float(p.amount) / maxf(p.lifetime, 0.001)
+				"burstCount":
+					return (m.data.get("bursts", []) as Array).size()
+		"shape":
+			if pm == null:
+				return null
+			match prop:
+				"enabled":
+					return pm.emission_shape != ParticleProcessMaterial.EMISSION_SHAPE_POINT
+				"shapeType":
+					match pm.emission_shape:
+						ParticleProcessMaterial.EMISSION_SHAPE_SPHERE:
+							return 0
+						ParticleProcessMaterial.EMISSION_SHAPE_SPHERE_SURFACE:
+							return 1
+						ParticleProcessMaterial.EMISSION_SHAPE_BOX:
+							return 5
+						ParticleProcessMaterial.EMISSION_SHAPE_RING:
+							return 4
+					return 0
+				"radius":
+					return pm.emission_ring_radius if pm.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_RING else pm.emission_sphere_radius
+				"angle":
+					return pm.spread
+				"scale":
+					return pm.emission_box_extents * 2.0
+				"position":
+					return from_gd_v(pm.emission_shape_offset)
+		"trails":
+			match prop:
+				"enabled":
+					return p.trail_enabled
+				"lifetime", "lifetimeMultiplier":
+					return p.trail_lifetime
+		"noise":
+			if pm == null:
+				return null
+			match prop:
+				"enabled":
+					return pm.turbulence_enabled
+				"strength", "strengthMultiplier":
+					return pm.turbulence_noise_strength
+				"frequency":
+					return pm.turbulence_noise_scale
+				"scrollSpeed", "scrollSpeedMultiplier":
+					return pm.turbulence_noise_speed
+		"collision":
+			if pm == null:
+				return null
+			match prop:
+				"enabled":
+					return pm.collision_mode != ParticleProcessMaterial.COLLISION_DISABLED
+				"bounce", "bounceMultiplier":
+					return pm.collision_bounce
+				"dampen", "dampenMultiplier":
+					return pm.collision_friction
+		"rotationOverLifetime":
+			if pm == null:
+				return null
+			match prop:
+				"z", "zMultiplier":
+					return deg_to_rad(pm.angular_velocity_max)
+				"enabled":
+					return pm.angular_velocity_max != 0.0
+		"limitVelocityOverLifetime":
+			if pm == null:
+				return null
+			match prop:
+				"dampen":
+					return pm.damping_max / 10.0
+				"drag", "dragMultiplier":
+					return pm.damping_max
+		"colorOverLifetime":
+			if pm != null and prop == "color" and pm.color_ramp is GradientTexture1D and pm.color_ramp.gradient != null:
+				return {"mode": 1, "gradient": pm.color_ramp.gradient}
+			if pm != null and prop == "enabled":
+				return pm.color_ramp != null
+		"sizeOverLifetime":
+			if pm != null and prop == "size" and pm.scale_curve is CurveTexture and pm.scale_curve.curve != null:
+				return {"mode": 1, "curve": pm.scale_curve.curve, "multiplier": 1.0}
+			if pm != null and prop == "enabled":
+				return pm.scale_curve != null
+		"textureSheetAnimation":
+			var dm := _ps_draw_material(p)
+			if dm is BaseMaterial3D:
+				match prop:
+					"enabled":
+						return dm.particles_anim_h_frames * dm.particles_anim_v_frames > 1
+					"numTilesX":
+						return dm.particles_anim_h_frames
+					"numTilesY":
+						return dm.particles_anim_v_frames
+		"renderer":
+			match prop:
+				"material", "sharedMaterial":
+					return _ps_draw_material(p)
+				"mesh":
+					return p.draw_pass_1
+				"enabled":
+					return p.visible
+	return null
+
+## Push a module property onto the node (the properties Godot can express).
+func _ps_apply(m: PsModule, prop: String, value) -> void:
+	var p := _gpu(m.node)
+	if p == null:
+		return
+	var pm := _ps_pm(p)
+	match m.kind:
+		"main":
+			match prop:
+				"loop":
+					p.one_shot = not bool(value)
+				"startLifetime", "startLifetimeMultiplier":
+					var mx: float = mmc_max(value)
+					p.lifetime = maxf(mx, 0.01)
+					if pm != null:
+						pm.lifetime_randomness = clampf(1.0 - mmc_min(value) / maxf(mx, 0.0001), 0.0, 1.0)
+				"startSpeed", "startSpeedMultiplier":
+					if pm != null:
+						pm.initial_velocity_min = mmc_min(value)
+						pm.initial_velocity_max = mmc_max(value)
+				"startSize", "startSizeMultiplier", "startSizeX":
+					if pm != null:
+						pm.scale_min = maxf(mmc_min(value), 0.0)
+						pm.scale_max = maxf(mmc_max(value), 0.0)
+				"startRotation", "startRotationMultiplier":
+					if pm != null:
+						pm.angle_min = rad_to_deg(mmc_min(value))
+						pm.angle_max = rad_to_deg(mmc_max(value))
+				"startColor":
+					if pm != null:
+						if mmg_mode(value) == 0:
+							pm.color = mmg_color(value)
+							pm.color_initial_ramp = null
+						else:
+							pm.color = Color.WHITE
+							var gt := GradientTexture1D.new()
+							gt.gradient = mmg_gradient(value)
+							pm.color_initial_ramp = gt
+				"gravityModifier", "gravityModifierMultiplier":
+					if pm != null:
+						_ps_update_gravity(m.node, pm)
+				"simulationSpace":
+					p.local_coords = int(value) == 0
+				"simulationSpeed":
+					p.speed_scale = float(value)
+				"maxParticles":
+					p.amount = maxi(int(value), 1)
+				"playOnAwake":
+					p.set_meta("udon_play_on_awake", bool(value))
+				"prewarm":
+					p.preprocess = p.lifetime if bool(value) else 0.0
+		"emission":
+			match prop:
+				"enabled":
+					if _ps_state(p)["playing"]:
+						p.emitting = bool(value)
+				"rateOverTime", "rateOverTimeMultiplier":
+					var rate: float = mmc_max(value)
+					if rate > 0.0:
+						p.amount = maxi(int(ceil(rate * p.lifetime)), 1)
+						p.explosiveness = 0.0
+				"bursts":
+					var total: int = 0
+					for b in value:
+						if b is Dictionary:
+							total += int(mmc_max(b.get("count", 0)))
+					if total > 0 and mmc_max(m.data.get("rateOverTime", 0.0)) <= 0.0:
+						p.amount = total
+						p.explosiveness = 1.0
+		"shape":
+			if pm == null:
+				return
+			match prop:
+				"enabled":
+					if not bool(value):
+						pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_POINT
+				"shapeType":
+					_ps_apply_shape(m, pm)
+				"radius", "radiusThickness":
+					_ps_apply_shape(m, pm)
+				"angle":
+					pm.spread = clampf(float(value), 0.0, 180.0)
+				"scale":
+					pm.emission_box_extents = (value as Vector3).abs() * 0.5
+				"position":
+					pm.emission_shape_offset = to_gd_v(value)
+				"randomDirectionAmount":
+					pm.spread = lerpf(pm.spread, 180.0, clampf(float(value), 0.0, 1.0))
+		"velocityOverLifetime":
+			if pm == null:
+				return
+			match prop:
+				"speedModifier", "speedModifierMultiplier":
+					var k: float = mmc_max(value)
+					var base: float = float(m.data.get("_base_speed", pm.initial_velocity_max))
+					m.data["_base_speed"] = base
+					pm.initial_velocity_min = mmc_min(value) * base
+					pm.initial_velocity_max = k * base
+				"radial", "radialMultiplier":
+					pm.radial_velocity_min = mmc_min(value)
+					pm.radial_velocity_max = mmc_max(value)
+		"limitVelocityOverLifetime":
+			if pm == null:
+				return
+			match prop:
+				"dampen":
+					pm.damping_min = float(value) * 10.0
+					pm.damping_max = float(value) * 10.0
+				"drag", "dragMultiplier":
+					pm.damping_min = mmc_min(value)
+					pm.damping_max = mmc_max(value)
+		"forceOverLifetime":
+			if pm != null and prop in ["x", "y", "z", "xMultiplier", "yMultiplier", "zMultiplier", "enabled"]:
+				_ps_update_gravity(m.node, pm)
+		"colorOverLifetime":
+			if pm == null:
+				return
+			match prop:
+				"color":
+					var gt := GradientTexture1D.new()
+					gt.gradient = mmg_gradient(value)
+					pm.color_ramp = gt
+				"enabled":
+					if not bool(value):
+						pm.color_ramp = null
+		"sizeOverLifetime":
+			if pm == null:
+				return
+			match prop:
+				"size", "sizeMultiplier":
+					var c: Curve = mmc_curve_of(value)
+					if c != null:
+						var ct := CurveTexture.new()
+						ct.curve = c
+						pm.scale_curve = ct
+					else:
+						pm.scale_curve = null
+				"enabled":
+					if not bool(value):
+						pm.scale_curve = null
+		"rotationOverLifetime":
+			if pm == null:
+				return
+			match prop:
+				"z", "zMultiplier":
+					pm.angular_velocity_min = rad_to_deg(mmc_min(value))
+					pm.angular_velocity_max = rad_to_deg(mmc_max(value))
+				"enabled":
+					if not bool(value):
+						pm.angular_velocity_min = 0.0
+						pm.angular_velocity_max = 0.0
+		"noise":
+			if pm == null:
+				return
+			match prop:
+				"enabled":
+					pm.turbulence_enabled = bool(value)
+				"strength", "strengthMultiplier":
+					pm.turbulence_noise_strength = mmc_max(value)
+				"frequency":
+					pm.turbulence_noise_scale = float(value)
+				"scrollSpeed", "scrollSpeedMultiplier":
+					pm.turbulence_noise_speed = Vector3.ONE * mmc_max(value)
+		"collision":
+			if pm == null:
+				return
+			match prop:
+				"enabled":
+					pm.collision_mode = ParticleProcessMaterial.COLLISION_RIGID if bool(value) else ParticleProcessMaterial.COLLISION_DISABLED
+				"bounce", "bounceMultiplier":
+					pm.collision_bounce = mmc_max(value)
+				"dampen", "dampenMultiplier":
+					pm.collision_friction = mmc_max(value)
+				"radiusScale":
+					pm.collision_use_scale = true
+		"textureSheetAnimation":
+			var dm := _ps_draw_material(p)
+			if dm is BaseMaterial3D:
+				match prop:
+					"numTilesX":
+						dm.particles_anim_h_frames = maxi(int(value), 1)
+						dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+					"numTilesY":
+						dm.particles_anim_v_frames = maxi(int(value), 1)
+						dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+					"enabled":
+						if not bool(value):
+							dm.particles_anim_h_frames = 1
+							dm.particles_anim_v_frames = 1
+		"trails":
+			match prop:
+				"enabled":
+					p.trail_enabled = bool(value)
+				"lifetime", "lifetimeMultiplier":
+					p.trail_lifetime = maxf(mmc_max(value), 0.01)
+		"renderer":
+			match prop:
+				"material", "sharedMaterial":
+					p.material_override = value
+				"mesh":
+					if value is Mesh:
+						p.draw_pass_1 = value
+				"renderMode":
+					var dm := _ps_draw_material(p)
+					if dm is BaseMaterial3D:
+						match int(value):
+							0, 1, 2:
+								dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+							3:
+								dm.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+							_:
+								dm.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+				"enabled":
+					p.visible = bool(value)
+
+func _ps_apply_shape(m: PsModule, pm: ParticleProcessMaterial) -> void:
+	var shape: int = int(m.data.get("shapeType", 0))
+	var radius: float = float(m.data.get("radius", pm.emission_sphere_radius))
+	var thickness: float = float(m.data.get("radiusThickness", 1.0))
+	match shape:
+		0, 2:  # Sphere, Hemisphere
+			pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE if thickness > 0.0 else ParticleProcessMaterial.EMISSION_SHAPE_SPHERE_SURFACE
+			pm.emission_sphere_radius = maxf(radius, 0.001)
+		1, 3:  # SphereShell, HemisphereShell
+			pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE_SURFACE
+			pm.emission_sphere_radius = maxf(radius, 0.001)
+		4, 7, 8, 9, 10, 11, 17:  # Cone family, Circle, Donut: a ring around the local +Z axis
+			pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+			pm.emission_ring_axis = Vector3(0, 0, 1)
+			pm.emission_ring_radius = maxf(radius, 0.001)
+			pm.emission_ring_inner_radius = maxf(radius, 0.001) * (1.0 - clampf(thickness, 0.0, 1.0))
+			pm.emission_ring_height = 0.0
+			pm.direction = Vector3(0, 0, 1)
+		5, 15, 16, 18:  # Box family, Rectangle
+			pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+			var sc: Vector3 = m.data.get("scale", pm.emission_box_extents * 2.0)
+			pm.emission_box_extents = sc.abs() * 0.5
+		_:
+			pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+			pm.emission_sphere_radius = maxf(radius, 0.001)
+
+func _ps_update_gravity(n: Node, pm: ParticleProcessMaterial) -> void:
+	var main := ps_module(n, "main")
+	var force := ps_module(n, "forceOverLifetime")
+	var g: float = mmc_max(main.data.get("gravityModifier", 0.0)) * mmc_max(main.data.get("gravityModifierMultiplier", 1.0)) if main.data.has("gravityModifier") else -pm.gravity.y / 9.81
+	var v := Vector3(0.0, -9.81 * g, 0.0)
+	if force.data.get("enabled", not force.data.is_empty()):
+		v += to_gd_v(Vector3(mmc_max(force.data.get("x", 0.0)), mmc_max(force.data.get("y", 0.0)), mmc_max(force.data.get("z", 0.0))))
+	pm.gravity = v
+
+# --- playback ---------------------------------------------------------------------------------
+
 func ps_play(n: Node, with_children: bool) -> void:
 	var p := _gpu(n)
 	if p != null:
-		p.emitting = true
+		var st := _ps_state(p)
+		if not st["playing"] or st["paused"]:
+			st["start"] = Time.get_ticks_msec()
+		st["playing"] = true
+		st["paused"] = false
+		p.speed_scale = float(ps_get(ps_module(p, "main"), "simulationSpeed", 1.0))
+		var em = ps_module(p, "emission").data.get("enabled", true)
+		p.emitting = bool(em)
 	if with_children:
 		for c in n.get_children():
 			if c is GPUParticles3D and c != p:
-				c.emitting = true
+				ps_play(c, true)
 
 func ps_stop(n: Node, with_children: bool, behavior: int) -> void:
 	var p := _gpu(n)
 	if p != null:
+		var st := _ps_state(p)
+		st["playing"] = false
 		p.emitting = false
 		if behavior == 0:
 			p.restart()
@@ -1644,19 +2730,87 @@ func ps_stop(n: Node, with_children: bool, behavior: int) -> void:
 	if with_children:
 		for c in n.get_children():
 			if c is GPUParticles3D and c != p:
-				c.emitting = false
+				ps_stop(c, true, behavior)
 
-func ps_pause(n: Node, _with_children: bool) -> void:
+func ps_pause(n: Node, with_children: bool) -> void:
 	var p := _gpu(n)
 	if p != null:
+		var st := _ps_state(p)
+		st["offset"] = ps_time(p)
+		st["paused"] = true
 		p.speed_scale = 0.0
+	if with_children:
+		for c in n.get_children():
+			if c is GPUParticles3D and c != p:
+				ps_pause(c, true)
 
-func ps_clear(n: Node, _with_children: bool) -> void:
+func ps_clear(n: Node, with_children: bool) -> void:
 	var p := _gpu(n)
 	if p != null:
 		var was: bool = p.emitting
 		p.restart()
 		p.emitting = was
+	if with_children:
+		for c in n.get_children():
+			if c is GPUParticles3D and c != p:
+				ps_clear(c, true)
+
+func ps_is_playing(n: Node) -> bool:
+	var p := _gpu(n)
+	if p == null:
+		return false
+	var st := _ps_state(p)
+	if p.emitting:
+		return true
+	return st["playing"] and p.one_shot and ps_time(p) < p.lifetime
+
+func ps_is_emitting(n: Node) -> bool:
+	var p := _gpu(n)
+	return p != null and p.emitting
+
+func ps_is_paused(n: Node) -> bool:
+	var p := _gpu(n)
+	return p != null and _ps_state(p)["paused"]
+
+func ps_is_stopped(n: Node) -> bool:
+	return not ps_is_playing(n)
+
+## Seconds since Play (Unity `time`; wraps for looping systems).
+func ps_time(n: Node) -> float:
+	var p := _gpu(n)
+	if p == null:
+		return 0.0
+	var st := _ps_state(p)
+	if st["paused"]:
+		return float(st["offset"])
+	if not st["playing"]:
+		return 0.0
+	var t: float = float(Time.get_ticks_msec() - int(st["start"])) / 1000.0 * maxf(p.speed_scale, 0.0)
+	var dur: float = float(ps_get(ps_module(p, "main"), "duration", p.lifetime))
+	if not p.one_shot and dur > 0.0:
+		t = fmod(t, dur)
+	return t
+
+func ps_set_time(n: Node, t: float) -> void:
+	var p := _gpu(n)
+	if p != null:
+		var st := _ps_state(p)
+		st["start"] = Time.get_ticks_msec() - int(t * 1000.0)
+
+func ps_particle_count(n: Node) -> int:
+	var p := _gpu(n)
+	if p == null or not ps_is_playing(p):
+		return 0
+	return p.amount
+
+func ps_simulate(n: Node, t: float, restart: bool) -> void:
+	var p := _gpu(n)
+	if p == null:
+		return
+	if restart:
+		p.restart()
+	p.preprocess = maxf(t, 0.0)
+	ps_set_time(p, t)
 
 func ps_emit(n: Node, count: int) -> void:
 	var p := _gpu(n)
@@ -1669,103 +2823,273 @@ func ps_emit_params(n: Node, params: Dictionary, count: int) -> void:
 	var p := _gpu(n)
 	if p == null:
 		return
-	var xf := Transform3D(Basis(), params.get("position", p.global_position))
+	var xf := Transform3D(Basis(), to_gd_v(params["position"]) if params.has("position") else p.global_position)
 	var flags: int = GPUParticles3D.EMIT_FLAG_POSITION
+	var vel := Vector3.ZERO
 	if params.has("velocity"):
 		flags |= GPUParticles3D.EMIT_FLAG_VELOCITY
+		vel = to_gd_v(params["velocity"])
+	var col: Color = Color.WHITE
 	if params.has("startColor"):
 		flags |= GPUParticles3D.EMIT_FLAG_COLOR
+		col = params["startColor"]
 	for _i in range(count):
-		p.emit_particle(xf, params.get("velocity", Vector3.ZERO), params.get("startColor", Color.WHITE), Color.WHITE, flags)
+		p.emit_particle(xf, vel, col, Color.WHITE, flags)
 
-class PsModule:
-	var node: Node
-	var kind: String
-	var enabled: bool = true
-	var data: Dictionary = {}
-	func _init(n: Node, k: String) -> void:
-		node = n
-		kind = k
-	func _get(prop: StringName):
-		if data.has(prop):
-			return data[prop]
-		return null
-	func _set(prop: StringName, value) -> bool:
-		data[prop] = value
-		U._ps_apply(node, kind, String(prop), value)
-		return true
+func ps_trigger_sub_emitter(n: Node, index: int) -> void:
+	var subs: Array = ps_module(n, "subEmitters").data.get("systems", [])
+	if index >= 0 and index < subs.size() and subs[index] is Node:
+		ps_play(subs[index], true)
 
-func ps_module(n: Node, kind: String):
-	if n == null:
-		return null
-	var id: int = n.get_instance_id()
-	if not _ps_modules.has(id):
-		_ps_modules[id] = {}
-	if not _ps_modules[id].has(kind):
-		_ps_modules[id][kind] = PsModule.new(n, kind)
-	return _ps_modules[id][kind]
+func ps_sub_emitter_count(n: Node) -> int:
+	var subs: Array = ps_module(n, "subEmitters").data.get("systems", [])
+	return subs.size()
 
-func ps_main(n: Node):
-	var m = ps_module(n, "main")
-	var p := _gpu(n)
-	if p != null and m.data.is_empty():
-		m.data = {"duration": p.lifetime, "loop": not p.one_shot, "startLifetime": p.lifetime, "startSpeed": 1.0, "startSize": 1.0, "startColor": Color.WHITE, "startRotation": 0.0, "gravityModifier": 1.0, "simulationSpace": 1 if not p.local_coords else 0, "simulationSpeed": p.speed_scale, "maxParticles": p.amount, "playOnAwake": p.emitting}
-	return m
-
-func ps_emission(n: Node):
-	var m = ps_module(n, "emission")
-	var p := _gpu(n)
-	if p != null and m.data.is_empty():
-		m.data = {"enabled": p.emitting, "rateOverTime": float(p.amount) / maxf(p.lifetime, 0.001), "rateOverDistance": 0.0}
-	return m
-
-func _ps_apply(n: Node, kind: String, prop: String, value) -> void:
-	var p := _gpu(n)
-	if p == null:
-		return
-	match [kind, prop]:
-		["main", "duration"], ["main", "startLifetime"]:
-			p.lifetime = maxf(float(value), 0.01)
-		["main", "loop"]:
-			p.one_shot = not bool(value)
-		["main", "simulationSpeed"]:
-			p.speed_scale = float(value)
-		["main", "maxParticles"]:
-			p.amount = maxi(int(value), 1)
-		["main", "simulationSpace"]:
-			p.local_coords = int(value) == 0
-		["main", "startColor"]:
-			if p.process_material is ParticleProcessMaterial:
-				p.process_material.color = value
-		["main", "startSpeed"]:
-			if p.process_material is ParticleProcessMaterial:
-				p.process_material.initial_velocity_min = float(value)
-				p.process_material.initial_velocity_max = float(value)
-		["main", "startSize"]:
-			if p.process_material is ParticleProcessMaterial:
-				p.process_material.scale_min = float(value)
-				p.process_material.scale_max = float(value)
-		["main", "gravityModifier"]:
-			if p.process_material is ParticleProcessMaterial:
-				p.process_material.gravity = gravity() * float(value)
-		["emission", "enabled"]:
-			p.emitting = bool(value)
-		["emission", "rateOverTime"]:
-			p.amount = maxi(int(float(value) * p.lifetime), 1)
-		["shape", "radius"]:
-			if p.process_material is ParticleProcessMaterial:
-				p.process_material.emission_sphere_radius = float(value)
-		_:
-			pass
+func ps_sub_emitter(n: Node, index: int) -> Node:
+	var subs: Array = ps_module(n, "subEmitters").data.get("systems", [])
+	return subs[index] if index >= 0 and index < subs.size() else null
 
 func ps_material(n: Node) -> Material:
-	var p := _gpu(n)
-	return p.material_override if p != null else null
+	return _ps_draw_material(_gpu(n))
 
 func ps_set_material(n: Node, m: Material) -> void:
 	var p := _gpu(n)
 	if p != null:
 		p.material_override = m
+
+# --- bursts -----------------------------------------------------------------------------------
+
+func ps_bursts(m) -> Array:
+	if m == null:
+		return []
+	if not m.data.has("bursts"):
+		m.data["bursts"] = []
+	return m.data["bursts"]
+
+func ps_set_bursts(m, bursts: Array, count: int = -1) -> void:
+	if m == null:
+		return
+	var arr: Array = []
+	var n: int = bursts.size() if count < 0 else mini(count, bursts.size())
+	for i in range(n):
+		arr.append(bursts[i])
+	ps_set(m, "bursts", arr)
+
+func ps_get_bursts(m, out: Array) -> int:
+	var b: Array = ps_bursts(m)
+	var n: int = mini(b.size(), out.size())
+	for i in range(n):
+		out[i] = b[i]
+	return b.size()
+
+func ps_burst(m, index: int) -> Dictionary:
+	var b: Array = ps_bursts(m)
+	return b[index] if index >= 0 and index < b.size() else {}
+
+func ps_set_burst(m, index: int, burst: Dictionary) -> void:
+	var b: Array = ps_bursts(m)
+	if index >= 0 and index < b.size():
+		b[index] = burst
+		ps_set(m, "bursts", b)
+
+# --- MinMaxCurve ------------------------------------------------------------------------------
+
+func mmc_two_constants(a: float, b: float) -> Dictionary:
+	return {"mode": 3, "constantMin": a, "constantMax": b, "multiplier": 1.0}
+
+func mmc_curve(mult: float, c: Curve) -> Dictionary:
+	return {"mode": 1, "multiplier": mult, "curve": c}
+
+func mmc_two_curves(mult: float, cmin: Curve, cmax: Curve) -> Dictionary:
+	return {"mode": 2, "multiplier": mult, "curveMin": cmin, "curveMax": cmax}
+
+func mmc_mode(v) -> int:
+	if v is Dictionary:
+		return int(v.get("mode", 0))
+	return 0
+
+func mmc_multiplier(v) -> float:
+	if v is Dictionary:
+		return float(v.get("multiplier", v.get("constant", v.get("constantMax", 1.0))))
+	return float(v) if v != null else 0.0
+
+func _curve_range(c: Curve) -> Vector2:
+	if c == null:
+		return Vector2.ZERO
+	var lo: float = INF
+	var hi: float = -INF
+	for i in range(9):
+		var y: float = c.sample(float(i) / 8.0)
+		lo = minf(lo, y)
+		hi = maxf(hi, y)
+	return Vector2(lo, hi)
+
+func mmc_constant(v) -> float:
+	if v is Dictionary:
+		match int(v.get("mode", 0)):
+			3:
+				return float(v.get("constantMax", v.get("constant", 0.0)))
+			1, 2:
+				return float(v.get("multiplier", 1.0))
+		return float(v.get("constant", v.get("constantMax", 0.0)))
+	return float(v) if v != null else 0.0
+
+func mmc_min(v) -> float:
+	if v is Dictionary:
+		match int(v.get("mode", 0)):
+			3:
+				return float(v.get("constantMin", 0.0))
+			1:
+				return _curve_range(v.get("curve")).x * float(v.get("multiplier", 1.0))
+			2:
+				return _curve_range(v.get("curveMin")).x * float(v.get("multiplier", 1.0))
+		return float(v.get("constant", v.get("constantMin", 0.0)))
+	return float(v) if v != null else 0.0
+
+func mmc_max(v) -> float:
+	if v is Dictionary:
+		match int(v.get("mode", 0)):
+			3:
+				return float(v.get("constantMax", 0.0))
+			1:
+				return _curve_range(v.get("curve")).y * float(v.get("multiplier", 1.0))
+			2:
+				return _curve_range(v.get("curveMax")).y * float(v.get("multiplier", 1.0))
+		return float(v.get("constant", v.get("constantMax", 0.0)))
+	return float(v) if v != null else 0.0
+
+func mmc_eval(v, t: float, lerp_factor: float) -> float:
+	if v is Dictionary:
+		var mult: float = float(v.get("multiplier", 1.0))
+		match int(v.get("mode", 0)):
+			1:
+				var c: Curve = v.get("curve")
+				return (c.sample(t) if c != null else 1.0) * mult
+			2:
+				var a: Curve = v.get("curveMin")
+				var b: Curve = v.get("curveMax")
+				return lerpf(a.sample(t) if a != null else 1.0, b.sample(t) if b != null else 1.0, lerp_factor) * mult
+			3:
+				return lerpf(float(v.get("constantMin", 0.0)), float(v.get("constantMax", 0.0)), lerp_factor)
+		return float(v.get("constant", 0.0))
+	return float(v) if v != null else 0.0
+
+func mmc_get(v, key: String):
+	if v is Dictionary:
+		return v.get(key)
+	return null
+
+## Struct setter: returns the updated value (the catalog assigns it back).
+func mmc_with(v, key: String, value):
+	var d: Dictionary = (v as Dictionary).duplicate() if v is Dictionary else {"mode": 0, "constant": float(v) if v != null else 0.0}
+	d[key] = value
+	if key == "constant":
+		d["mode"] = 0
+	elif key == "curve":
+		d["mode"] = 1
+	elif key == "constantMin" or key == "constantMax":
+		if d.get("mode", 0) != 3:
+			d["mode"] = 3
+	elif key == "curveMin" or key == "curveMax":
+		d["mode"] = 2
+	elif key == "curveMultiplier":
+		d["multiplier"] = value
+	if d.get("mode", 0) == 0 and d.has("constant") and not d.has("curve"):
+		return float(d["constant"])
+	return d
+
+## The Curve of a curve-mode value (null for constants).
+func mmc_curve_of(v) -> Curve:
+	if v is Dictionary:
+		if v.has("curve"):
+			return v["curve"]
+		if v.has("curveMax"):
+			return v["curveMax"]
+	return null
+
+# --- MinMaxGradient ---------------------------------------------------------------------------
+
+func mmg_two_colors(a: Color, b: Color) -> Dictionary:
+	return {"mode": 2, "colorMin": a, "colorMax": b}
+
+func mmg_gradient_value(g: Gradient) -> Dictionary:
+	return {"mode": 1, "gradient": g}
+
+func mmg_two_gradients(a: Gradient, b: Gradient) -> Dictionary:
+	return {"mode": 3, "gradientMin": a, "gradientMax": b}
+
+func mmg_mode(v) -> int:
+	if v is Dictionary:
+		return int(v.get("mode", 0))
+	return 0
+
+func mmg_color(v) -> Color:
+	if v is Dictionary:
+		match int(v.get("mode", 0)):
+			1, 3:
+				var g: Gradient = v.get("gradient", v.get("gradientMax"))
+				return g.sample(0.0) if g != null else Color.WHITE
+			2:
+				return v.get("colorMax", Color.WHITE)
+		return v.get("color", Color.WHITE)
+	return v if v is Color else Color.WHITE
+
+func mmg_get(v, key: String):
+	if v is Dictionary:
+		return v.get(key)
+	if key == "color":
+		return v
+	return null
+
+func mmg_with(v, key: String, value):
+	var d: Dictionary = (v as Dictionary).duplicate() if v is Dictionary else {"mode": 0, "color": v if v is Color else Color.WHITE}
+	d[key] = value
+	if key == "color":
+		d["mode"] = 0
+	elif key == "gradient":
+		d["mode"] = 1
+	elif key == "colorMin" or key == "colorMax":
+		if d.get("mode", 0) != 2:
+			d["mode"] = 2
+	elif key == "gradientMin" or key == "gradientMax":
+		d["mode"] = 3
+	if d.get("mode", 0) == 0 and d.has("color"):
+		return d["color"]
+	return d
+
+func mmg_eval(v, t: float, lerp_factor: float) -> Color:
+	if v is Dictionary:
+		match int(v.get("mode", 0)):
+			1:
+				var g: Gradient = v.get("gradient")
+				return g.sample(t) if g != null else Color.WHITE
+			2:
+				return (v.get("colorMin", Color.WHITE) as Color).lerp(v.get("colorMax", Color.WHITE), lerp_factor)
+			3:
+				var a: Gradient = v.get("gradientMin")
+				var b: Gradient = v.get("gradientMax")
+				return (a.sample(t) if a != null else Color.WHITE).lerp(b.sample(t) if b != null else Color.WHITE, lerp_factor)
+		return v.get("color", Color.WHITE)
+	return v if v is Color else Color.WHITE
+
+## A Godot Gradient for any MinMaxGradient value (constants become flat gradients).
+func mmg_gradient(v) -> Gradient:
+	if v is Dictionary:
+		match int(v.get("mode", 0)):
+			1:
+				return v.get("gradient") if v.get("gradient") != null else Gradient.new()
+			3:
+				return v.get("gradientMax") if v.get("gradientMax") != null else Gradient.new()
+			2:
+				var g := Gradient.new()
+				g.set_color(0, v.get("colorMin", Color.WHITE))
+				g.set_color(1, v.get("colorMax", Color.WHITE))
+				return g
+	var flat := Gradient.new()
+	var c: Color = mmg_color(v)
+	flat.set_color(0, c)
+	flat.set_color(1, c)
+	return flat
 
 # ---------------------------------------------------------------------------
 # Renderer / Material
@@ -1834,7 +3158,7 @@ func renderer_set_materials(n: Node, mats: Array) -> void:
 
 func renderer_bounds(n: Node) -> AABB:
 	var g := _geom(n)
-	return g.global_transform * g.get_aabb() if g != null else AABB()
+	return from_gd_aabb(g.global_transform * g.get_aabb()) if g != null else AABB()
 
 func renderer_set_property_block(n: Node, block: Dictionary) -> void:
 	var g := _geom(n)
@@ -1856,6 +3180,8 @@ func renderer_get_property_block(n: Node, block: Dictionary) -> void:
 			block[k] = v
 
 func _shader_param_name(k) -> String:
+	if k is int and _prop_names.has(k):
+		k = _prop_names[k]
 	var s: String = str(k)
 	return s.trim_prefix("_")
 
@@ -1870,7 +3196,9 @@ func new_material(_shader) -> Material:
 func mat_set(m: Material, key, value) -> void:
 	if m == null:
 		return
-	var k: String = str(key)
+	if is_render_texture(value):
+		value = rt_texture(value)
+	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
 		m.set_shader_parameter(_shader_param_name(k), value)
 		return
@@ -1900,7 +3228,7 @@ func mat_set(m: Material, key, value) -> void:
 func mat_get(m: Material, key, default):
 	if m == null:
 		return default
-	var k: String = str(key)
+	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
 		var v = m.get_shader_parameter(_shader_param_name(k))
 		return v if v != null else default
@@ -1925,7 +3253,7 @@ func mat_get(m: Material, key, default):
 	return default
 
 func mat_has(m: Material, key) -> bool:
-	var k: String = str(key)
+	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
 		return m.get_shader_parameter(_shader_param_name(k)) != null
 	return k in ["_Color", "_BaseColor", "_MainTex", "_EmissionColor", "_Metallic", "_Glossiness", "_Smoothness"] or m.has_meta("udon_" + _shader_param_name(k))
@@ -1986,8 +3314,87 @@ func black_texture() -> Texture2D:
 	img.fill(Color.BLACK)
 	return ImageTexture.create_from_image(img)
 
-func new_render_texture(_w: int, _h: int):
-	return null
+## RenderTextures are SubViewports created on demand (Unity: a contract between a Camera and a
+## texture; Godot: the viewport must be in the tree). The UdonRenderTexture resource describes
+## one; `rt_viewport` creates and caches its SubViewport under the U autoload.
+var _rt_viewports: Dictionary = {}   # resource instance id → SubViewport
+const _RT_SCRIPT = preload("res://addons/udon_runtime/udon_render_texture.gd")
+
+func is_render_texture(rt) -> bool:
+	return rt is Resource and rt.get_script() == _RT_SCRIPT
+
+func new_render_texture(w: int, h: int, depth: int = 24):
+	var rt: Resource = _RT_SCRIPT.new()
+	rt.width = maxi(w, 1)
+	rt.height = maxi(h, 1)
+	rt.depth = depth
+	return rt
+
+func rt_viewport(rt) -> SubViewport:
+	if not is_render_texture(rt):
+		return null
+	var id: int = rt.get_instance_id()
+	if _rt_viewports.has(id) and is_instance_valid(_rt_viewports[id]):
+		return _rt_viewports[id]
+	var vp := SubViewport.new()
+	vp.name = "RenderTexture_%d" % id
+	vp.size = Vector2i(rt.width, rt.height)
+	vp.transparent_bg = rt.transparent
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(vp)
+	_rt_viewports[id] = vp
+	return vp
+
+## The Texture2D to use where a script hands the RenderTexture to a material or UI element.
+func rt_texture(rt) -> Texture2D:
+	if rt is Texture2D:
+		return rt
+	var vp := rt_viewport(rt)
+	return vp.get_texture() if vp != null else null
+
+## Unity Camera.targetTexture: a proxy camera inside the texture's viewport follows this camera
+## (RemoteTransform3D) and renders the shared world; the original stops rendering to the screen.
+func camera_set_target_texture(c: Camera3D, rt) -> void:
+	if c == null:
+		return
+	var old: Node = c.get_node_or_null("UdonRenderTarget")
+	if old != null:
+		var proxy_old = old.get_meta("proxy") if old.has_meta("proxy") else null
+		if proxy_old is Node and is_instance_valid(proxy_old):
+			proxy_old.queue_free()
+		old.queue_free()
+		c.set_meta("udon_target_texture", null)
+	if rt == null:
+		c.current = c.has_meta("udon_was_current") and c.get_meta("udon_was_current")
+		return
+	var vp := rt_viewport(rt)
+	if vp == null:
+		return
+	var proxy := Camera3D.new()
+	proxy.name = "Camera_" + str(c.get_instance_id())
+	proxy.fov = c.fov
+	proxy.near = c.near
+	proxy.far = c.far
+	proxy.projection = c.projection
+	proxy.size = c.size
+	proxy.cull_mask = c.cull_mask
+	proxy.environment = c.environment
+	vp.add_child(proxy)
+	proxy.current = true
+	proxy.global_transform = c.global_transform
+	var rtf := RemoteTransform3D.new()
+	rtf.name = "UdonRenderTarget"
+	rtf.set_meta("proxy", proxy)
+	c.add_child(rtf)
+	rtf.remote_path = rtf.get_path_to(proxy)
+	c.set_meta("udon_was_current", c.current)
+	c.set_meta("udon_target_texture", rt)
+	c.current = false
+
+func camera_get_target_texture(c: Camera3D):
+	if c == null or not c.has_meta("udon_target_texture"):
+		return null
+	return c.get_meta("udon_target_texture")
 
 func mesh_vertex_count(m: Mesh) -> int:
 	return mesh_vertices(m).size()
@@ -2065,9 +3472,6 @@ func camera_set_bg(c: Camera3D, col: Color) -> void:
 		c.environment.background_mode = Environment.BG_COLOR
 	c.environment.background_color = col
 
-func camera_set_target_texture(_c: Camera3D, _t) -> void:
-	pass
-
 func camera_pixel_size(c: Camera3D) -> Vector2i:
 	return Vector2i(c.get_viewport().get_visible_rect().size)
 
@@ -2075,7 +3479,13 @@ func screen_size() -> Vector2i:
 	var vp := get_viewport()
 	return Vector2i(vp.get_visible_rect().size) if vp != null else Vector2i(1920, 1080)
 
-func world_to_screen(c: Camera3D, p: Vector3) -> Vector3:
+## Unity's camera space is right-handed with -Z forward (OpenGL convention); the view matrix in
+## script space is the Unity worldToLocal followed by a Z flip.
+func world_to_camera_matrix(c: Node3D) -> Transform3D:
+	return Transform3D(Basis.from_scale(Vector3(1.0, 1.0, -1.0)), Vector3.ZERO) * world_to_local_matrix(c)
+
+func world_to_screen(c: Camera3D, p_u: Vector3) -> Vector3:
+	var p: Vector3 = to_gd_v(p_u)
 	var s: Vector2 = c.unproject_position(p)
 	var h: float = c.get_viewport().get_visible_rect().size.y
 	var depth: float = (c.global_transform.affine_inverse() * p).z * -1.0
@@ -2088,7 +3498,7 @@ func world_to_viewport(c: Camera3D, p: Vector3) -> Vector3:
 
 func screen_to_world(c: Camera3D, p: Vector3) -> Vector3:
 	var h: float = c.get_viewport().get_visible_rect().size.y
-	return c.project_position(Vector2(p.x, h - p.y), p.z)
+	return from_gd_v(c.project_position(Vector2(p.x, h - p.y), p.z))
 
 func viewport_to_world(c: Camera3D, p: Vector3) -> Vector3:
 	var size: Vector2 = c.get_viewport().get_visible_rect().size
@@ -2097,7 +3507,7 @@ func viewport_to_world(c: Camera3D, p: Vector3) -> Vector3:
 func screen_point_to_ray(c: Camera3D, p: Vector3) -> Dictionary:
 	var h: float = c.get_viewport().get_visible_rect().size.y
 	var sp := Vector2(p.x, h - p.y)
-	return {"origin": c.project_ray_origin(sp), "direction": c.project_ray_normal(sp)}
+	return {"origin": from_gd_v(c.project_ray_origin(sp)), "direction": from_gd_v(c.project_ray_normal(sp))}
 
 func viewport_point_to_ray(c: Camera3D, p: Vector3) -> Dictionary:
 	var size: Vector2 = c.get_viewport().get_visible_rect().size
@@ -2189,8 +3599,7 @@ func _line_redraw(n: Node) -> void:
 		var p = pts[i]
 		if p == null:
 			continue
-		if not world:
-			p = n.global_transform * p
+		p = to_gd_v(p) if world else unity_transform(n) * to_gd_v(p)
 		im.surface_set_color(c0.lerp(c1, float(i) / maxf(pts.size() - 1, 1.0)))
 		im.surface_add_vertex(p)
 	im.surface_end()
@@ -2362,11 +3771,133 @@ func app_version() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", "1.0"))
 
 # ---------------------------------------------------------------------------
+# UI interaction helpers (tests, bots, pointer/laser input on world-space canvases)
+# ---------------------------------------------------------------------------
+
+## Press a converted UI control the way a user would: buttons emit `pressed` (toggles flip),
+## sliders/inputs/dropdowns take a value and emit their change signals.
+func ui_press(n: Node, value = null) -> void:
+	if n == null or not is_instance_valid(n):
+		return
+	if n is BaseButton:
+		if n.disabled:
+			return
+		if n.toggle_mode:
+			n.button_pressed = (not n.button_pressed) if value == null else bool(value)
+		n.button_down.emit()
+		n.pressed.emit()
+		n.button_up.emit()
+		if n.has_method("udon_ui_pressed"):
+			n.udon_ui_pressed()
+	elif n is Range:
+		if value != null:
+			n.value = float(value)
+	elif n is LineEdit:
+		if value != null:
+			n.text = str(value)
+			n.text_changed.emit(n.text)
+		n.text_submitted.emit(n.text)
+	elif n is TextEdit:
+		if value != null:
+			n.text = str(value)
+			n.text_changed.emit()
+	elif n is OptionButton:
+		if value != null:
+			n.select(int(value))
+			n.item_selected.emit(int(value))
+	elif n.has_method("Interact"):
+		n.Interact()
+
+## Find a control on a converted canvas by (Unity) name; `root` may be any node of the scene.
+func ui_find(root: Node, name_: String) -> Node:
+	if root == null:
+		return null
+	return root.find_child(name_, true, false)
+
+## Click a world-space canvas (converted by unidot's udon_integration) at a world point: the hit
+## is mapped to viewport pixels and delivered as mouse press/release events.
+func ui_click_world(canvas_node: Node, world_point: Vector3) -> bool:
+	if canvas_node == null or not canvas_node.has_meta("udon_canvas"):
+		return false
+	var cfg: Dictionary = canvas_node.get_meta("udon_canvas")
+	if str(cfg.get("mode", "")) != "world":
+		return false
+	var vp: SubViewport = canvas_node.get_node_or_null(cfg["viewport"])
+	var plane: Node3D = canvas_node.get_node_or_null(cfg["plane"])
+	if vp == null or plane == null:
+		return false
+	var local: Vector3 = plane.global_transform.affine_inverse() * to_gd_v(world_point)
+	var units: Vector2 = cfg.get("plane_size", cfg.get("size", Vector2(vp.size)))
+	var k: float = float(cfg.get("k", 1.0))
+	# the plane is a half-turned QuadMesh: texture U runs along -X, V down from the top
+	var px: Vector2 = Vector2((units.x * 0.5 - local.x) * k, (units.y * 0.5 - local.y) * k)
+	return ui_click_viewport(vp, px)
+
+func ui_click_viewport(vp: SubViewport, px: Vector2) -> bool:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = px
+	down.global_position = px
+	var move := InputEventMouseMotion.new()
+	move.position = px
+	move.global_position = px
+	vp.push_input(move, true)
+	vp.push_input(down, true)
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = px
+	up.global_position = px
+	vp.push_input(up, true)
+	return true
+
+# ---------------------------------------------------------------------------
 # Strings & formatting
 # ---------------------------------------------------------------------------
 
 func bool_str(b: bool) -> String:
 	return "True" if b else "False"
+
+## Unity Object.name over nodes (name) and resources (resource_name).
+## Generic property storage for Unity members Godot has no counterpart for (`!stored` catalog
+## entries): values round-trip so scripts that set then read them behave, but nothing is rendered.
+## Nodes keep them in the `udon_props` metadata, dictionaries as keys, module objects in `data`.
+func prop_get(o, key: String, default = null):
+	if o is Dictionary:
+		return o.get(key, default)
+	if o is Object:
+		if o.get("data") is Dictionary:
+			return o.data.get(key, default)
+		if o.has_meta("udon_props"):
+			var d: Dictionary = o.get_meta("udon_props")
+			return d.get(key, default)
+	return default
+
+## Nodes and resources keep stored values in `udon_props` metadata; dictionaries hold them directly.
+func prop_set(o, key: String, value) -> void:
+	if o is Dictionary:
+		o[key] = value
+	elif o is Object:
+		if o.get("data") is Dictionary:
+			o.data[key] = value
+			return
+		var d: Dictionary = o.get_meta("udon_props") if o.has_meta("udon_props") else {}
+		d[key] = value
+		o.set_meta("udon_props", d)
+
+func obj_get_name(o) -> String:
+	if o is Node:
+		return String(game_object(o).name)
+	if o is Resource:
+		return o.resource_name if o.resource_name != "" else o.resource_path.get_file().get_basename()
+	return str(o) if o != null else ""
+
+func obj_set_name(o, v: String) -> void:
+	if o is Node:
+		game_object(o).name = v
+	elif o is Resource:
+		o.resource_name = v
 
 ## Color.h/s/v are computed properties the sandbox cannot read on a Color value; do it host-side.
 func color_hsv(c: Color) -> Array:
@@ -2688,11 +4219,14 @@ func to_base(v: int, base: int) -> String:
 		_:
 			return str(v)
 
+## A random version-4 GUID in .NET's canonical "8-4-4-4-12" form.
 func new_guid() -> String:
 	var b := PackedByteArray()
 	for _i in range(16):
 		b.append(randi() & 255)
-	return b.hex_encode()
+	b[6] = (b[6] & 0x0F) | 0x40
+	b[8] = (b[8] & 0x3F) | 0x80
+	return guid_parse(b.hex_encode())
 
 func bytes_to_int32(bytes: Array, offset: int) -> int:
 	return PackedByteArray(bytes).decode_s32(offset)
@@ -3478,6 +5012,38 @@ func _shape2d(kind: String, radius: float, size: Vector2) -> Shape2D:
 			pt.radius = 0.01
 			return pt
 
+## 2D twin of _cast_refined3d: [distance, unsafe origin] in Godot space, or [].
+func _cast_refined2d(space: PhysicsDirectSpaceState2D, params: PhysicsShapeQueryParameters2D, dir: Vector2, max_len: float) -> Array:
+	var rot: float = params.transform.get_rotation()
+	var origin: Vector2 = params.transform.origin
+	var remaining: float = max_len
+	var reach: float = params.shape.get_rect().size.length() * 0.5 if params.shape != null else 1.0
+	var ray := PhysicsRayQueryParameters2D.create(origin, origin + dir * max_len, params.collision_mask)
+	ray.collide_with_areas = params.collide_with_areas
+	ray.exclude = params.exclude
+	var r: Dictionary = space.intersect_ray(ray)
+	if not r.is_empty():
+		remaining = minf(remaining, origin.distance_to(r["position"]) + reach * 2.0 + 0.01)
+	else:
+		remaining = minf(remaining, 10000.0)
+	var total: float = 0.0
+	var gap: float = 0.0
+	for pass_ in range(5):
+		params.transform = Transform2D(rot, origin)
+		params.motion = dir * remaining
+		var m: PackedFloat32Array = space.cast_motion(params)
+		if m.size() < 2 or m[0] >= 1.0:
+			if pass_ == 0:
+				return []
+			break
+		total += remaining * m[0]
+		origin += dir * remaining * m[0]
+		gap = remaining * (m[1] - m[0])
+		if gap <= 0.0002:
+			break
+		remaining = gap * 1.5 + 0.0002
+	return [total, origin + dir * gap]
+
 func shapecast2d(kind: String, origin: Vector2, radius: float, size: Vector2, angle: float, dir: Vector2, dist: float, mask: int) -> Dictionary:
 	var space := _space2d()
 	if space == null:
@@ -3486,18 +5052,22 @@ func shapecast2d(kind: String, origin: Vector2, radius: float, size: Vector2, an
 	params.shape = _shape2d(kind, radius, size)
 	params.transform = Transform2D(-deg_to_rad(angle), v2_to_gd(origin))
 	var d: float = dist if is_finite(dist) else 100000.0
-	params.motion = v2_to_gd(dir).normalized() * d
+	var dir_gd: Vector2 = v2_to_gd(dir).normalized()
 	params.collision_mask = _mask2d(mask)
 	params.collide_with_areas = true
-	var m: PackedFloat32Array = space.cast_motion(params)
-	if m.size() < 2 or m[0] >= 1.0:
+	var res: Array = _cast_refined2d(space, params, dir_gd, d)
+	if res.is_empty():
 		return {}
-	var frac: float = m[0]
-	var centroid: Vector2 = v2_to_gd(origin) + params.motion * frac
-	params.transform = Transform2D(-deg_to_rad(angle), centroid)
+	var distance: float = res[0]
+	var centroid: Vector2 = v2_to_gd(origin) + dir_gd * distance
+	params.transform = Transform2D(-deg_to_rad(angle), res[1])
+	params.motion = Vector2.ZERO
 	var rest: Dictionary = space.get_rest_info(params)
 	var col = instance_from_id(rest["collider_id"]) if rest.has("collider_id") else null
-	return {"point": v2_from_gd(rest.get("point", centroid)), "normal": v2_from_gd(rest.get("normal", Vector2.UP)), "distance": d * frac, "fraction": frac, "collider": col, "centroid": v2_from_gd(centroid)}
+	if col == null:
+		for r in space.intersect_shape(params, 1):
+			col = r.get("collider")
+	return {"point": v2_from_gd(rest.get("point", centroid)), "normal": v2_from_gd(rest.get("normal", -dir_gd)), "distance": distance, "fraction": distance / d, "collider": col, "centroid": v2_from_gd(centroid)}
 
 func shapecast2d_all(kind: String, origin: Vector2, radius: float, size: Vector2, angle: float, dir: Vector2, dist: float, mask: int) -> Array:
 	var h := shapecast2d(kind, origin, radius, size, angle, dir, dist, mask)
@@ -3723,12 +5293,16 @@ func rb2d_cast(n: Node, dir: Vector2, results: Array, dist: float) -> int:
 	params.transform = s.global_transform
 	params.exclude = [co.get_rid()]
 	var d: float = dist if is_finite(dist) else 100000.0
-	params.motion = v2_to_gd(dir).normalized() * d
-	var m: PackedFloat32Array = space.cast_motion(params)
-	if m.size() < 2 or m[0] >= 1.0 or results.is_empty():
+	var dir_gd: Vector2 = v2_to_gd(dir).normalized()
+	var res: Array = _cast_refined2d(space, params, dir_gd, d)
+	if res.is_empty() or results.is_empty():
 		return 0
-	var centroid: Vector2 = s.global_position + params.motion * m[0]
-	results[0] = {"point": v2_from_gd(centroid), "normal": -dir.normalized(), "distance": d * m[0], "fraction": m[0], "collider": null, "centroid": v2_from_gd(centroid)}
+	var centroid: Vector2 = s.global_position + dir_gd * res[0]
+	params.transform = Transform2D(s.global_transform.get_rotation(), res[1])
+	params.motion = Vector2.ZERO
+	var rest: Dictionary = space.get_rest_info(params)
+	var col = instance_from_id(rest["collider_id"]) if rest.has("collider_id") else null
+	results[0] = {"point": v2_from_gd(rest.get("point", centroid)), "normal": v2_from_gd(rest.get("normal", -dir_gd)), "distance": res[0], "fraction": res[0] / d, "collider": col, "centroid": v2_from_gd(centroid)}
 	return 1
 
 func rb2d_attached_colliders(rb: RigidBody2D, into: Array) -> int:
@@ -3814,7 +5388,7 @@ func nav_set(a: Node, key: String, value) -> void:
 
 func nav_origin(a: NavigationAgent3D) -> Vector3:
 	var p := a.get_parent()
-	return p.global_position if p is Node3D else Vector3.ZERO
+	return get_position(p) if p is Node3D else Vector3.ZERO
 
 func nav_set_stopped(a: NavigationAgent3D, stopped: bool) -> void:
 	nav_set(a, "stopped", stopped)
@@ -3824,26 +5398,29 @@ func nav_set_stopped(a: NavigationAgent3D, stopped: bool) -> void:
 func nav_warp(a: NavigationAgent3D, p: Vector3) -> bool:
 	var body := a.get_parent()
 	if body is Node3D:
-		body.global_position = p
+		set_position(body, p)
 	return true
 
 func nav_move(a: NavigationAgent3D, offset: Vector3) -> void:
 	var body := a.get_parent()
 	if body is Node3D:
-		body.global_position += offset
+		body.global_position += to_gd_v(offset)
 
 func nav_sample(p: Vector3, max_dist: float) -> Dictionary:
-	var map: RID = get_viewport().world_3d.navigation_map if get_viewport() != null else RID()
+	var map: RID = _nav_map()
 	if not map.is_valid():
 		return {"position": p, "hit": false}
-	var c: Vector3 = NavigationServer3D.map_get_closest_point(map, p)
+	var c: Vector3 = from_gd_v(NavigationServer3D.map_get_closest_point(map, to_gd_v(p)))
 	return {"position": c, "normal": Vector3.UP, "distance": p.distance_to(c), "hit": p.distance_to(c) <= max_dist, "mask": -1}
 
 func nav_path(from: Vector3, to: Vector3) -> Array:
-	var map: RID = get_viewport().world_3d.navigation_map if get_viewport() != null else RID()
+	var map: RID = _nav_map()
 	if not map.is_valid():
 		return []
-	return Array(NavigationServer3D.map_get_path(map, from, to, true))
+	var out: Array = []
+	for p in NavigationServer3D.map_get_path(map, to_gd_v(from), to_gd_v(to), true):
+		out.append(from_gd_v(p))
+	return out
 
 func cc_collision_flags(cc: CharacterBody3D) -> int:
 	var f: int = 0
@@ -3857,10 +5434,35 @@ func cc_collision_flags(cc: CharacterBody3D) -> int:
 
 ## CharacterController.Move: displacement this frame (no gravity applied by Unity either).
 func cc_move(cc: CharacterBody3D, motion: Vector3) -> int:
-	var dt: float = maxf(delta_time(), 0.0001)
+	# move_and_slide integrates velocity over the current frame's delta (physics or process)
+	var dt: float = get_physics_process_delta_time() if Engine.is_in_physics_frame() else get_process_delta_time()
+	dt = maxf(dt, 0.0001)
 	cc.velocity = motion / dt
 	cc.move_and_slide()
+	if OS.has_environment("UDON_PHYS_DEBUG"):
+		print("[phys] cc_move dt=", dt, " vel=", cc.velocity, " pos=", cc.global_position, " floor=", cc.is_on_floor(), " slides=", cc.get_slide_collision_count(), " shape=", shape_of(cc).shape if shape_of(cc) != null else null, " mask=", cc.collision_mask)
+	_cc_report_hits(cc, motion)
 	return cc_collision_flags(cc)
+
+## OnControllerColliderHit for every surface the move slid along (ControllerColliderHit dicts).
+func _cc_report_hits(cc: CharacterBody3D, motion: Vector3) -> void:
+	var n: int = cc.get_slide_collision_count()
+	if n == 0 or not (Udon.physics_has_handler(cc, "OnControllerColliderHit") or Udon.physics_has_handler(cc, "OnControllerColliderHitPlayer")):
+		return
+	var dir_u: Vector3 = motion.normalized() if motion.length_squared() > 1e-12 else Vector3.ZERO
+	var seen: Array = []
+	for i in range(n):
+		var kc: KinematicCollision3D = cc.get_slide_collision(i)
+		var other = kc.get_collider()
+		if other == null or seen.has(other):
+			continue
+		seen.append(other)
+		var hit: Dictionary = {"collider": other, "controller": cc, "moveDirection": dir_u, "moveLength": motion.length(), "normal": from_gd_v(kc.get_normal()), "point": from_gd_v(kc.get_position())}
+		Udon.dispatch_physics(cc, "OnControllerColliderHit", [hit])
+		var player = Udon._phys_player_of(other)
+		if player != null:
+			hit["player"] = player
+			Udon.dispatch_physics(cc, "OnControllerColliderHitPlayer", [hit])
 
 ## CharacterController.SimpleMove: velocity in m/s with gravity.
 func cc_simple_move(cc: CharacterBody3D, speed: Vector3) -> bool:
@@ -4056,6 +5658,14 @@ var _rt: Dictionary = {}
 func rt_get(t, key: String, default):
 	if t == null:
 		return default
+	if is_render_texture(t):
+		match key:
+			"width":
+				return t.width
+			"height":
+				return t.height
+			"depth":
+				return t.depth
 	if key == "width" and t is Texture2D:
 		return t.get_width()
 	if key == "height" and t is Texture2D:
@@ -4220,15 +5830,15 @@ func video_set_url(n, url: String) -> void:
 
 func path_position(p: Path3D, offset: float) -> Vector3:
 	if p.curve == null:
-		return p.global_position
-	return p.to_global(p.curve.sample_baked(offset, true))
+		return get_position(p)
+	return from_gd_v(p.to_global(p.curve.sample_baked(offset, true)))
 
 func path_tangent(p: Path3D, offset: float) -> Vector3:
 	if p.curve == null:
 		return forward(p)
 	var a: Vector3 = p.curve.sample_baked(offset, true)
 	var b: Vector3 = p.curve.sample_baked(offset + 0.01, true)
-	return p.global_transform.basis * (b - a).normalized()
+	return from_gd_v(p.global_transform.basis * (b - a).normalized())
 
 func path_orientation(p: Path3D, offset: float) -> Quaternion:
 	return look_rotation(path_tangent(p, offset), Vector3.UP)
@@ -4330,3 +5940,2100 @@ func gpu_readback_copy_floats(req: Dictionary, into: Array) -> bool:
 			into[i] = img.get_pixel(x, y).r
 			i += 1
 	return true
+
+# ---------------------------------------------------------------------------
+# Unity UI extras: Selectable state, navigation, colour blocks, layout sizes, masks, text effects,
+# TMP alignment/overflow, dropdown options, sprites, canvases. Values Godot cannot express are
+# kept in node metadata (see prop_get/prop_set) so scripts round-trip them.
+# ---------------------------------------------------------------------------
+
+const _UI_NAV_DIRS: Dictionary = {"up": "focus_neighbor_top", "down": "focus_neighbor_bottom", "left": "focus_neighbor_left", "right": "focus_neighbor_right"}
+
+## Selectable.FindSelectableOnUp/Down/Left/Right: the explicit focus neighbour, else null.
+func ui_neighbor(n: Node, dir: String) -> Node:
+	if not (n is Control):
+		return null
+	var path: NodePath = n.get(_UI_NAV_DIRS[dir])
+	if path.is_empty():
+		return null
+	return n.get_node_or_null(path)
+
+## Navigation struct {mode, selectOnUp, selectOnDown, selectOnLeft, selectOnRight, wrapAround}.
+func ui_nav_get(n: Node) -> Dictionary:
+	var d: Dictionary = {"mode": 3, "selectOnUp": null, "selectOnDown": null, "selectOnLeft": null, "selectOnRight": null, "wrapAround": false}
+	if n is Control:
+		d["mode"] = 0 if n.focus_mode == Control.FOCUS_NONE else 3
+		var explicit := false
+		for k in _UI_NAV_DIRS:
+			var nb := ui_neighbor(n, k)
+			d["selectOn" + k.capitalize()] = nb
+			if nb != null:
+				explicit = true
+		if explicit:
+			d["mode"] = 4
+	if n != null and n.has_meta("udon_navigation"):
+		var stored: Dictionary = n.get_meta("udon_navigation")
+		for k in stored:
+			d[k] = stored[k]
+	return d
+
+func ui_nav_set(n: Node, d: Dictionary) -> void:
+	if n == null:
+		return
+	n.set_meta("udon_navigation", {"mode": int(d.get("mode", 3)), "wrapAround": bool(d.get("wrapAround", false))})
+	if not (n is Control):
+		return
+	n.focus_mode = Control.FOCUS_NONE if int(d.get("mode", 3)) == 0 else Control.FOCUS_ALL
+	for k in _UI_NAV_DIRS:
+		var target = d.get("selectOn" + k.capitalize())
+		if target is Node:
+			n.set(_UI_NAV_DIRS[k], n.get_path_to(target))
+		elif target == null and int(d.get("mode", 3)) == 4:
+			n.set(_UI_NAV_DIRS[k], NodePath())
+
+const _UI_DEFAULT_COLORS: Dictionary = {"normalColor": Color(1, 1, 1, 1), "highlightedColor": Color(0.9607843, 0.9607843, 0.9607843, 1), "pressedColor": Color(0.78431374, 0.78431374, 0.78431374, 1), "selectedColor": Color(0.9607843, 0.9607843, 0.9607843, 1), "disabledColor": Color(0.78431374, 0.78431374, 0.78431374, 0.5019608), "colorMultiplier": 1.0, "fadeDuration": 0.1}
+
+func ui_default_colors() -> Dictionary:
+	return _UI_DEFAULT_COLORS.duplicate()
+
+## ColorBlock: stored per node; the normal colour tints the Control (modulate).
+func ui_colors_get(n: Node) -> Dictionary:
+	if n != null and n.has_meta("udon_colors"):
+		return (n.get_meta("udon_colors") as Dictionary).duplicate()
+	return ui_default_colors()
+
+func ui_colors_set(n: Node, d: Dictionary) -> void:
+	if n == null:
+		return
+	var merged: Dictionary = ui_colors_get(n)
+	for k in d:
+		merged[k] = d[k]
+	n.set_meta("udon_colors", merged)
+	if n is CanvasItem:
+		var c: Color = merged.get("normalColor", Color.WHITE)
+		n.self_modulate = Color(c.r, c.g, c.b, c.a) * float(merged.get("colorMultiplier", 1.0))
+		n.self_modulate.a = c.a
+
+## SpriteState {highlightedSprite, pressedSprite, selectedSprite, disabledSprite}: applied to
+## TextureButtons, stored for everything else.
+func ui_sprite_state_get(n: Node) -> Dictionary:
+	var d: Dictionary = {"highlightedSprite": null, "pressedSprite": null, "selectedSprite": null, "disabledSprite": null}
+	if n is TextureButton:
+		d["highlightedSprite"] = n.texture_hover
+		d["pressedSprite"] = n.texture_pressed
+		d["disabledSprite"] = n.texture_disabled
+		d["selectedSprite"] = n.texture_focused
+	if n != null and n.has_meta("udon_sprite_state"):
+		for k in n.get_meta("udon_sprite_state"):
+			d[k] = n.get_meta("udon_sprite_state")[k]
+	return d
+
+func ui_sprite_state_set(n: Node, d: Dictionary) -> void:
+	if n == null:
+		return
+	n.set_meta("udon_sprite_state", d.duplicate())
+	if n is TextureButton:
+		n.texture_hover = d.get("highlightedSprite")
+		n.texture_pressed = d.get("pressedSprite")
+		n.texture_disabled = d.get("disabledSprite")
+		n.texture_focused = d.get("selectedSprite")
+
+## LayoutElement.flexibleWidth/Height: size flags expand + stretch ratio.
+func ui_flexible_get(n: Node, axis: String) -> float:
+	if not (n is Control):
+		return 0.0
+	var flags: int = n.size_flags_horizontal if axis == "x" else n.size_flags_vertical
+	return n.size_flags_stretch_ratio if flags & Control.SIZE_EXPAND else 0.0
+
+func ui_flexible_set(n: Node, axis: String, v: float) -> void:
+	if not (n is Control):
+		return
+	var flags: int = Control.SIZE_EXPAND_FILL if v > 0.0 else Control.SIZE_FILL
+	if axis == "x":
+		n.size_flags_horizontal = flags
+	else:
+		n.size_flags_vertical = flags
+	if v > 0.0:
+		n.size_flags_stretch_ratio = v
+
+func ui_min_size(n: Node, axis: String) -> float:
+	if not (n is Control):
+		return 0.0
+	var s: Vector2 = n.get_combined_minimum_size()
+	return s.x if axis == "x" else s.y
+
+func ui_preferred_size(n: Node, axis: String) -> float:
+	if not (n is Control):
+		return 0.0
+	var s: Vector2 = n.get_combined_minimum_size()
+	if n.custom_minimum_size == Vector2.ZERO:
+		s = s.max(n.size)
+	return s.x if axis == "x" else s.y
+
+## The Canvas a UI node belongs to: the world-canvas container (`udon_canvas` metadata) or the
+## nearest CanvasLayer / SubViewport ancestor.
+func ui_canvas(n: Node) -> Node:
+	var cur: Node = n
+	while cur != null:
+		if cur.has_meta("udon_canvas") or cur is CanvasLayer:
+			return cur
+		if cur is SubViewport and cur.get_parent() != null and cur.get_parent().has_meta("udon_canvas"):
+			return cur.get_parent()
+		cur = cur.get_parent()
+	return null
+
+func ui_canvas_get(n: Node, key: String, default = null):
+	var c := ui_canvas(n)
+	if c == null:
+		return default
+	var cfg: Dictionary = c.get_meta("udon_canvas") if c.has_meta("udon_canvas") else {}
+	match key:
+		"pixelRect", "renderingDisplaySize":
+			var size: Vector2 = cfg.get("size", Vector2.ZERO)
+			if size == Vector2.ZERO and c is CanvasLayer:
+				size = c.get_viewport().get_visible_rect().size
+			return Rect2(Vector2.ZERO, size) if key == "pixelRect" else size
+		"isRootCanvas":
+			return ui_canvas(c.get_parent()) == null
+		"rootCanvas":
+			var root: Node = c
+			while ui_canvas(root.get_parent()) != null:
+				root = ui_canvas(root.get_parent())
+			return root
+		"referencePixelsPerUnit":
+			return float(cfg.get("k", 100.0))
+		"renderMode":
+			return {"overlay": 0, "camera": 1, "world": 2}.get(str(cfg.get("mode", "world")), 2)
+		"scaleFactor":
+			return c.scale.x if c is CanvasLayer else 1.0
+	return prop_get(c, key, default)
+
+func ui_canvas_set(n: Node, key: String, value) -> void:
+	var c := ui_canvas(n)
+	if c == null:
+		return
+	if key == "scaleFactor" and c is CanvasLayer:
+		c.scale = Vector2(float(value), float(value))
+	prop_set(c, key, value)
+
+## Image.SetNativeSize: the Control takes its texture's size.
+func ui_set_native_size(n: Node) -> void:
+	if n is TextureRect and n.texture != null:
+		n.custom_minimum_size = n.texture.get_size()
+		n.size = n.texture.get_size()
+
+func ui_texture_size(n: Node, axis: String) -> float:
+	var t: Texture2D = null
+	if n is TextureRect:
+		t = n.texture
+	elif n is Control:
+		t = ui_get_texture(n)
+	if t == null:
+		return ui_min_size(n, axis)
+	return t.get_width() if axis == "x" else t.get_height()
+
+## Outline/Shadow effects: theme overrides on text controls.
+func ui_effect_get(n: Node, kind: String, key: String, default = null):
+	if n == null:
+		return default
+	var d: Dictionary = n.get_meta("udon_effect_" + kind) if n.has_meta("udon_effect_" + kind) else {}
+	if d.has(key):
+		return d[key]
+	if n is Control:
+		match [kind, key]:
+			["outline", "effectColor"]:
+				return n.get_theme_color("font_outline_color")
+			["outline", "effectDistance"]:
+				return Vector2.ONE * float(n.get_theme_constant("outline_size"))
+			["shadow", "effectColor"]:
+				return n.get_theme_color("font_shadow_color")
+			["shadow", "effectDistance"]:
+				return Vector2(n.get_theme_constant("shadow_offset_x"), -n.get_theme_constant("shadow_offset_y"))
+	return default
+
+func ui_effect_set(n: Node, kind: String, key: String, value) -> void:
+	if n == null:
+		return
+	var d: Dictionary = n.get_meta("udon_effect_" + kind) if n.has_meta("udon_effect_" + kind) else {}
+	d[key] = value
+	n.set_meta("udon_effect_" + kind, d)
+	if not (n is Control):
+		return
+	var enabled: bool = bool(d.get("enabled", true))
+	match kind:
+		"outline":
+			if d.has("effectColor"):
+				n.add_theme_color_override("font_outline_color", d["effectColor"])
+			var dist: Vector2 = d.get("effectDistance", Vector2.ONE)
+			n.add_theme_constant_override("outline_size", int(round(maxf(absf(dist.x), absf(dist.y)))) if enabled else 0)
+		"shadow":
+			if d.has("effectColor"):
+				n.add_theme_color_override("font_shadow_color", d["effectColor"] if enabled else Color(0, 0, 0, 0))
+			var dist2: Vector2 = d.get("effectDistance", Vector2(1, -1))
+			n.add_theme_constant_override("shadow_offset_x", int(round(dist2.x)))
+			n.add_theme_constant_override("shadow_offset_y", int(round(-dist2.y)))
+
+## AspectRatioFitter: {aspectMode, aspectRatio}; modes 1/2 resize the Control, 3/4 fit the parent.
+func ui_aspect_set(n: Node, key: String, value) -> void:
+	prop_set(n, key, value)
+	if not (n is Control):
+		return
+	var mode: int = int(prop_get(n, "aspectMode", 0))
+	var ratio: float = maxf(float(prop_get(n, "aspectRatio", 1.0)), 0.001)
+	match mode:
+		1:
+			n.size = Vector2(n.size.x, n.size.x / ratio)
+		2:
+			n.size = Vector2(n.size.y * ratio, n.size.y)
+		3, 4:
+			var parent := n.get_parent() as Control
+			if parent != null:
+				var ps: Vector2 = parent.size
+				var w: float = ps.x
+				var h: float = w / ratio
+				if (h > ps.y) == (mode == 3):
+					h = ps.y
+					w = h * ratio
+				n.size = Vector2(w, h)
+				n.position = (ps - n.size) * 0.5
+
+## Dropdown options as OptionData dictionaries {text, image}.
+func dd_options(n: Node) -> Array:
+	var out: Array = []
+	if n is OptionButton:
+		for i in range(n.item_count):
+			out.append({"text": n.get_item_text(i), "image": n.get_item_icon(i)})
+	return out
+
+func dd_set_options(n: Node, options: Array) -> void:
+	if not (n is OptionButton):
+		return
+	n.clear()
+	dd_add_options(n, options)
+
+func dd_add_options(n: Node, options: Array) -> void:
+	if not (n is OptionButton):
+		return
+	for o in options:
+		if o is Dictionary:
+			n.add_item(str(o.get("text", "")))
+			if o.get("image") is Texture2D:
+				n.set_item_icon(n.item_count - 1, o["image"])
+		elif o is Texture2D:
+			n.add_icon_item(o, "")
+		else:
+			n.add_item(str(o))
+
+func dd_option_text(n: Node, i: int) -> String:
+	if n is OptionButton and i >= 0 and i < n.item_count:
+		return n.get_item_text(i)
+	return ""
+
+func toggle_get_group(n: Node) -> ButtonGroup:
+	return n.button_group if n is BaseButton else null
+
+func toggle_set_group(n: Node, g) -> void:
+	if n is BaseButton:
+		n.button_group = g if g is ButtonGroup else null
+
+func toggle_group_active(g) -> Array:
+	var out: Array = []
+	if g is ButtonGroup:
+		for b in g.get_buttons():
+			if b.button_pressed:
+				out.append(b)
+	return out
+
+func toggle_group_first(g) -> Node:
+	return g.get_pressed_button() if g is ButtonGroup else null
+
+# TMP alignment ↔ Godot (HorizontalAlignmentOptions: Left 1, Center 2, Right 4, Justified 8; VerticalAlignmentOptions: Top 256, Middle 512, Bottom 1024)
+func ui_halign_get(n: Node) -> int:
+	if n is Label:
+		return {HORIZONTAL_ALIGNMENT_LEFT: 1, HORIZONTAL_ALIGNMENT_CENTER: 2, HORIZONTAL_ALIGNMENT_RIGHT: 4, HORIZONTAL_ALIGNMENT_FILL: 8}.get(n.horizontal_alignment, 1)
+	if n is LineEdit:
+		return {HORIZONTAL_ALIGNMENT_LEFT: 1, HORIZONTAL_ALIGNMENT_CENTER: 2, HORIZONTAL_ALIGNMENT_RIGHT: 4, HORIZONTAL_ALIGNMENT_FILL: 8}.get(n.alignment, 1)
+	return int(prop_get(n, "horizontalAlignment", 1))
+
+func ui_halign_set(n: Node, v: int) -> void:
+	prop_set(n, "horizontalAlignment", v)
+	var ga: int = {1: HORIZONTAL_ALIGNMENT_LEFT, 2: HORIZONTAL_ALIGNMENT_CENTER, 4: HORIZONTAL_ALIGNMENT_RIGHT, 8: HORIZONTAL_ALIGNMENT_FILL, 16: HORIZONTAL_ALIGNMENT_FILL, 32: HORIZONTAL_ALIGNMENT_CENTER}.get(v, HORIZONTAL_ALIGNMENT_LEFT)
+	if n is Label:
+		n.horizontal_alignment = ga
+	elif n is LineEdit:
+		n.alignment = ga
+	elif n is Button:
+		n.alignment = ga
+
+func ui_valign_get(n: Node) -> int:
+	if n is Label:
+		return {VERTICAL_ALIGNMENT_TOP: 256, VERTICAL_ALIGNMENT_CENTER: 512, VERTICAL_ALIGNMENT_BOTTOM: 1024}.get(n.vertical_alignment, 256)
+	return int(prop_get(n, "verticalAlignment", 256))
+
+func ui_valign_set(n: Node, v: int) -> void:
+	prop_set(n, "verticalAlignment", v)
+	if n is Label:
+		n.vertical_alignment = {256: VERTICAL_ALIGNMENT_TOP, 512: VERTICAL_ALIGNMENT_CENTER, 1024: VERTICAL_ALIGNMENT_BOTTOM, 2048: VERTICAL_ALIGNMENT_BOTTOM, 4096: VERTICAL_ALIGNMENT_CENTER, 8192: VERTICAL_ALIGNMENT_TOP}.get(v, VERTICAL_ALIGNMENT_TOP)
+
+## TextAlignmentOptions = horizontal | vertical
+func ui_alignment_get(n: Node) -> int:
+	return ui_halign_get(n) | ui_valign_get(n)
+
+func ui_alignment_set(n: Node, v: int) -> void:
+	ui_halign_set(n, v & 0xFF)
+	ui_valign_set(n, v & 0xFF00)
+
+## TextOverflowModes: Overflow 0, Ellipsis 1, Masking 2, Truncate 3, ScrollRect 4, Page 5, Linked 6
+func ui_overflow_get(n: Node) -> int:
+	if n is Label:
+		match n.text_overrun_behavior:
+			TextServer.OVERRUN_TRIM_ELLIPSIS, TextServer.OVERRUN_TRIM_WORD_ELLIPSIS:
+				return 1
+			TextServer.OVERRUN_TRIM_CHAR, TextServer.OVERRUN_TRIM_WORD:
+				return 3
+		return 2 if n.clip_text else 0
+	return int(prop_get(n, "overflowMode", 0))
+
+func ui_overflow_set(n: Node, v: int) -> void:
+	prop_set(n, "overflowMode", v)
+	if n is Label:
+		match v:
+			1:
+				n.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+				n.clip_text = true
+			3:
+				n.text_overrun_behavior = TextServer.OVERRUN_TRIM_CHAR
+				n.clip_text = true
+			2, 4, 5:
+				n.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+				n.clip_text = true
+			_:
+				n.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+				n.clip_text = false
+	elif n is Control:
+		n.clip_contents = v != 0
+
+func ui_max_lines_get(n: Node) -> int:
+	if n is Label:
+		return n.max_lines_visible
+	return int(prop_get(n, "maxVisibleLines", 99999))
+
+func ui_max_lines_set(n: Node, v: int) -> void:
+	prop_set(n, "maxVisibleLines", v)
+	if n is Label:
+		n.max_lines_visible = v if v < 99999 else -1
+
+func ui_rtl_get(n: Node) -> bool:
+	if n is Control:
+		return n.get("text_direction") == Control.TEXT_DIRECTION_RTL
+	return false
+
+func ui_rtl_set(n: Node, v: bool) -> void:
+	if n is Label or n is RichTextLabel or n is LineEdit:
+		n.text_direction = Control.TEXT_DIRECTION_RTL if v else Control.TEXT_DIRECTION_AUTO
+
+func ui_wrap_get(n: Node) -> bool:
+	if n is Label:
+		return n.autowrap_mode != TextServer.AUTOWRAP_OFF
+	if n is RichTextLabel:
+		return n.autowrap_mode != TextServer.AUTOWRAP_OFF
+	return bool(prop_get(n, "enableWordWrapping", true))
+
+func ui_wrap_set(n: Node, v: bool) -> void:
+	prop_set(n, "enableWordWrapping", v)
+	if n is Label or n is RichTextLabel:
+		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if v else TextServer.AUTOWRAP_OFF
+
+func ui_line_spacing_get(n: Node) -> float:
+	if n is Control:
+		return float(n.get_theme_constant("line_spacing"))
+	return 0.0
+
+func ui_line_spacing_set(n: Node, v: float) -> void:
+	if n is Control:
+		n.add_theme_constant_override("line_spacing", int(round(v)))
+
+func ui_alpha_get(n: Node) -> float:
+	return n.modulate.a if n is CanvasItem else 1.0
+
+func ui_alpha_set(n: Node, v: float) -> void:
+	if n is CanvasItem:
+		n.modulate.a = clampf(v, 0.0, 1.0)
+
+## Graphic.Raycast: is the point (viewport pixels) over the control
+func ui_raycast(n: Node, p: Vector2) -> bool:
+	return n is Control and n.is_visible_in_tree() and n.get_global_rect().has_point(p)
+
+func ui_depth(n: Node) -> int:
+	return n.get_index() if n != null and n.get_parent() != null else -1
+
+func ui_rect(n: Node) -> Rect2:
+	return n.get_rect() if n is Control else Rect2()
+
+# --- sprites: a Sprite is a Texture2D; sub-rectangles are AtlasTextures ---------------------------
+
+func sprite_rect(t: Texture2D) -> Rect2:
+	if t is AtlasTexture:
+		return t.region
+	if t != null:
+		return Rect2(Vector2.ZERO, t.get_size())
+	return Rect2()
+
+func sprite_pivot(t: Texture2D) -> Vector2:
+	if t != null and t.has_meta("udon_pivot"):
+		return t.get_meta("udon_pivot")
+	return sprite_rect(t).size * 0.5
+
+func sprite_ppu(t: Texture2D) -> float:
+	if t != null and t.has_meta("udon_ppu"):
+		return float(t.get_meta("udon_ppu"))
+	return 100.0
+
+func sprite_bounds(t: Texture2D) -> AABB:
+	var r := sprite_rect(t)
+	var ppu := sprite_ppu(t)
+	var size := Vector3(r.size.x / ppu, r.size.y / ppu, 0.0)
+	return AABB(-size * 0.5, size)
+
+func sprite_create(tex: Texture2D, rect: Rect2, pivot: Vector2, ppu: float = 100.0) -> Texture2D:
+	if tex == null:
+		return null
+	var at := AtlasTexture.new()
+	at.atlas = tex
+	# Unity rects are bottom-left based
+	at.region = Rect2(rect.position.x, tex.get_height() - rect.position.y - rect.size.y, rect.size.x, rect.size.y)
+	at.set_meta("udon_pivot", pivot * rect.size)
+	at.set_meta("udon_ppu", ppu)
+	return at
+
+## Copy as many elements as fit (NonAlloc pattern); returns the number of source elements.
+func fill_array(dst: Array, src: Array) -> int:
+	var n: int = mini(dst.size(), src.size())
+	for i in range(n):
+		dst[i] = src[i]
+	return src.size()
+
+## Text.GetTextAnchorPivot: TextAnchor (0 UpperLeft … 8 LowerRight) → pivot
+func text_anchor_pivot(anchor: int) -> Vector2:
+	var x: float = [0.0, 0.5, 1.0][clampi(anchor % 3, 0, 2)]
+	var y: float = [1.0, 0.5, 0.0][clampi(anchor / 3, 0, 2)]
+	return Vector2(x, y)
+
+func toggle_group_clear(g) -> void:
+	if g is ButtonGroup:
+		for b in g.get_buttons():
+			b.set_pressed_no_signal(false)
+
+## RectTransform.GetLocalCorners: bottom-left, top-left, top-right, bottom-right (Unity order)
+func rect_local_corners(c: Control, out: Array) -> void:
+	if not (c is Control) or out.size() < 4:
+		return
+	var s: Vector2 = c.size
+	var p: Vector2 = rect_get_pivot(c) * s
+	out[0] = Vector3(-p.x, -(s.y - p.y), 0.0)
+	out[1] = Vector3(-p.x, p.y, 0.0)
+	out[2] = Vector3(s.x - p.x, p.y, 0.0)
+	out[3] = Vector3(s.x - p.x, -(s.y - p.y), 0.0)
+
+func rect_set_anchored_position(c: Control, v: Vector2) -> void:
+	if c is Control:
+		c.position = v
+
+# ---------------------------------------------------------------------------
+# System extras: TimeSpan parsing, Guid, BitConverter widths, dates, vectors, rects, matrices
+# ---------------------------------------------------------------------------
+
+## TimeSpan.Parse: "[-][d.]hh:mm[:ss[.fff]]"; {"total_seconds", "ok"} — ok=false when malformed.
+func timespan_parse(text: String) -> Dictionary:
+	var t := text.strip_edges()
+	var neg := t.begins_with("-")
+	if neg:
+		t = t.substr(1)
+	var days: float = 0.0
+	if t.contains(".") and t.find(".") < t.find(":"):
+		days = float(t.get_slice(".", 0))
+		t = t.substr(t.find(".") + 1)
+	var parts := t.split(":")
+	if parts.size() < 2 or parts.size() > 3:
+		return {"total_seconds": 0.0, "ok": false}
+	for p in parts:
+		if p == "" or not p.replace(".", "").is_valid_int():
+			return {"total_seconds": 0.0, "ok": false}
+	var s: float = days * 86400.0 + float(parts[0]) * 3600.0 + float(parts[1]) * 60.0
+	if parts.size() == 3:
+		s += float(parts[2])
+	return {"total_seconds": -s if neg else s, "ok": true}
+
+# --- Guid: canonical lowercase "8-4-4-4-12" strings -----------------------------------------------
+
+func guid_parse(text: String) -> String:
+	var t := text.strip_edges().to_lower().trim_prefix("{").trim_suffix("}").trim_prefix("(").trim_suffix(")")
+	var hex := t.replace("-", "")
+	if hex.length() != 32 or not hex.is_valid_hex_number(false):
+		return ""
+	return hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" + hex.substr(16, 4) + "-" + hex.substr(20, 12)
+
+func guid_format(g: String, fmt: String) -> String:
+	match fmt.to_upper():
+		"N":
+			return g.replace("-", "")
+		"B":
+			return "{" + g + "}"
+		"P":
+			return "(" + g + ")"
+	return g
+
+## Guid.ToByteArray: .NET's mixed-endian layout (first three groups little-endian).
+func guid_to_bytes(g: String) -> Array:
+	var hex := g.replace("-", "")
+	var raw: PackedByteArray = hex.hex_decode()
+	if raw.size() != 16:
+		return []
+	var out: Array = []
+	for i in [3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15]:
+		out.append(raw[i])
+	return out
+
+func guid_from_bytes(bytes: Array) -> String:
+	if bytes.size() < 16:
+		return ""
+	var raw := PackedByteArray()
+	for i in [3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15]:
+		raw.append(int(bytes[i]) & 255)
+	return guid_parse(raw.hex_encode())
+
+func guid_from_parts(a: int, b: int, c: int, d: Array) -> String:
+	var raw := PackedByteArray()
+	raw.resize(16)
+	raw.encode_u32(0, a & 0xFFFFFFFF)
+	raw.encode_u16(4, b & 0xFFFF)
+	raw.encode_u16(6, c & 0xFFFF)
+	for i in range(8):
+		raw[8 + i] = int(d[i]) & 255 if i < d.size() else 0
+	# the encoders wrote little-endian; the canonical string shows the groups big-endian
+	var swapped := PackedByteArray([raw[3], raw[2], raw[1], raw[0], raw[5], raw[4], raw[7], raw[6]])
+	swapped.append_array(raw.slice(8))
+	return guid_parse(swapped.hex_encode())
+
+# --- BitConverter widths ---------------------------------------------------------------------------
+
+func int16_to_bytes(v: int) -> Array:
+	var p := PackedByteArray()
+	p.resize(2)
+	p.encode_s16(0, v)
+	return Array(p)
+
+func int64_to_bytes(v: int) -> Array:
+	var p := PackedByteArray()
+	p.resize(8)
+	p.encode_s64(0, v)
+	return Array(p)
+
+func double_to_bytes(v: float) -> Array:
+	var p := PackedByteArray()
+	p.resize(8)
+	p.encode_double(0, v)
+	return Array(p)
+
+func _bytes_packed(bytes: Array, offset: int, n: int) -> PackedByteArray:
+	var p := PackedByteArray()
+	for i in range(n):
+		p.append(int(bytes[offset + i]) & 255 if offset + i < bytes.size() else 0)
+	return p
+
+func bytes_to_int16(bytes: Array, offset: int) -> int:
+	return _bytes_packed(bytes, offset, 2).decode_s16(0)
+
+func bytes_to_int64(bytes: Array, offset: int) -> int:
+	return _bytes_packed(bytes, offset, 8).decode_s64(0)
+
+func bytes_to_double(bytes: Array, offset: int) -> float:
+	return _bytes_packed(bytes, offset, 8).decode_double(0)
+
+func double_to_bits(v: float) -> int:
+	var p := PackedByteArray()
+	p.resize(8)
+	p.encode_double(0, v)
+	return p.decode_s64(0)
+
+func bits_to_double(v: int) -> float:
+	var p := PackedByteArray()
+	p.resize(8)
+	p.encode_s64(0, v)
+	return p.decode_double(0)
+
+## Convert.ToBase64CharArray: writes the base64 text into `out` at `out_index`, returns its length.
+func base64_chars(bytes: Array, offset: int, length: int, out: Array, out_index: int) -> int:
+	var p := _bytes_packed(bytes, offset, length)
+	var text := Marshalls.raw_to_base64(p)
+	for i in range(text.length()):
+		if out_index + i < out.size():
+			out[out_index + i] = text[i]
+	return text.length()
+
+func chars_to_string(chars: Array) -> String:
+	var s := ""
+	for c in chars:
+		s += str(c)
+	return s
+
+## Convert.ToDateTime(object): strings are parsed, DateTime dictionaries pass through.
+func to_datetime(v) -> Dictionary:
+	if v is Dictionary:
+		return v
+	if v is String:
+		return datetime_parse(v)
+	return datetime_from_unix(0.0)
+
+## DateTime.AddMonths / AddYears with day clamping (.NET semantics).
+func datetime_add_months(d: Dictionary, months: int) -> Dictionary:
+	var y: int = int(d.get("year", 1970))
+	var m: int = int(d.get("month", 1)) - 1 + months
+	y += int(floor(float(m) / 12.0))
+	m = posmod(m, 12) + 1
+	var day: int = mini(int(d.get("day", 1)), days_in_month(y, m))
+	var out := datetime_from_parts(y, m, day, int(d.get("hour", 0)), int(d.get("minute", 0)), int(d.get("second", 0)))
+	return out
+
+func random_bytes(out: Array) -> void:
+	for i in range(out.size()):
+		out[i] = randi_range(0, 255)
+
+func sb_char_at(sb, i: int) -> String:
+	var s: String = str(sb)
+	return s[i] if i >= 0 and i < s.length() else ""
+
+# --- math structs ---------------------------------------------------------------------------------
+
+func v4_move_towards(a: Vector4, b: Vector4, max_delta: float) -> Vector4:
+	var d := b - a
+	var len := d.length()
+	if len <= max_delta or len < 0.000001:
+		return b
+	return a + d / len * max_delta
+
+func v4_project(a: Vector4, on: Vector4) -> Vector4:
+	var sq := on.length_squared()
+	if sq < 0.000001:
+		return Vector4.ZERO
+	return on * (a.dot(on) / sq)
+
+## Bounds.IntersectRay(ray, out distance): distance along the ray to the box, or -1.
+func aabb_ray_distance(b: AABB, origin: Vector3, dir: Vector3) -> float:
+	var hit = b.intersects_ray(origin, dir)
+	if hit == null:
+		return -1.0
+	return origin.distance_to(hit)
+
+## Mathf.CorrelatedColorTemperatureToRGB (Kelvin → linear RGB, Tanner Helland's fit).
+func color_temperature(kelvin: float) -> Color:
+	var t: float = clampf(kelvin, 1000.0, 40000.0) / 100.0
+	var r: float
+	var g: float
+	var b: float
+	if t <= 66.0:
+		r = 255.0
+		g = 99.4708025861 * log(t) - 161.1195681661
+		b = 0.0 if t <= 19.0 else 138.5177312231 * log(t - 10.0) - 305.0447927307
+	else:
+		r = 329.698727446 * pow(t - 60.0, -0.1332047592)
+		g = 288.1221695283 * pow(t - 60.0, -0.0755148492)
+		b = 255.0
+	return Color(clampf(r / 255.0, 0.0, 1.0), clampf(g / 255.0, 0.0, 1.0), clampf(b / 255.0, 0.0, 1.0), 1.0).srgb_to_linear()
+
+func float_to_half(v: float) -> int:
+	var p := PackedByteArray()
+	p.resize(2)
+	p.encode_half(0, v)
+	return p.decode_u16(0)
+
+func half_to_float(bits: int) -> float:
+	var p := PackedByteArray()
+	p.resize(2)
+	p.encode_u16(0, bits & 0xFFFF)
+	return p.decode_half(0)
+
+## Matrix4x4 element write (row, column) on the affine 3x4 part.
+func matrix_set(t: Transform3D, row: int, col: int, v: float) -> Transform3D:
+	if row > 2:
+		return t
+	if col == 3:
+		t.origin[row] = v
+		return t
+	var b: Basis = t.basis
+	match col:
+		0:
+			var c := b.x
+			c[row] = v
+			b.x = c
+		1:
+			var c := b.y
+			c[row] = v
+			b.y = c
+		2:
+			var c := b.z
+			c[row] = v
+			b.z = c
+	t.basis = b
+	return t
+
+func rect_with_min(r: Rect2, v: Vector2) -> Rect2:
+	return Rect2(v, r.end - v)
+
+func rect_with_xmin(r: Rect2, x: float) -> Rect2:
+	return Rect2(x, r.position.y, r.end.x - x, r.size.y)
+
+func rect_with_ymin(r: Rect2, y: float) -> Rect2:
+	return Rect2(r.position.x, y, r.size.x, r.end.y - y)
+
+
+# ---------------------------------------------------------------------------
+# Physics extras: layer overrides, accumulated forces, capsule direction, contacts, physic
+# material combine modes, scene settings, 2D filters / capsules / ray intersections, ConstantForce2D
+# ---------------------------------------------------------------------------
+
+## The collision object a Collider/Rigidbody expression denotes, 3D or 2D.
+func _phys_co(n: Node):
+	var co = _collision_object(n)
+	if co == null:
+		co = _co2d(n)
+	return co
+
+## Unity 2022 layer overrides (includeLayers / excludeLayers on colliders and rigidbodies): kept
+## in metadata and folded into the Godot collision mask (include sets bits, exclude clears them).
+func layers_get(n: Node, key: String) -> int:
+	var co = _phys_co(n)
+	if co == null:
+		return 0
+	return int(co.get_meta("udon_" + key, 0))
+
+func layers_set(n: Node, key: String, v: int) -> void:
+	var co = _phys_co(n)
+	if co == null:
+		return
+	if not co.has_meta("udon_base_mask"):
+		co.set_meta("udon_base_mask", co.collision_mask)
+	co.set_meta("udon_" + key, v)
+	var base: int = int(co.get_meta("udon_base_mask"))
+	var inc: int = int(co.get_meta("udon_includeLayers", 0)) & 0xFFFFFFFF
+	var exc: int = int(co.get_meta("udon_excludeLayers", 0)) & 0xFFFFFFFF
+	co.collision_mask = (base | inc) & ~exc & 0xFFFFFFFF
+
+# --- Rigidbody.GetAccumulatedForce / GetAccumulatedTorque: forces applied this physics step -----
+
+var _rb_accum: Dictionary = {}  # instance id → [physics frame, force (Godot), torque (Godot)]
+
+func _rb_track(rb: RigidBody3D, force: Vector3, torque: Vector3) -> void:
+	var frame: int = Engine.get_physics_frames()
+	var id: int = rb.get_instance_id()
+	var rec: Array = _rb_accum.get(id, [frame, Vector3.ZERO, Vector3.ZERO])
+	if rec[0] != frame:
+		rec = [frame, Vector3.ZERO, Vector3.ZERO]
+	rec[1] += force
+	rec[2] += torque
+	_rb_accum[id] = rec
+
+## ForceMode → force-equivalent for the accumulator (impulses count as impulse / fixed step).
+func _rb_force_equiv(rb: RigidBody3D, f: Vector3, mode: int) -> Vector3:
+	match mode:
+		1:
+			return f / fixed_delta_time()
+		2:
+			return f * rb.mass / fixed_delta_time()
+		5:
+			return f * rb.mass
+	return f
+
+func rb_accumulated_force(rb: RigidBody3D) -> Vector3:
+	var rec: Array = _rb_accum.get(rb.get_instance_id(), [])
+	var f: Vector3 = rb.constant_force
+	if not rec.is_empty() and rec[0] == Engine.get_physics_frames():
+		f += rec[1]
+	return from_gd_v(f)
+
+func rb_accumulated_torque(rb: RigidBody3D) -> Vector3:
+	var rec: Array = _rb_accum.get(rb.get_instance_id(), [])
+	var t: Vector3 = rb.constant_torque
+	if not rec.is_empty() and rec[0] == Engine.get_physics_frames():
+		t += rec[2]
+	return from_gd_axial(t)
+
+## Rigidbody.automaticInertiaTensor: Godot computes the tensor whenever `inertia` is zero.
+func rb_set_auto_inertia(rb: RigidBody3D, v: bool) -> void:
+	if v:
+		rb.inertia = Vector3.ZERO
+
+# --- CapsuleCollider.direction (0 = X, 1 = Y, 2 = Z): the CollisionShape3D's orientation ------
+
+func shape_get_direction(n: Node) -> int:
+	var cs := shape_of(n)
+	if cs == null:
+		return 1
+	var y: Vector3 = cs.transform.basis.y.abs()
+	if y.x > 0.9:
+		return 0
+	if y.z > 0.9:
+		return 2
+	return 1
+
+func shape_set_direction(n: Node, d: int) -> void:
+	var cs := shape_of(n)
+	if cs == null:
+		return
+	var b := Basis()
+	match d:
+		0:
+			b = Basis(Vector3(0, 0, 1), -PI / 2.0)
+		2:
+			b = Basis(Vector3(1, 0, 0), PI / 2.0)
+	cs.transform = Transform3D(b, cs.transform.origin)
+
+## Collider.providesContacts ↔ RigidBody3D.contact_monitor (contacts for OnCollision* callbacks).
+func collider_provides_contacts(n: Node) -> bool:
+	var co = _collision_object(n)
+	return co is RigidBody3D and co.contact_monitor
+
+func collider_set_provides_contacts(n: Node, v: bool) -> void:
+	var co = _collision_object(n)
+	if co is RigidBody3D:
+		co.contact_monitor = v
+		if v:
+			co.max_contacts_reported = maxi(co.max_contacts_reported, 8)
+
+# --- PhysicMaterial combine modes: Average 0, Multiply 1, Minimum 2, Maximum 3 -----------------
+# Godot expresses "rough" (max friction) and "absorbent" (min bounce); other modes are remembered.
+
+func pm_combine_get(m: PhysicsMaterial, kind: String) -> int:
+	if m == null:
+		return 0
+	if m.has_meta("udon_" + kind + "Combine"):
+		return int(m.get_meta("udon_" + kind + "Combine"))
+	if kind == "friction":
+		return 3 if m.rough else 0
+	return 2 if m.absorbent else 0
+
+func pm_combine_set(m: PhysicsMaterial, kind: String, v: int) -> void:
+	if m == null:
+		return
+	m.set_meta("udon_" + kind + "Combine", v)
+	if kind == "friction":
+		m.rough = v == 3
+	else:
+		m.absorbent = v == 2
+
+# --- Physics / Physics2D settings ----------------------------------------------------------------
+
+var _phys_settings: Dictionary = {}
+
+## Settings Godot has no equivalent for: remembered so they round-trip.
+func phys_get(key: String, default):
+	return _phys_settings.get(key, default)
+
+func phys_set(key: String, v) -> void:
+	_phys_settings[key] = v
+
+func _space2d_rid() -> RID:
+	var w := get_viewport().world_2d if get_viewport() != null else null
+	return w.space if w != null else RID()
+
+## Live 2D space parameters (sleep thresholds, time to sleep, solver iterations).
+const _SPACE2D_PARAMS: Dictionary = {"linear_sleep": PhysicsServer2D.SPACE_PARAM_BODY_LINEAR_VELOCITY_SLEEP_THRESHOLD, "angular_sleep": PhysicsServer2D.SPACE_PARAM_BODY_ANGULAR_VELOCITY_SLEEP_THRESHOLD, "time_to_sleep": PhysicsServer2D.SPACE_PARAM_BODY_TIME_TO_SLEEP, "solver_iterations": PhysicsServer2D.SPACE_PARAM_SOLVER_ITERATIONS, "contact_bias": PhysicsServer2D.SPACE_PARAM_CONTACT_DEFAULT_BIAS, "max_penetration": PhysicsServer2D.SPACE_PARAM_CONTACT_MAX_ALLOWED_PENETRATION}
+const _SPACE3D_PARAMS: Dictionary = {"linear_sleep": PhysicsServer3D.SPACE_PARAM_BODY_LINEAR_VELOCITY_SLEEP_THRESHOLD, "angular_sleep": PhysicsServer3D.SPACE_PARAM_BODY_ANGULAR_VELOCITY_SLEEP_THRESHOLD, "time_to_sleep": PhysicsServer3D.SPACE_PARAM_BODY_TIME_TO_SLEEP, "solver_iterations": PhysicsServer3D.SPACE_PARAM_SOLVER_ITERATIONS, "contact_bias": PhysicsServer3D.SPACE_PARAM_CONTACT_DEFAULT_BIAS, "max_penetration": PhysicsServer3D.SPACE_PARAM_CONTACT_MAX_ALLOWED_PENETRATION}
+
+func space2d_get(key: String, default: float) -> float:
+	var rid := _space2d_rid()
+	if not rid.is_valid() or not _SPACE2D_PARAMS.has(key):
+		return default
+	return float(PhysicsServer2D.space_get_param(rid, _SPACE2D_PARAMS[key]))
+
+func space2d_set(key: String, v: float) -> void:
+	var rid := _space2d_rid()
+	if rid.is_valid() and _SPACE2D_PARAMS.has(key):
+		PhysicsServer2D.space_set_param(rid, _SPACE2D_PARAMS[key], v)
+
+func _space3d_rid() -> RID:
+	var w := get_viewport().world_3d if get_viewport() != null else null
+	return w.space if w != null else RID()
+
+func space3d_get(key: String, default: float) -> float:
+	var rid := _space3d_rid()
+	if not rid.is_valid() or not _SPACE3D_PARAMS.has(key):
+		return default
+	return float(PhysicsServer3D.space_get_param(rid, _SPACE3D_PARAMS[key]))
+
+func space3d_set(key: String, v: float) -> void:
+	var rid := _space3d_rid()
+	if rid.is_valid() and _SPACE3D_PARAMS.has(key):
+		PhysicsServer3D.space_set_param(rid, _SPACE3D_PARAMS[key], v)
+
+## ContactFilter2D depth of a GameObject: z-index for 2D nodes, z position for 3D ones.
+func depth2d(n: Node) -> float:
+	if n is Node2D:
+		return float(n.z_index)
+	if n is Node3D:
+		return n.global_position.z
+	return 0.0
+
+# --- 2D queries: ContactFilter2D masks, capsule directions, 3D rays against the 2D plane --------
+
+## The layer mask a ContactFilter2D applies (-1 = everything when the mask is not in use).
+func filter2d_mask(f: Dictionary) -> int:
+	return int(f.get("layerMask", -1)) if f.get("useLayerMask", false) else -1
+
+## Unity capsules are (width, height) with CapsuleDirection2D; Godot capsules stand upright, so a
+## horizontal capsule is the swapped size rotated by 90°.
+func cap2d_size(size: Vector2, direction: int) -> Vector2:
+	return Vector2(size.y, size.x) if direction == 1 else size
+
+func cap2d_angle(angle: float, direction: int) -> float:
+	return angle + 90.0 if direction == 1 else angle
+
+## Physics2D.GetRayIntersection: a 3D ray hits the 2D colliders lying in the z = 0 plane.
+func ray_intersection2d_all(ray: Dictionary, dist: float, mask: int) -> Array:
+	var o: Vector3 = ray.get("origin", Vector3.ZERO)
+	var d: Vector3 = ray.get("direction", Vector3.FORWARD)
+	var max_d: float = dist if is_finite(dist) else 100000.0
+	if absf(d.z) < 1e-6:
+		return raycast2d_all(Vector2(o.x, o.y), Vector2(d.x, d.y), max_d, mask)
+	var t: float = -o.z / d.z
+	if t < 0.0 or t > max_d:
+		return []
+	var p: Vector3 = o + d * t
+	var p2 := Vector2(p.x, p.y)
+	var out: Array = []
+	var n2 := Vector2(d.x, d.y)
+	var normal: Vector2 = -n2.normalized() if n2.length_squared() > 1e-12 else Vector2.UP
+	for c in overlap2d("point", p2, 0.0, Vector2.ZERO, 0.0, mask):
+		out.append({"point": p2, "normal": normal, "distance": t, "fraction": t / max_d, "collider": c, "centroid": p2})
+	return out
+
+func ray_intersection2d(ray: Dictionary, dist: float, mask: int) -> Dictionary:
+	var all: Array = ray_intersection2d_all(ray, dist, mask)
+	return all[0] if not all.is_empty() else {}
+
+func ray_intersection2d_into(ray: Dictionary, dist: float, mask: int, results: Array) -> int:
+	return _fill_hits(ray_intersection2d_all(ray, dist, mask), results)
+
+## ContactFilter2D depth / normal-angle tests against a candidate.
+func filter2d_depth_ok(f: Dictionary, z: float) -> bool:
+	if not f.get("useDepth", false):
+		return true
+	var inside: bool = z >= float(f.get("minDepth", -INF)) and z <= float(f.get("maxDepth", INF))
+	return not inside if f.get("useOutsideDepth", false) else inside
+
+func filter2d_angle_ok(f: Dictionary, angle: float) -> bool:
+	if not f.get("useNormalAngle", false):
+		return true
+	var a: float = fposmod(angle, 360.0)
+	var inside: bool = a >= float(f.get("minNormalAngle", 0.0)) and a <= float(f.get("maxNormalAngle", 359.9999))
+	return not inside if f.get("useOutsideNormalAngle", false) else inside
+
+## Collider2D.GetShapes(PhysicsShapeGroup2D): the collision shapes of the object, into a group.
+func collider2d_shapes(n: Node, group: Dictionary) -> int:
+	var co := _co2d(n)
+	var shapes: Array = []
+	if co != null:
+		for c in co.get_children():
+			if c is CollisionShape2D or c is CollisionPolygon2D:
+				shapes.append(c)
+	group["shapes"] = shapes
+	return shapes.size()
+
+## SliderJoint2D.limits ↔ GrooveJoint2D length / initial offset.
+func slider2d_limits_get(j: GrooveJoint2D) -> Dictionary:
+	return {"min": -j.initial_offset, "max": j.length - j.initial_offset}
+
+func slider2d_limits_set(j: GrooveJoint2D, lim: Dictionary) -> void:
+	var lo: float = float(lim.get("min", 0.0))
+	var hi: float = float(lim.get("max", 0.0))
+	j.length = maxf(hi - lo, 0.0)
+	j.initial_offset = -lo
+
+## ConstantForce2D.enabled: the force stays on the RigidBody2D; disabling parks it in metadata.
+func cf2d_get_enabled(rb: RigidBody2D) -> bool:
+	return not rb.has_meta("udon_cf_saved")
+
+func cf2d_set_enabled(rb: RigidBody2D, v: bool) -> void:
+	if v:
+		if rb.has_meta("udon_cf_saved"):
+			var saved: Array = rb.get_meta("udon_cf_saved")
+			rb.constant_force = saved[0]
+			rb.constant_torque = saved[1]
+			rb.remove_meta("udon_cf_saved")
+	elif not rb.has_meta("udon_cf_saved"):
+		rb.set_meta("udon_cf_saved", [rb.constant_force, rb.constant_torque])
+		rb.constant_force = Vector2.ZERO
+		rb.constant_torque = 0.0
+
+## WheelCollider.rotationSpeed (degrees per second) from the wheel's rpm.
+func wheel_rotation_speed(w: VehicleWheel3D) -> float:
+	return w.get_rpm() * 6.0
+
+func instance_id_of(o) -> int:
+	return o.get_instance_id() if o is Object else 0
+
+# ---------------------------------------------------------------------------
+# Rendering and assets: texture sampler state, cubemaps and 3D textures, mesh attributes and
+# combining, renderer bounds, physical camera, frustum utilities, spherical harmonics, shadows
+# ---------------------------------------------------------------------------
+
+## Shader.PropertyToID ids resolve back to their names for material / property-block writes.
+var _prop_names: Dictionary = {}
+
+func shader_prop_id(s: String) -> int:
+	var id: int = s.hash()
+	_prop_names[id] = s
+	return id
+
+# --- textures -----------------------------------------------------------------------------------
+
+## Unity TextureDimension: Tex2D 2, Tex3D 3, Cube 4, Tex2DArray 5, CubeArray 6.
+func texture_dimension(t) -> int:
+	if t is Texture3D:
+		return 3
+	if t is Cubemap:
+		return 4
+	if t is CubemapArray:
+		return 6
+	if t is Texture2DArray:
+		return 5
+	return 2 if t is Texture2D else 0
+
+func texture_texel_size(t) -> Vector2:
+	if t is Texture2D:
+		return Vector2(1.0 / maxf(t.get_width(), 1.0), 1.0 / maxf(t.get_height(), 1.0))
+	if t is Texture3D or t is TextureLayered:
+		return Vector2(1.0 / maxf(t.get_width(), 1.0), 1.0 / maxf(t.get_height(), 1.0))
+	if is_render_texture(t):
+		return Vector2(1.0 / maxf(rt_get(t, "width", 256), 1.0), 1.0 / maxf(rt_get(t, "height", 256), 1.0))
+	return Vector2.ONE
+
+func texture_mipmap_count(t) -> int:
+	if t is Texture2D:
+		var img: Image = t.get_image()
+		return img.get_mipmap_count() + 1 if img != null else 1
+	if t is TextureLayered or t is Texture3D:
+		return 1 + (1 if t.has_mipmaps() else 0)
+	return 1
+
+func texture_update_count(t) -> int:
+	return int(prop_get(t, "updateCount", 0))
+
+func texture_increment_update(t) -> void:
+	prop_set(t, "updateCount", texture_update_count(t) + 1)
+
+## Texture2D.SetPixelData: colours or raw bytes at mip level 0.
+func texture_set_pixel_data(t: Texture2D, data: Array) -> void:
+	if data.is_empty():
+		return
+	if data[0] is Color:
+		texture_set_pixels(t, data)
+	else:
+		texture_load_raw(t, data)
+
+## Layered / 3D textures cannot be read back from the rendering server headlessly, so the
+## images a script writes are kept on the resource and re-uploaded on every change.
+func _cube_faces(c: Cubemap) -> Array:
+	if c == null:
+		return []
+	if c.has_meta("udon_faces"):
+		return c.get_meta("udon_faces")
+	var faces: Array = []
+	for i in range(c.get_layers()):
+		faces.append(c.get_layer_data(i))
+	c.set_meta("udon_faces", faces)
+	return faces
+
+func new_cubemap(size: int) -> Cubemap:
+	var faces: Array[Image] = []
+	for _i in range(6):
+		faces.append(Image.create(maxi(size, 1), maxi(size, 1), false, Image.FORMAT_RGBA8))
+	var c := Cubemap.new()
+	c.create_from_images(faces)
+	c.set_meta("udon_faces", Array(faces))
+	return c
+
+func cubemap_get_pixel(c: Cubemap, face: int, x: int, y: int) -> Color:
+	var faces: Array = _cube_faces(c)
+	if face < 0 or face >= faces.size() or faces[face] == null:
+		return Color.BLACK
+	var img: Image = faces[face]
+	return img.get_pixel(clampi(x, 0, img.get_width() - 1), clampi(y, 0, img.get_height() - 1))
+
+func cubemap_set_pixel(c: Cubemap, face: int, x: int, y: int, col: Color) -> void:
+	var faces: Array = _cube_faces(c)
+	if face < 0 or face >= faces.size() or faces[face] == null:
+		return
+	var img: Image = faces[face]
+	img.set_pixel(clampi(x, 0, img.get_width() - 1), clampi(y, 0, img.get_height() - 1), col)
+	c.update_layer(img, face)
+
+func cubemap_get_pixels(c: Cubemap, face: int) -> Array:
+	var out: Array = []
+	var faces: Array = _cube_faces(c)
+	if face < 0 or face >= faces.size() or faces[face] == null:
+		return out
+	var img: Image = faces[face]
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			out.append(img.get_pixel(x, y))
+	return out
+
+func cubemap_set_pixels(c: Cubemap, colors: Array, face: int) -> void:
+	var faces: Array = _cube_faces(c)
+	if face < 0 or face >= faces.size() or faces[face] == null:
+		return
+	var img: Image = faces[face]
+	var w: int = img.get_width()
+	for i in range(mini(colors.size(), w * img.get_height())):
+		img.set_pixel(i % w, i / w, colors[i])
+	c.update_layer(img, face)
+
+func _tex3d_slices(t: Texture3D) -> Array:
+	if t == null:
+		return []
+	if t.has_meta("udon_slices"):
+		return t.get_meta("udon_slices")
+	var slices: Array = Array(t.get_data())
+	t.set_meta("udon_slices", slices)
+	return slices
+
+func _tex3d_upload(t: Texture3D, slices: Array) -> void:
+	if not (t is ImageTexture3D):
+		return
+	var typed: Array[Image] = []
+	for img in slices:
+		typed.append(img)
+	t.update(typed)
+
+func new_texture3d(w: int, h: int, d: int) -> ImageTexture3D:
+	var slices: Array[Image] = []
+	for _i in range(maxi(d, 1)):
+		slices.append(Image.create(maxi(w, 1), maxi(h, 1), false, Image.FORMAT_RGBA8))
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGBA8, maxi(w, 1), maxi(h, 1), maxi(d, 1), false, slices)
+	t.set_meta("udon_slices", Array(slices))
+	return t
+
+func texture3d_get_pixel(t: Texture3D, x: int, y: int, z: int) -> Color:
+	var slices: Array = _tex3d_slices(t)
+	if z < 0 or z >= slices.size() or slices[z] == null:
+		return Color.BLACK
+	var img: Image = slices[z]
+	return img.get_pixel(clampi(x, 0, img.get_width() - 1), clampi(y, 0, img.get_height() - 1))
+
+func texture3d_get_pixels(t: Texture3D) -> Array:
+	var out: Array = []
+	for img in _tex3d_slices(t):
+		if img == null:
+			continue
+		for y in range(img.get_height()):
+			for x in range(img.get_width()):
+				out.append(img.get_pixel(x, y))
+	return out
+
+## Writes colours in x-fastest, then y, then z order (Unity's Texture3D layout).
+func texture3d_set_pixels(t: Texture3D, colors: Array) -> void:
+	var slices: Array = _tex3d_slices(t)
+	var i: int = 0
+	for img in slices:
+		if img == null:
+			continue
+		for y in range(img.get_height()):
+			for x in range(img.get_width()):
+				if i < colors.size():
+					img.set_pixel(x, y, colors[i])
+				i += 1
+	_tex3d_upload(t, slices)
+
+func texture3d_set_pixel(t: Texture3D, x: int, y: int, z: int, col: Color) -> void:
+	var slices: Array = _tex3d_slices(t)
+	if z < 0 or z >= slices.size() or slices[z] == null:
+		return
+	var img: Image = slices[z]
+	img.set_pixel(clampi(x, 0, img.get_width() - 1), clampi(y, 0, img.get_height() - 1), col)
+	_tex3d_upload(t, slices)
+
+# --- meshes ---------------------------------------------------------------------------------------
+
+## Unity VertexAttribute → Godot ARRAY_* index (BlendWeight 12 / BlendIndices 13 → bones).
+const _VERTEX_ATTR: Dictionary = {0: Mesh.ARRAY_VERTEX, 1: Mesh.ARRAY_NORMAL, 2: Mesh.ARRAY_TANGENT, 3: Mesh.ARRAY_COLOR, 4: Mesh.ARRAY_TEX_UV, 5: Mesh.ARRAY_TEX_UV2, 6: Mesh.ARRAY_CUSTOM0, 7: Mesh.ARRAY_CUSTOM1, 8: Mesh.ARRAY_CUSTOM2, 9: Mesh.ARRAY_CUSTOM3, 12: Mesh.ARRAY_WEIGHTS, 13: Mesh.ARRAY_BONES}
+const _VERTEX_ATTR_DIM: Dictionary = {0: 3, 1: 3, 2: 4, 3: 4, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2, 9: 2, 10: 2, 11: 2, 12: 4, 13: 4}
+
+func mesh_has_attribute(m: Mesh, attr: int) -> bool:
+	if m == null or m.get_surface_count() == 0 or not _VERTEX_ATTR.has(attr):
+		return false
+	var a = m.surface_get_arrays(0)[_VERTEX_ATTR[attr]]
+	return a != null and a.size() > 0
+
+func mesh_attribute_dimension(m: Mesh, attr: int) -> int:
+	return int(_VERTEX_ATTR_DIM.get(attr, 0)) if mesh_has_attribute(m, attr) else 0
+
+func mesh_set_bounds(m: Mesh, b: AABB) -> void:
+	if m is ArrayMesh:
+		m.custom_aabb = to_gd_aabb(b)
+
+## Blend shapes can only be declared on an ArrayMesh before it has surfaces.
+func mesh_add_blend_shape(m: Mesh, name_: String) -> void:
+	if m is ArrayMesh:
+		if m.get_surface_count() > 0:
+			push_warning("Mesh.AddBlendShapeFrame: blend shapes must be added before the surfaces (Godot)")
+			return
+		m.add_blend_shape(name_)
+
+func mesh_clear_blend_shapes(m: Mesh) -> void:
+	if m is ArrayMesh and m.get_surface_count() == 0:
+		m.clear_blend_shapes()
+
+## Mesh.CombineMeshes: CombineInstance dictionaries {mesh, subMeshIndex, transform} become the
+## surfaces of `dst` (one merged surface, or one per instance).
+func mesh_combine(dst: Mesh, instances: Array, merge: bool, use_matrices: bool) -> void:
+	if not (dst is ArrayMesh):
+		return
+	dst.clear_surfaces()
+	var merged_v := PackedVector3Array()
+	var merged_n := PackedVector3Array()
+	var merged_uv := PackedVector2Array()
+	var merged_i := PackedInt32Array()
+	var has_uv: bool = true
+	var has_n: bool = true
+	for inst in instances:
+		if not (inst is Dictionary):
+			continue
+		var src: Mesh = inst.get("mesh")
+		if src == null or src.get_surface_count() == 0:
+			continue
+		var sub: int = clampi(int(inst.get("subMeshIndex", 0)), 0, src.get_surface_count() - 1)
+		var arrays: Array = src.surface_get_arrays(sub)
+		var xf: Transform3D = to_gd_t(inst.get("transform", Transform3D())) if use_matrices else Transform3D()
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var norms = arrays[Mesh.ARRAY_NORMAL]
+		var uvs = arrays[Mesh.ARRAY_TEX_UV]
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		var v2 := PackedVector3Array()
+		var n2 := PackedVector3Array()
+		for k in range(verts.size()):
+			v2.append(xf * verts[k])
+			if norms != null:
+				n2.append((xf.basis * norms[k]).normalized())
+		var i2 := PackedInt32Array()
+		if idx != null and idx.size() > 0:
+			i2 = idx
+		else:
+			for k in range(verts.size()):
+				i2.append(k)
+		if merge:
+			var base: int = merged_v.size()
+			merged_v.append_array(v2)
+			if norms != null:
+				merged_n.append_array(n2)
+			else:
+				has_n = false
+			if uvs != null:
+				merged_uv.append_array(uvs)
+			else:
+				has_uv = false
+			for k in i2:
+				merged_i.append(k + base)
+		else:
+			var out: Array = []
+			out.resize(Mesh.ARRAY_MAX)
+			out[Mesh.ARRAY_VERTEX] = v2
+			if norms != null:
+				out[Mesh.ARRAY_NORMAL] = n2
+			if uvs != null:
+				out[Mesh.ARRAY_TEX_UV] = uvs
+			out[Mesh.ARRAY_INDEX] = i2
+			dst.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
+	if merge and merged_v.size() > 0:
+		var out: Array = []
+		out.resize(Mesh.ARRAY_MAX)
+		out[Mesh.ARRAY_VERTEX] = merged_v
+		if has_n and merged_n.size() == merged_v.size():
+			out[Mesh.ARRAY_NORMAL] = merged_n
+		if has_uv and merged_uv.size() == merged_v.size():
+			out[Mesh.ARRAY_TEX_UV] = merged_uv
+		out[Mesh.ARRAY_INDEX] = merged_i
+		dst.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
+
+# --- renderers ------------------------------------------------------------------------------------
+
+func renderer_force_off_get(n: Node) -> bool:
+	var g := _geom(n)
+	return g != null and bool(g.get_meta("udon_force_off", false))
+
+func renderer_force_off_set(n: Node, v: bool) -> void:
+	var g := _geom(n)
+	if g == null:
+		return
+	g.set_meta("udon_force_off", v)
+	g.visible = not v
+
+## Renderer.bounds is world space; Godot's custom_aabb is local to the instance.
+func renderer_set_bounds(n: Node, b: AABB) -> void:
+	var g := _geom(n)
+	if g == null:
+		return
+	var world: AABB = to_gd_aabb(b)
+	g.custom_aabb = g.global_transform.affine_inverse() * world
+
+func renderer_set_local_bounds(n: Node, b: AABB) -> void:
+	var g := _geom(n)
+	if g is GPUParticles3D:
+		g.visibility_aabb = to_gd_aabb(b)
+	elif g != null:
+		g.custom_aabb = to_gd_aabb(b)
+
+func light_set_type(_l: Light3D, _t: int) -> void:
+	push_warning("Light.type cannot change at run time: Godot lights are distinct node classes")
+
+# --- physical camera (CameraAttributesPhysical) ---------------------------------------------------
+
+func _cam_phys(c: Camera3D) -> CameraAttributesPhysical:
+	if c.attributes is CameraAttributesPhysical:
+		return c.attributes
+	var a := CameraAttributesPhysical.new()
+	if c.attributes != null:
+		a.auto_exposure_enabled = c.attributes.auto_exposure_enabled
+	c.attributes = a
+	return a
+
+func camera_phys_get(c: Camera3D, key: String, default: float) -> float:
+	if c == null:
+		return default
+	if not (c.attributes is CameraAttributesPhysical):
+		return default
+	var a: CameraAttributesPhysical = c.attributes
+	match key:
+		"aperture":
+			return a.exposure_aperture
+		"shutterSpeed":
+			return 1.0 / maxf(a.exposure_shutter_speed, 0.0001)
+		"iso":
+			return a.exposure_sensitivity
+		"focusDistance":
+			return a.frustum_focus_distance
+	return default
+
+func camera_phys_set(c: Camera3D, key: String, v: float) -> void:
+	if c == null:
+		return
+	var a := _cam_phys(c)
+	match key:
+		"aperture":
+			a.exposure_aperture = v
+		"shutterSpeed":
+			a.exposure_shutter_speed = 1.0 / maxf(v, 0.0001)
+		"iso":
+			a.exposure_sensitivity = v
+		"focusDistance":
+			a.frustum_focus_distance = v
+
+# --- GeometryUtility ------------------------------------------------------------------------------
+
+## Camera frustum planes in script space: Unity order left, right, bottom, top, near, far.
+func frustum_planes(c: Camera3D) -> Array:
+	if c == null:
+		return []
+	var gd: Array = c.get_frustum()   # near, far, left, top, right, bottom
+	if gd.size() < 6:
+		return []
+	var order: Array = [2, 4, 5, 3, 0, 1]
+	var out: Array = []
+	for i in order:
+		var p: Plane = gd[i]
+		# Godot's frustum planes face outward; Unity's face inward (positive side = inside)
+		var n: Vector3 = from_gd_v(-p.normal)
+		out.append(Plane(n, -p.d))
+	return out
+
+func frustum_planes_into(c: Camera3D, into: Array) -> void:
+	var planes: Array = frustum_planes(c)
+	for i in range(mini(planes.size(), into.size())):
+		into[i] = planes[i]
+
+## Frustum planes of a view-projection matrix approximated by the active camera.
+func frustum_planes_matrix(_m: Transform3D) -> Array:
+	return frustum_planes(main_camera())
+
+## True when the box is (partly) inside every plane's positive half-space.
+func test_planes_aabb(planes: Array, b: AABB) -> bool:
+	for p in planes:
+		if not (p is Plane):
+			continue
+		var n: Vector3 = p.normal
+		var far_corner := Vector3(b.end.x if n.x >= 0.0 else b.position.x, b.end.y if n.y >= 0.0 else b.position.y, b.end.z if n.z >= 0.0 else b.position.z)
+		if p.distance_to(far_corner) < 0.0:
+			return false
+	return true
+
+func calculate_bounds(points: Array, m: Transform3D) -> AABB:
+	if points.is_empty():
+		return AABB()
+	var first: Vector3 = m * points[0]
+	var b := AABB(first, Vector3.ZERO)
+	for i in range(1, points.size()):
+		b = b.expand(m * points[i])
+	return b
+
+## Plane through a polygon (Newell's method); {} when degenerate.
+func plane_from_polygon(points: Array) -> Dictionary:
+	if points.size() < 3:
+		return {}
+	var n := Vector3.ZERO
+	for i in range(points.size()):
+		var a: Vector3 = points[i]
+		var b: Vector3 = points[(i + 1) % points.size()]
+		n += Vector3((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y))
+	if n.length_squared() < 1e-12:
+		return {}
+	return {"plane": Plane(n.normalized(), points[0])}
+
+# --- SphericalHarmonicsL2: 3 channels × 9 coefficients (Unity's real SH basis) ------------------
+
+const _SH_C: Array = [0.282095, 0.488603, 0.488603, 0.488603, 1.092548, 1.092548, 0.315392, 1.092548, 0.546274]
+
+func sh_new() -> Dictionary:
+	var c: Array = []
+	for _i in range(27):
+		c.append(0.0)
+	return {"c": c}
+
+func sh_get(sh: Dictionary, channel: int, i: int) -> float:
+	var c: Array = sh.get("c", [])
+	var k: int = channel * 9 + i
+	return float(c[k]) if k >= 0 and k < c.size() else 0.0
+
+func sh_set(sh: Dictionary, channel: int, i: int, v: float) -> void:
+	if not sh.has("c"):
+		sh["c"] = sh_new()["c"]
+	var k: int = channel * 9 + i
+	if k >= 0 and k < 27:
+		sh["c"][k] = v
+
+func _sh_basis(d: Vector3) -> Array:
+	return [_SH_C[0], _SH_C[1] * d.y, _SH_C[2] * d.z, _SH_C[3] * d.x, _SH_C[4] * d.x * d.y, _SH_C[5] * d.y * d.z, _SH_C[6] * (3.0 * d.z * d.z - 1.0), _SH_C[7] * d.x * d.z, _SH_C[8] * (d.x * d.x - d.y * d.y)]
+
+func sh_add_ambient(sh: Dictionary, col: Color) -> void:
+	# a constant radiance L integrates to L * sqrt(4π) * Y00 ... expressed so that Evaluate returns L
+	var scale: float = 1.0 / _SH_C[0]
+	sh_set(sh, 0, 0, sh_get(sh, 0, 0) + col.r * scale)
+	sh_set(sh, 1, 0, sh_get(sh, 1, 0) + col.g * scale)
+	sh_set(sh, 2, 0, sh_get(sh, 2, 0) + col.b * scale)
+
+func sh_add_directional(sh: Dictionary, dir: Vector3, col: Color, intensity: float) -> void:
+	var d: Vector3 = dir.normalized()
+	var basis: Array = _sh_basis(d)
+	# Unity's convention: a directional light adds 2π * intensity * colour * basis(d), cosine-lobe weighted
+	var lobe: Array = [PI, 2.0 * PI / 3.0, 2.0 * PI / 3.0, 2.0 * PI / 3.0, PI / 4.0, PI / 4.0, PI / 4.0, PI / 4.0, PI / 4.0]
+	var ch: Array = [col.r, col.g, col.b]
+	for c in range(3):
+		for i in range(9):
+			sh_set(sh, c, i, sh_get(sh, c, i) + basis[i] * lobe[i] * ch[c] * intensity * 2.0)
+
+func sh_evaluate(sh: Dictionary, dirs: Array, into: Array) -> void:
+	for k in range(mini(dirs.size(), into.size())):
+		var basis: Array = _sh_basis((dirs[k] as Vector3).normalized())
+		var rgb: Array = [0.0, 0.0, 0.0]
+		for c in range(3):
+			for i in range(9):
+				rgb[c] += sh_get(sh, c, i) * basis[i]
+		into[k] = Color(maxf(rgb[0], 0.0), maxf(rgb[1], 0.0), maxf(rgb[2], 0.0), 1.0)
+
+# --- shadow distance (VRCQualitySettings) ----------------------------------------------------------
+
+func _sun_lights() -> Array:
+	return get_components_in_children(scene_root(), "DirectionalLight3D", true)
+
+func shadow_distance_get(default: float) -> float:
+	for l in _sun_lights():
+		return l.directional_shadow_max_distance
+	return default
+
+func shadow_distance_set(d: float) -> void:
+	for l in _sun_lights():
+		l.directional_shadow_max_distance = d
+
+func shadow_splits_set(s1: float, s2: float, s3: float) -> void:
+	for l in _sun_lights():
+		l.directional_shadow_split_1 = clampf(s1, 0.0, 1.0)
+		l.directional_shadow_split_2 = clampf(s2, 0.0, 1.0)
+		l.directional_shadow_split_3 = clampf(s3, 0.0, 1.0)
+
+func shadow_splits_get() -> Vector3:
+	for l in _sun_lights():
+		return Vector3(l.directional_shadow_split_1, l.directional_shadow_split_2, l.directional_shadow_split_3)
+	return Vector3(0.067, 0.2, 0.467)
+
+## Unity cascade count 1/2/4 ↔ DirectionalLight3D shadow mode.
+func shadow_cascades_get() -> int:
+	for l in _sun_lights():
+		match l.directional_shadow_mode:
+			DirectionalLight3D.SHADOW_ORTHOGONAL:
+				return 1
+			DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS:
+				return 2
+		return 4
+	return 4
+
+func shadow_cascades_set(n: int) -> void:
+	for l in _sun_lights():
+		l.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if n <= 1 else (DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if n == 2 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS)
+
+## OcclusionPortal.open over an OccluderInstance3D (an open portal occludes nothing).
+func portal_get_open(n: Node) -> bool:
+	if n is OccluderInstance3D:
+		return not n.visible
+	return bool(prop_get(n, "open", true))
+
+func portal_set_open(n: Node, v: bool) -> void:
+	if n is OccluderInstance3D:
+		n.visible = not v
+	prop_set(n, "open", v)
+
+func quat_dir(q: Quaternion, axis: Vector3) -> Vector3:
+	return q * axis
+
+func renderer_local_bounds(n: Node) -> AABB:
+	var g := _geom(n)
+	if g == null:
+		return AABB()
+	if g is GPUParticles3D:
+		return from_gd_aabb(g.visibility_aabb)
+	return from_gd_aabb(g.custom_aabb if g.custom_aabb.size != Vector3.ZERO else g.get_aabb())
+
+## Mesh.bounds: the custom AABB when a script set one, else the computed one.
+func mesh_get_bounds(m: Mesh) -> AABB:
+	if m == null:
+		return AABB()
+	if m is ArrayMesh and m.custom_aabb.size != Vector3.ZERO:
+		return from_gd_aabb(m.custom_aabb)
+	return from_gd_aabb(m.get_aabb())
+
+# ---------------------------------------------------------------------------
+# Navigation extras: links (NavigationLink3D), NavMesh data/link instances, build settings,
+# nav raycast, triangulation of the scene's navigation meshes
+# ---------------------------------------------------------------------------
+
+var _nav_synced_frame: int = -1
+
+## The world navigation map, synchronised once per frame before the first query so regions and
+## links added this frame (or before the first physics tick) are already searchable.
+func _nav_map() -> RID:
+	var map: RID = get_viewport().world_3d.navigation_map if get_viewport() != null else RID()
+	if map.is_valid() and _nav_synced_frame != Engine.get_process_frames():
+		_nav_synced_frame = Engine.get_process_frames()
+		NavigationServer3D.map_force_update(map)
+		if NavigationServer3D.map_get_iteration_id(map) == 0:
+			# never synchronised: make sure the map is active and try once more
+			NavigationServer3D.map_set_active(map, true)
+			NavigationServer3D.map_force_update(map)
+			if NavigationServer3D.map_get_iteration_id(map) == 0:
+				push_warning("navigation map has no synchronised regions yet (%d regions registered)" % NavigationServer3D.map_get_regions(map).size())
+		if OS.has_environment("UDON_NAV_DEBUG"):
+			print("[nav] map ", map, " active=", NavigationServer3D.map_is_active(map), " iteration=", NavigationServer3D.map_get_iteration_id(map), " regions=", NavigationServer3D.map_get_regions(map).size(), " frame=", Engine.get_process_frames())
+	return map
+
+## Unity area index ↔ Godot navigation layer bit.
+func nav_area_get(l: NavigationLink3D) -> int:
+	var layers: int = l.navigation_layers
+	for i in range(32):
+		if layers & (1 << i):
+			return i
+	return 0
+
+func nav_area_set(l: NavigationLink3D, area: int) -> void:
+	l.navigation_layers = 1 << clampi(area, 0, 31)
+
+## Unity cost modifiers: negative = default cost.
+func nav_cost_get(l: NavigationLink3D) -> float:
+	return l.travel_cost if l.has_meta("udon_cost_override") else -1.0
+
+func nav_cost_set(l: NavigationLink3D, cost: float) -> void:
+	if cost < 0.0:
+		l.remove_meta("udon_cost_override")
+		l.travel_cost = 1.0
+	else:
+		l.set_meta("udon_cost_override", true)
+		l.travel_cost = cost
+
+## OffMeshLink.startTransform / endTransform: the link follows the referenced nodes.
+func offmesh_transform_get(l: NavigationLink3D, which: String) -> Node:
+	var n = prop_get(l, which + "Transform", null)
+	return n if n is Node else l
+
+func offmesh_transform_set(l: NavigationLink3D, which: String, n: Node) -> void:
+	prop_set(l, which + "Transform", n)
+	offmesh_update_positions(l)
+
+func offmesh_update_positions(l: NavigationLink3D) -> void:
+	var s = prop_get(l, "startTransform", null)
+	var e = prop_get(l, "endTransform", null)
+	if s is Node3D:
+		l.set_global_start_position(s.global_position)
+	if e is Node3D:
+		l.set_global_end_position(e.global_position)
+
+## NavMesh.AddLink: a NavigationLink3D built from NavMeshLinkData at a pose; {"node", "valid"}.
+func nav_add_link(data: Dictionary, pos: Vector3, rot: Quaternion) -> Dictionary:
+	var link := NavigationLink3D.new()
+	link.name = "NavMeshLink"
+	link.start_position = to_gd_v(data.get("startPosition", Vector3.ZERO))
+	link.end_position = to_gd_v(data.get("endPosition", Vector3.ZERO))
+	link.bidirectional = bool(data.get("bidirectional", true))
+	nav_area_set(link, int(data.get("area", 0)))
+	nav_cost_set(link, float(data.get("costModifier", -1.0)))
+	prop_set(link, "width", float(data.get("width", 0.0)))
+	scene_root().add_child(link)
+	link.global_transform = Transform3D(Basis(to_gd_q(rot)), to_gd_v(pos))
+	return {"node": link, "valid": true}
+
+func nav_remove_instance(inst: Dictionary) -> void:
+	var n = inst.get("node")
+	if n is Node and is_instance_valid(n):
+		n.queue_free()
+	inst["valid"] = false
+	inst["node"] = null
+
+## NavMesh.AddNavMeshData: a NavigationRegion3D when the data carries a NavigationMesh.
+func nav_add_data(data: Dictionary, pos: Vector3, rot: Quaternion) -> Dictionary:
+	var mesh = data.get("mesh")
+	if not (mesh is NavigationMesh):
+		return {"node": null, "valid": false}
+	var region := NavigationRegion3D.new()
+	region.name = "NavMeshData"
+	region.navigation_mesh = mesh
+	scene_root().add_child(region)
+	region.global_transform = Transform3D(Basis(to_gd_q(rot)), to_gd_v(pos))
+	data["position"] = pos
+	data["rotation"] = rot
+	return {"node": region, "valid": true}
+
+## NavMesh build settings: Godot bakes offline, so these are a description with Unity's defaults.
+func nav_build_settings(id: int) -> Dictionary:
+	return {"agentTypeID": id, "agentRadius": 0.5, "agentHeight": 2.0, "agentSlope": 45.0, "agentClimb": 0.4, "ledgeDropHeight": 0.0, "maxJumpAcrossDistance": 0.0, "minRegionArea": 2.0, "overrideVoxelSize": false, "voxelSize": 0.1666, "overrideTileSize": false, "tileSize": 256, "buildHeightMesh": false, "preserveTilesOutsideBounds": false, "debug": {}}
+
+## NavMesh.Raycast: walks the segment and reports where it leaves the navigation mesh.
+func nav_raycast(from: Vector3, to: Vector3, _mask: int) -> Dictionary:
+	var map: RID = _nav_map()
+	if not map.is_valid():
+		return {"position": to, "hit": false, "normal": Vector3.UP, "distance": from.distance_to(to), "mask": _mask}
+	var total: float = from.distance_to(to)
+	var steps: int = maxi(int(total / 0.25), 1)
+	var last: Vector3 = from
+	for i in range(steps + 1):
+		var p: Vector3 = from.lerp(to, float(i) / float(steps))
+		var c: Vector3 = from_gd_v(NavigationServer3D.map_get_closest_point(map, to_gd_v(p)))
+		if p.distance_to(c) > 0.5:
+			return {"position": last, "hit": true, "normal": (from - to).normalized() if total > 0.0 else Vector3.UP, "distance": from.distance_to(last), "mask": _mask}
+		last = p
+	return {"position": to, "hit": false, "normal": Vector3.UP, "distance": total, "mask": _mask}
+
+## NavMesh.CalculateTriangulation over the scene's NavigationRegion3D meshes (fan-triangulated).
+func nav_triangulation() -> Dictionary:
+	var verts: Array = []
+	var indices: Array = []
+	var areas: Array = []
+	for region in get_components_in_children(scene_root(), "NavigationRegion3D", true):
+		var nm: NavigationMesh = region.navigation_mesh
+		if nm == null:
+			continue
+		var base: int = verts.size()
+		for v in nm.get_vertices():
+			verts.append(from_gd_v(region.global_transform * v))
+		for pi in range(nm.get_polygon_count()):
+			var poly: PackedInt32Array = nm.get_polygon(pi)
+			for k in range(1, poly.size() - 1):
+				indices.append(base + poly[0])
+				indices.append(base + poly[k])
+				indices.append(base + poly[k + 1])
+				areas.append(0)
+	return {"vertices": verts, "indices": indices, "areas": areas}
+
+func nav_region_of(_a: Node) -> Node:
+	var regions: Array = get_components_in_children(scene_root(), "NavigationRegion3D", true)
+	return regions[0] if not regions.is_empty() else null
+
+## NavMeshQueryFilter area costs live in the filter dictionary.
+func nav_filter_cost_get(f: Dictionary, area: int) -> float:
+	return float(f.get("costs", {}).get(area, 1.0))
+
+func nav_filter_cost_set(f: Dictionary, area: int, cost: float) -> void:
+	if not f.has("costs"):
+		f["costs"] = {}
+	f["costs"][area] = cost
+
+# ---------------------------------------------------------------------------
+# Constraint solver: Unity Animations constraints and VRChat constraints share the store set up
+# by constraint_get/constraint_set. Each frame (deferred, after every Update) the active
+# constraints move their node toward the weighted result of their sources.
+# ---------------------------------------------------------------------------
+
+## Remembers which solver a node's constraint uses ("position", "rotation", "scale", "parent",
+## "aim", "lookat"); the catalog calls this from the type-specific members.
+func constraint_kind(n: Node, kind: String) -> void:
+	if n != null:
+		_constraint(n)["kind"] = kind
+
+func _src_node(src) -> Node3D:
+	if src is Dictionary:
+		var t = src.get("sourceTransform", src.get("SourceTransform"))
+		return t if t is Node3D else null
+	return null
+
+func _src_weight(src) -> float:
+	return float(src.get("weight", src.get("Weight", 1.0))) if src is Dictionary else 0.0
+
+func _src_offset(src, key_unity: String, key_vrc: String) -> Vector3:
+	if src is Dictionary:
+		return src.get(key_unity, src.get(key_vrc, Vector3.ZERO))
+	return Vector3.ZERO
+
+func _cget(c: Dictionary, keys: Array, default):
+	for k in keys:
+		if c.has(k):
+			return c[k]
+	return default
+
+func _axis_mask(c: Dictionary, unity_key: String, vrc_prefix: String) -> Vector3:
+	if c.has(unity_key):
+		var a: int = int(c[unity_key])
+		return Vector3(1.0 if a & 1 else 0.0, 1.0 if a & 2 else 0.0, 1.0 if a & 4 else 0.0)
+	return Vector3(1.0 if c.get(vrc_prefix + "X", true) else 0.0, 1.0 if c.get(vrc_prefix + "Y", true) else 0.0, 1.0 if c.get(vrc_prefix + "Z", true) else 0.0)
+
+func _masked(current: Vector3, target: Vector3, mask: Vector3) -> Vector3:
+	return Vector3(target.x if mask.x > 0.5 else current.x, target.y if mask.y > 0.5 else current.y, target.z if mask.z > 0.5 else current.z)
+
+## Weighted average of source rotations (successive normalised slerps).
+func _avg_rotation(rots: Array, weights: Array) -> Quaternion:
+	var total: float = 0.0
+	var acc := Quaternion()
+	for i in range(rots.size()):
+		var w: float = weights[i]
+		if w <= 0.0:
+			continue
+		total += w
+		acc = rots[i] if total == w else acc.slerp(rots[i], w / total)
+	return acc
+
+func solve_constraints() -> void:
+	for id in _constraints.keys():
+		var c: Dictionary = _constraints[id]
+		if not c.get("active", false):
+			continue
+		var n = instance_from_id(id)
+		if not (n is Node3D) or not n.is_inside_tree():
+			continue
+		var target: Node3D = c.get("target") if c.get("target") is Node3D else n
+		_solve_one(target, c)
+
+func _solve_one(n: Node3D, c: Dictionary) -> void:
+	var kind: String = str(c.get("kind", ""))
+	var weight: float = clampf(float(c.get("weight", 1.0)), 0.0, 1.0)
+	var sources: Array = c.get("sources", [])
+	var positions: Array = []
+	var rotations: Array = []
+	var scales: Array = []
+	var weights: Array = []
+	var wsum: float = 0.0
+	for i in range(sources.size()):
+		var s = sources[i]
+		var sn: Node3D = _src_node(s)
+		if sn == null:
+			continue
+		var w: float = _src_weight(s)
+		if w <= 0.0:
+			continue
+		var p: Vector3 = get_position(sn)
+		var r: Quaternion = get_global_rotation(sn)
+		if kind == "parent":
+			var off_p: Vector3 = _src_offset(s, "translationOffset", "ParentPositionOffset")
+			var off_r: Vector3 = _src_offset(s, "rotationOffset", "ParentRotationOffset")
+			var offs_p: Array = c.get("translationOffsets", [])
+			var offs_r: Array = c.get("rotationOffsets", [])
+			if i < offs_p.size():
+				off_p = offs_p[i]
+			if i < offs_r.size():
+				off_r = offs_r[i]
+			p = p + r * off_p
+			r = r * euler_v(off_r)
+		positions.append(p)
+		rotations.append(r)
+		scales.append(sn.global_transform.basis.get_scale())
+		weights.append(w)
+		wsum += w
+	if wsum <= 0.0:
+		return
+	var avg_pos := Vector3.ZERO
+	var avg_scale := Vector3.ZERO
+	for i in range(positions.size()):
+		avg_pos += positions[i] * (weights[i] / wsum)
+		avg_scale += scales[i] * (weights[i] / wsum)
+	var cur_pos: Vector3 = get_position(n)
+	var cur_rot: Quaternion = get_global_rotation(n)
+	match kind:
+		"position":
+			var goal: Vector3 = avg_pos + _cget(c, ["translationOffset", "positionOffset"], Vector3.ZERO)
+			var mask: Vector3 = _axis_mask(c, "translationAxis", "affectP")
+			set_position(n, _masked(cur_pos, cur_pos.lerp(goal, weight), mask))
+		"rotation":
+			var goal: Quaternion = _avg_rotation(rotations, weights) * euler_v(_cget(c, ["rotationOffset"], Vector3.ZERO))
+			var mask: Vector3 = _axis_mask(c, "rotationAxis", "affect")
+			var e: Vector3 = _masked(quat_to_euler(cur_rot), quat_to_euler(cur_rot.slerp(goal, weight)), mask)
+			set_global_rotation(n, euler_v(e))
+		"scale":
+			var goal: Vector3 = avg_scale * _cget(c, ["scaleOffset"], Vector3.ONE)
+			var mask: Vector3 = _axis_mask(c, "scalingAxis", "affectS")
+			var cur: Vector3 = n.scale
+			n.scale = _masked(cur, cur.lerp(goal, weight), mask)
+		"parent":
+			var goal_r: Quaternion = _avg_rotation(rotations, weights)
+			var pmask: Vector3 = _axis_mask(c, "translationAxis", "affectP")
+			var rmask: Vector3 = _axis_mask(c, "rotationAxis", "affect")
+			set_position(n, _masked(cur_pos, cur_pos.lerp(avg_pos, weight), pmask))
+			var e: Vector3 = _masked(quat_to_euler(cur_rot), quat_to_euler(cur_rot.slerp(goal_r, weight)), rmask)
+			set_global_rotation(n, euler_v(e))
+		"aim", "lookat":
+			var dir: Vector3 = avg_pos - cur_pos
+			if dir.length_squared() < 1e-10:
+				return
+			var aim_axis: Vector3 = _cget(c, ["aimVector", "aimAxis"], vec_forward()) if kind == "aim" else vec_forward()
+			var up_axis: Vector3 = _cget(c, ["upVector", "upAxis"], Vector3.UP)
+			var world_up: Vector3 = Vector3.UP
+			var up_obj = _cget(c, ["worldUpObject", "worldUpTransform"], null)
+			var up_type: int = int(_cget(c, ["worldUpType"], 0))
+			if up_obj is Node3D and (up_type == 1 or up_type == 2 or kind == "lookat" and c.get("useUp", c.get("useUpObject", false))):
+				world_up = (get_position(up_obj) - cur_pos).normalized() if up_type == 1 else up(up_obj)
+			elif up_type == 3:
+				world_up = _cget(c, ["worldUpVector", "worldUp"], Vector3.UP)
+			var look: Quaternion = look_rotation(dir.normalized(), world_up)
+			# rotate so the aim axis (not necessarily +Z) points along the look direction
+			var fix: Quaternion = from_to_rotation(aim_axis, vec_forward())
+			var goal: Quaternion = look * fix
+			if kind == "lookat":
+				goal = goal * Quaternion(vec_forward(), deg_to_rad(float(c.get("roll", 0.0))))
+			goal = goal * euler_v(_cget(c, ["rotationOffset"], Vector3.ZERO))
+			var mask: Vector3 = _axis_mask(c, "rotationAxis", "affect")
+			var e: Vector3 = _masked(quat_to_euler(cur_rot), quat_to_euler(cur_rot.slerp(goal, weight)), mask)
+			set_global_rotation(n, euler_v(e))
+			if up_axis != Vector3.UP:
+				pass
+
+## Cinemachine damping: the residual decays to 1 % over the damping time.
+func cine_damp(initial: float, damp_time: float, dt: float) -> float:
+	if damp_time <= 0.0 or dt <= 0.0:
+		return initial
+	return initial * (1.0 - exp(-4.605170186 * dt / damp_time))
+
+func cine_damp_v(initial: Vector3, damp_time: float, dt: float) -> Vector3:
+	return Vector3(cine_damp(initial.x, damp_time, dt), cine_damp(initial.y, damp_time, dt), cine_damp(initial.z, damp_time, dt))
+
+func cine_damp_v3(initial: Vector3, damp: Vector3, dt: float) -> Vector3:
+	return Vector3(cine_damp(initial.x, damp.x, dt), cine_damp(initial.y, damp.y, dt), cine_damp(initial.z, damp.z, dt))
+
+# --- AnimationCurve extras ------------------------------------------------------------------------
+
+func curve_clear(c: Curve) -> void:
+	c.clear_points()
+
+func curve_copy(dst: Curve, src: Curve) -> void:
+	dst.clear_points()
+	# ranges first: Godot clamps points to the curve's domain and value range as they are added
+	dst.min_domain = src.min_domain
+	dst.max_domain = src.max_domain
+	dst.min_value = src.min_value
+	dst.max_value = src.max_value
+	for i in range(src.point_count):
+		dst.add_point(src.get_point_position(i), src.get_point_left_tangent(i), src.get_point_right_tangent(i))
+
+func curve_key(c: Curve, i: int) -> Dictionary:
+	if i < 0 or i >= c.point_count:
+		return {"time": 0.0, "value": 0.0, "inTangent": 0.0, "outTangent": 0.0}
+	var p: Vector2 = c.get_point_position(i)
+	return {"time": p.x, "value": p.y, "inTangent": c.get_point_left_tangent(i), "outTangent": c.get_point_right_tangent(i)}
+
+func curve_set_keys(c: Curve, keys: Array) -> void:
+	c.clear_points()
+	for k in keys:
+		curve_add_key(c, float(k.get("time", 0.0)), float(k.get("value", 0.0)), float(k.get("inTangent", 0.0)), float(k.get("outTangent", 0.0)))
+
+# --- Humanoid tables --------------------------------------------------------------------------------
+
+const HUMAN_BONES: Array = ["Hips", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "LeftFoot", "RightFoot", "Spine", "Chest", "Neck", "Head", "LeftShoulder", "RightShoulder", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftHand", "RightHand", "LeftToes", "RightToes", "LeftEye", "RightEye", "Jaw", "Left Thumb Proximal", "Left Thumb Intermediate", "Left Thumb Distal", "Left Index Proximal", "Left Index Intermediate", "Left Index Distal", "Left Middle Proximal", "Left Middle Intermediate", "Left Middle Distal", "Left Ring Proximal", "Left Ring Intermediate", "Left Ring Distal", "Left Little Proximal", "Left Little Intermediate", "Left Little Distal", "Right Thumb Proximal", "Right Thumb Intermediate", "Right Thumb Distal", "Right Index Proximal", "Right Index Intermediate", "Right Index Distal", "Right Middle Proximal", "Right Middle Intermediate", "Right Middle Distal", "Right Ring Proximal", "Right Ring Intermediate", "Right Ring Distal", "Right Little Proximal", "Right Little Intermediate", "Right Little Distal", "UpperChest"]
+const HUMAN_REQUIRED: Array = [0, 1, 2, 3, 4, 5, 6, 7, 10, 13, 14, 15, 16, 17, 18]
+const HUMAN_PARENT: Dictionary = {0: -1, 1: 0, 2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 0, 8: 7, 54: 8, 9: 54, 10: 9, 11: 54, 12: 54, 13: 11, 14: 12, 15: 13, 16: 14, 17: 15, 18: 16, 19: 5, 20: 6, 21: 10, 22: 10, 23: 10}
+
+func human_parent_bone(i: int) -> int:
+	if HUMAN_PARENT.has(i):
+		return HUMAN_PARENT[i]
+	if i >= 24 and i <= 38:
+		return 17 if (i - 24) % 3 == 0 else i - 1
+	if i >= 39 and i <= 53:
+		return 18 if (i - 39) % 3 == 0 else i - 1
+	return -1
+
+func human_muscle_names() -> Array:
+	var out: Array = []
+	for i in range(95):
+		out.append("Muscle %d" % i)
+	return out
+
+## AvatarMask: transform paths and humanoid body parts kept in a dictionary.
+func mask_paths(m: Dictionary) -> Array:
+	if not m.has("paths"):
+		m["paths"] = []
+	return m["paths"]
+
+func mask_add_path(m: Dictionary, t: Node, recursive: bool) -> void:
+	if not (t is Node):
+		return
+	var paths: Array = mask_paths(m)
+	paths.append({"path": str(t.get_path()), "active": true})
+	if recursive:
+		for c in t.get_children():
+			mask_add_path(m, c, true)
+
+func mask_remove_path(m: Dictionary, t: Node, recursive: bool) -> void:
+	if not (t is Node):
+		return
+	var paths: Array = mask_paths(m)
+	var p: String = str(t.get_path())
+	var i: int = 0
+	while i < paths.size():
+		var entry: Dictionary = paths[i]
+		if entry.get("path", "") == p or (recursive and str(entry.get("path", "")).begins_with(p + "/")):
+			paths.remove_at(i)
+		else:
+			i += 1
+
+func constraint_offset(n: Node, key: String, i: int) -> Vector3:
+	var arr: Array = constraint_get(n, key, [])
+	return arr[i] if i >= 0 and i < arr.size() else Vector3.ZERO
+
+## RuntimeAnimatorController.animationClips: an AnimationPlayer's animations, or the override map.
+func anim_controller_clips(c) -> Array:
+	var out: Array = []
+	if c is Dictionary:
+		return anim_controller_clips(c.get("controller"))
+	if c is AnimationPlayer:
+		for name_ in c.get_animation_list():
+			out.append(c.get_animation(name_))
+	elif c is AnimationLibrary:
+		for name_ in c.get_animation_list():
+			out.append(c.get_animation(name_))
+	return out
+
+func anim_clip_name(clip) -> String:
+	return clip.resource_name if clip is Resource else str(clip)
+
+func type_array(objs: Array) -> Array:
+	var out: Array = []
+	for o in objs:
+		out.append(type_of(o))
+	return out
+
+# ---------------------------------------------------------------------------
+# Leftovers: gradient keys, text assets, contacts, player data keys, audio clips, hierarchy
+# ---------------------------------------------------------------------------
+
+## Unity GradientColorKey / GradientAlphaKey lists over a Godot Gradient.
+func gradient_color_keys(g: Gradient) -> Array:
+	var out: Array = []
+	if g == null:
+		return out
+	for i in range(g.get_point_count()):
+		out.append({"color": g.get_color(i), "time": g.get_offset(i)})
+	return out
+
+func gradient_alpha_keys(g: Gradient) -> Array:
+	var out: Array = []
+	if g == null:
+		return out
+	for i in range(g.get_point_count()):
+		out.append({"alpha": g.get_color(i).a, "time": g.get_offset(i)})
+	return out
+
+## Rebuilds the gradient from colour keys and alpha keys (alpha sampled at each colour key).
+func gradient_set_keys(g: Gradient, color_keys: Array, alpha_keys: Array) -> void:
+	if g == null:
+		return
+	var alpha := Gradient.new()
+	var offs := PackedFloat32Array()
+	var cols := PackedColorArray()
+	if alpha_keys.is_empty():
+		alpha_keys = [{"alpha": 1.0, "time": 0.0}, {"alpha": 1.0, "time": 1.0}]
+	var a_offs := PackedFloat32Array()
+	var a_cols := PackedColorArray()
+	for k in alpha_keys:
+		a_offs.append(float(k.get("time", 0.0)))
+		var av: float = float(k.get("alpha", 1.0))
+		a_cols.append(Color(av, av, av, av))
+	alpha.offsets = a_offs
+	alpha.colors = a_cols
+	if color_keys.is_empty():
+		color_keys = [{"color": Color.WHITE, "time": 0.0}, {"color": Color.WHITE, "time": 1.0}]
+	for k in color_keys:
+		var t: float = float(k.get("time", 0.0))
+		var c: Color = k.get("color", Color.WHITE)
+		c.a = alpha.sample(t).a
+		offs.append(t)
+		cols.append(c)
+	g.offsets = offs
+	g.colors = cols
+
+## TextAsset: a String, a JSON resource, or any Resource with a `text`/`data` property.
+func text_asset_text(t) -> String:
+	if t is String:
+		return t
+	if t is JSON:
+		return JSON.stringify(t.data)
+	if t is Resource:
+		var v = t.get("text")
+		if v != null:
+			return str(v)
+		v = t.get("data")
+		if v is PackedByteArray:
+			return v.get_string_from_utf8()
+		if v != null:
+			return str(v)
+	return str(t) if t != null else ""
+
+func text_asset_bytes(t) -> Array:
+	return Array(text_asset_text(t).to_utf8_buffer())
+
+## VRCContactReceiver.CalculateProximity: 1 at the sender's centre, 0 at the receiver's radius.
+func contact_proximity(receiver: Node, sender) -> float:
+	if receiver == null or sender == null:
+		return 0.0
+	var rp: Vector3 = get_position(receiver) if receiver is Node3D else Vector3.ZERO
+	var sp: Vector3 = Vector3.ZERO
+	var sr: float = 0.0
+	if sender is Node3D:
+		sp = get_position(sender)
+		sr = float(prop_get(sender, "radius", 0.0))
+	elif sender is Dictionary:
+		sp = sender.get("position", Vector3.ZERO)
+		sr = float(sender.get("radius", 0.0))
+	var rr: float = float(prop_get(receiver, "radius", 0.5))
+	var reach: float = maxf(rr + sr, 0.0001)
+	return clampf(1.0 - rp.distance_to(sp) / reach, 0.0, 1.0)
+
+## AudioClip.Create: a silent PCM clip of the requested length (fill it with SetData).
+func audio_clip_create(name_: String, samples: int, channels: int, frequency: int) -> AudioStreamWAV:
+	var wav := AudioStreamWAV.new()
+	wav.resource_name = name_
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = maxi(frequency, 1)
+	wav.stereo = channels >= 2
+	var data := PackedByteArray()
+	data.resize(maxi(samples, 0) * 2 * (2 if channels >= 2 else 1))
+	wav.data = data
+	return wav
+
+func hierarchy_count(n: Node) -> int:
+	if n == null:
+		return 0
+	var c: int = 1
+	for ch in n.get_children():
+		c += hierarchy_count(ch)
+	return c

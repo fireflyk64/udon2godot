@@ -69,6 +69,8 @@ type Mathf kind=static extern=UnityEngineMathf
   static Gamma(float, float, float): float => U.gamma($1, $2, $3)
 
 type Vector3 kind=struct gd=Vector3 extern=UnityEngineVector3
+  static Equals(object, object): bool => $1 == $2
+  this[int]: float => $0[$1]
   x: float
   y: float
   z: float
@@ -223,6 +225,7 @@ type Vector2Int kind=struct gd=Vector2i extern=UnityEngineVector2Int
   cast Vector2 => Vector2($0)
 
 type Quaternion kind=struct gd=Quaternion extern=UnityEngineQuaternion
+  this[int]: float => $0[$1]
   x: float
   y: float
   z: float
@@ -275,6 +278,22 @@ type Matrix4x4 kind=struct gd=Transform3D extern=UnityEngineMatrix4x4
   GetColumn(int): Vector4 => U.matrix_column($0, $1)
   GetRow(int): Vector4 => U.matrix_row($0, $1)
   GetPosition(): Vector3 => $0.origin
+  m00: float => U.matrix_get($0, 0, 0)
+  m01: float => U.matrix_get($0, 0, 1)
+  m02: float => U.matrix_get($0, 0, 2)
+  m03: float => U.matrix_get($0, 0, 3)
+  m10: float => U.matrix_get($0, 1, 0)
+  m11: float => U.matrix_get($0, 1, 1)
+  m12: float => U.matrix_get($0, 1, 2)
+  m13: float => U.matrix_get($0, 1, 3)
+  m20: float => U.matrix_get($0, 2, 0)
+  m21: float => U.matrix_get($0, 2, 1)
+  m22: float => U.matrix_get($0, 2, 2)
+  m23: float => U.matrix_get($0, 2, 3)
+  m30: float => U.matrix_get($0, 3, 0)
+  m31: float => U.matrix_get($0, 3, 1)
+  m32: float => U.matrix_get($0, 3, 2)
+  m33: float => U.matrix_get($0, 3, 3)
   static TRS(Vector3, Quaternion, Vector3): Matrix4x4 => Transform3D(Basis($2).scaled($3), $1)
   static Translate(Vector3): Matrix4x4 => Transform3D(Basis(), $1)
   static Rotate(Quaternion): Matrix4x4 => Transform3D(Basis($1), Vector3.ZERO)
@@ -452,3 +471,140 @@ type Time kind=static extern=UnityEngineTime
   static inFixedTimeStep: bool => Engine.is_in_physics_frame()
   static captureFramerate: int => 0
   static maximumDeltaTime: float => 0.3333333
+
+# --- math struct extras (stub backlog) ------------------------------------------------------------
+
+type Vector2
+  this[int]: float => $0[$1]
+  SqrMagnitude(): float => $0.length_squared()
+  static SqrMagnitude(Vector2): float => $1.length_squared()
+  static kEpsilon: float => 0.00001
+  static kEpsilonNormalSqrt: float => 1e-15
+  static negativeInfinity: Vector2 => Vector2(-INF, -INF)
+  static positiveInfinity: Vector2 => Vector2(INF, INF)
+
+type Vector3
+  static kEpsilon: float => 0.00001
+  static kEpsilonNormalSqrt: float => 1e-15
+
+type Quaternion
+  static kEpsilon: float => 0.000001
+
+type Vector4
+  this[int]: float => $0[$1]
+  static Distance(Vector4, Vector4): float => ($1 - $2).length()
+  static LerpUnclamped(Vector4, Vector4, float): Vector4 => $1.lerp($2, $3)
+  static Magnitude(Vector4): float => $1.length()
+  static Max(Vector4, Vector4): Vector4 => $1.max($2)
+  static Min(Vector4, Vector4): Vector4 => $1.min($2)
+  static MoveTowards(Vector4, Vector4, float): Vector4 => U.v4_move_towards($1, $2, $3)
+  Normalize(): void => $0 = $0.normalized()
+  static Normalize(Vector4): Vector4 => $1.normalized()
+  static Project(Vector4, Vector4): Vector4 => U.v4_project($1, $2)
+  static Scale(Vector4, Vector4): Vector4 => $1 * $2
+  Scale(Vector4): void => $0 = $0 * $1
+  Set(float, float, float, float): void => $0 = Vector4($1, $2, $3, $4)
+  SqrMagnitude(): float => $0.length_squared()
+  static SqrMagnitude(Vector4): float => $1.length_squared()
+  static kEpsilon: float => 0.00001
+  static negativeInfinity: Vector4 => Vector4(-INF, -INF, -INF, -INF)
+  static positiveInfinity: Vector4 => Vector4(INF, INF, INF, INF)
+
+type Vector3Int
+  this[int]: int => $0[$1]
+  static CeilToInt(Vector3): Vector3Int => Vector3i($1.ceil())
+  static FloorToInt(Vector3): Vector3Int => Vector3i($1.floor())
+  static RoundToInt(Vector3): Vector3Int => Vector3i($1.round())
+  Clamp(Vector3Int, Vector3Int): void => $0 = $0.clamp($1, $2)
+  static Distance(Vector3Int, Vector3Int): float => ($1 - $2).length()
+  static Max(Vector3Int, Vector3Int): Vector3Int => $1.max($2)
+  static Min(Vector3Int, Vector3Int): Vector3Int => $1.min($2)
+  static Scale(Vector3Int, Vector3Int): Vector3Int => $1 * $2
+  Scale(Vector3Int): void => $0 = $0 * $1
+  Set(int, int, int): void => $0 = Vector3i($1, $2, $3)
+  magnitude: float => $0.length()
+  sqrMagnitude: int => $0.length_squared()
+  static forward: Vector3Int => Vector3i(0, 0, 1)
+  static back: Vector3Int => Vector3i(0, 0, -1)
+  static up: Vector3Int => Vector3i(0, 1, 0)
+  static down: Vector3Int => Vector3i(0, -1, 0)
+  static left: Vector3Int => Vector3i(-1, 0, 0)
+  static right: Vector3Int => Vector3i(1, 0, 0)
+
+type Vector2Int
+  this[int]: int => $0[$1]
+  static CeilToInt(Vector2): Vector2Int => Vector2i($1.ceil())
+  static FloorToInt(Vector2): Vector2Int => Vector2i($1.floor())
+  static RoundToInt(Vector2): Vector2Int => Vector2i($1.round())
+  Clamp(Vector2Int, Vector2Int): void => $0 = $0.clamp($1, $2)
+  static Distance(Vector2Int, Vector2Int): float => ($1 - $2).length()
+  static Max(Vector2Int, Vector2Int): Vector2Int => $1.max($2)
+  static Min(Vector2Int, Vector2Int): Vector2Int => $1.min($2)
+  static Scale(Vector2Int, Vector2Int): Vector2Int => $1 * $2
+  Scale(Vector2Int): void => $0 = $0 * $1
+  Set(int, int): void => $0 = Vector2i($1, $2)
+  magnitude: float => $0.length()
+  sqrMagnitude: int => $0.length_squared()
+  static up: Vector2Int => Vector2i(0, 1)
+  static down: Vector2Int => Vector2i(0, -1)
+  static left: Vector2Int => Vector2i(-1, 0)
+  static right: Vector2Int => Vector2i(1, 0)
+
+type Color
+  this[int]: float => $0[$1]
+
+type Color32
+  this[int]: byte => int($0[$1] * 255.0)
+  static LerpUnclamped(Color32, Color32, float): Color32 => $1.lerp($2, $3)
+
+type Mathf
+  static CorrelatedColorTemperatureToRGB(float): Color => U.color_temperature($1)
+  static FloatToHalf(float): ushort => U.float_to_half($1)
+  static HalfToFloat(ushort): float => U.half_to_float($1)
+
+type Rect
+  static MinMaxRect(float, float, float, float): Rect => Rect2($1, $2, $3 - $1, $4 - $2)
+  static NormalizedToPoint(Rect, Vector2): Vector2 => ($1.position + $2 * $1.size)
+  static PointToNormalized(Rect, Vector2): Vector2 => (($2 - $1.position) / $1.size)
+  Set(float, float, float, float): void => $0 = Rect2($1, $2, $3, $4)
+  set center: Vector2 => $0.position = $v - $0.size * 0.5
+  set min: Vector2 => $0 = U.rect_with_min($0, $v)
+  set max: Vector2 => $0.size = $v - $0.position
+  set xMin: float => $0 = U.rect_with_xmin($0, $v)
+  set yMin: float => $0 = U.rect_with_ymin($0, $v)
+  set xMax: float => $0.size.x = $v - $0.position.x
+  set yMax: float => $0.size.y = $v - $0.position.y
+
+type Plane
+  SameSide(Vector3, Vector3): bool => (sign($0.distance_to($1)) == sign($0.distance_to($2)))
+  Set3Points(Vector3, Vector3, Vector3): void => $0 = Plane($1, $2, $3)
+  static Translate(Plane, Vector3): Plane => Plane($1.normal, $1.d + $1.normal.dot($2))
+  Translate(Vector3): void => $0 = Plane($0.normal, $0.d + $0.normal.dot($1))
+  flipped: Plane => Plane(-$0.normal, -$0.d)
+  set distance: float => $0.d = -$v
+  set normal: Vector3 => $0.normal = $v.normalized()
+
+type Bounds
+  IntersectRay(Ray): bool => $0.intersects_ray($1.origin, $1.direction) != null
+  IntersectRay(Ray, out float): bool => $2 = U.aabb_ray_distance($0, $1.origin, $1.direction) ;; $2 >= 0.0
+  set extents: Vector3 => $0 = AABB($0.get_center() - $v, $v * 2.0)
+  set min: Vector3 => $0 = AABB($v, $0.end - $v)
+  set max: Vector3 => $0.size = $v - $0.position
+
+type Matrix4x4
+  set m00: float => $0 = U.matrix_set($0, 0, 0, $v)
+  set m01: float => $0 = U.matrix_set($0, 0, 1, $v)
+  set m02: float => $0 = U.matrix_set($0, 0, 2, $v)
+  set m03: float => $0 = U.matrix_set($0, 0, 3, $v)
+  set m10: float => $0 = U.matrix_set($0, 1, 0, $v)
+  set m11: float => $0 = U.matrix_set($0, 1, 1, $v)
+  set m12: float => $0 = U.matrix_set($0, 1, 2, $v)
+  set m13: float => $0 = U.matrix_set($0, 1, 3, $v)
+  set m20: float => $0 = U.matrix_set($0, 2, 0, $v)
+  set m21: float => $0 = U.matrix_set($0, 2, 1, $v)
+  set m22: float => $0 = U.matrix_set($0, 2, 2, $v)
+  set m23: float => $0 = U.matrix_set($0, 2, 3, $v)
+  set m30: float => pass
+  set m31: float => pass
+  set m32: float => pass
+  set m33: float => pass

@@ -565,7 +565,9 @@ impl<'p> Lowerer<'p> {
     fn record_mapped(&mut self, m: &MemberInfo) {
         let key = format!("{}.{}", m.owner, m.name);
         *self.usage.mapped.entry(key.clone()).or_default() += 1;
-        if m.stub {
+        if m.stored {
+            *self.usage.stored.entry(key).or_default() += 1;
+        } else if m.stub {
             *self.usage.stubbed.entry(key).or_default() += 1;
         }
     }
@@ -926,7 +928,12 @@ impl<'p> Lowerer<'p> {
 
     /// Call a catalog method (`type_name` canonical), instance when `target` is Some.
     fn call_catalog(&mut self, type_name: &str, name: &str, target: Option<Lw>, args: &[Arg], type_args: &[(String, Ty)], span: Span) -> Lw {
-        let cands: Vec<MemberInfo> = self.prog.catalog.members(type_name, name).into_iter().filter(|m| m.is_method() && (target.is_some() || m.is_static)).cloned().collect();
+        let mut cands: Vec<MemberInfo> = self.prog.catalog.members(type_name, name).into_iter().filter(|m| m.is_method() && (target.is_some() || m.is_static)).cloned().collect();
+        // With a target, instance members win over static ones of the same name
+        // (`behaviour.GetUdonTypeName()` vs `UdonSharpBehaviour.GetUdonTypeName<T>()`).
+        if target.is_some() && cands.iter().any(|m| !m.is_static) {
+            cands.retain(|m| !m.is_static);
+        }
         if cands.is_empty() {
             // maybe a field holding a Signal/Callable being invoked, or unmapped
             if self.prog.catalog.get(type_name).is_some() {
@@ -1079,8 +1086,9 @@ impl<'p> Lowerer<'p> {
                 Lw::new(t.e.index(i.e), Ty::Char)
             }
             Ty::Named(n) => {
-                // catalog indexer `this[...]`
-                let members = self.prog.catalog.members(&n, "this[int]");
+                // catalog indexer `this[...]` (`this[int, int]` for two-dimensional indexers)
+                let key = if idx.len() == 2 { "this[int, int]" } else { "this[int]" };
+                let members = self.prog.catalog.members(&n, key);
                 let members: Vec<MemberInfo> = members.into_iter().cloned().collect();
                 let m = members.first().cloned().or_else(|| self.prog.catalog.members(&n, "this[DataToken]").first().map(|m| (*m).clone()));
                 if let Some(m) = m {
@@ -1659,6 +1667,21 @@ impl<'p> Lowerer<'p> {
             return None;
         }
         let t = self.peek_type(obj);
+        // `Physics.gravity = v`: a bare catalog type name denotes its statics
+        if let Ty::TypeName(tn) = &t {
+            let tn = tn.clone();
+            if let Some(m) = self.prog.catalog.field_for_write(&tn, name, true) {
+                let m = m.clone();
+                if let Some(s) = &m.set {
+                    self.record_mapped(&m);
+                    return Some((s.clone(), None));
+                }
+                if m.get.is_some() {
+                    self.warn(obj.span(), format!("`{}.{}` is read-only in the catalog; assignment emitted verbatim", tn, name));
+                }
+            }
+            return None;
+        }
         let tn = match &t {
             Ty::Named(n) => n.clone(),
             Ty::String => "string".into(),

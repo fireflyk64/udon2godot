@@ -65,7 +65,43 @@ pub fn mangle(name: &str) -> String {
     if GD_KEYWORDS.contains(&name) || GD_BASE_MEMBERS.contains(&name) {
         return format!("{}_", name);
     }
-    name.to_string()
+    ascii_identifier(name)
+}
+
+/// GDScript accepts Unicode identifiers but SafeGDScript's lexer and the sandbox tooling are
+/// safest with ASCII; C# identifiers with non-ASCII letters (Greek maths names are common in Udon
+/// physics code) are transliterated: `φ` → `phi`, anything else → `_uXXXX`.
+pub fn ascii_identifier(name: &str) -> String {
+    if name.is_ascii() {
+        return name.to_string();
+    }
+    let mut out = String::with_capacity(name.len() + 8);
+    for c in name.chars() {
+        if c.is_ascii() {
+            out.push(c);
+            continue;
+        }
+        match greek_name(c) {
+            Some(g) => out.push_str(g),
+            None => out.push_str(&format!("_u{:04x}", c as u32)),
+        }
+    }
+    out
+}
+
+fn greek_name(c: char) -> Option<&'static str> {
+    Some(match c {
+        'α' => "alpha", 'β' => "beta", 'γ' => "gamma", 'δ' => "delta", 'ε' => "epsilon", 'ζ' => "zeta",
+        'η' => "eta", 'θ' => "theta", 'ι' => "iota", 'κ' => "kappa", 'λ' => "lambda", 'μ' => "mu",
+        'ν' => "nu", 'ξ' => "xi", 'ο' => "omicron", 'π' => "pi", 'ρ' => "rho", 'σ' => "sigma", 'ς' => "sigma",
+        'τ' => "tau", 'υ' => "upsilon", 'φ' => "phi", 'χ' => "chi", 'ψ' => "psi", 'ω' => "omega",
+        'Α' => "Alpha", 'Β' => "Beta", 'Γ' => "Gamma", 'Δ' => "Delta", 'Ε' => "Epsilon", 'Ζ' => "Zeta",
+        'Η' => "Eta", 'Θ' => "Theta", 'Ι' => "Iota", 'Κ' => "Kappa", 'Λ' => "Lambda", 'Μ' => "Mu",
+        'Ν' => "Nu", 'Ξ' => "Xi", 'Ο' => "Omicron", 'Π' => "Pi", 'Ρ' => "Rho", 'Σ' => "Sigma",
+        'Τ' => "Tau", 'Υ' => "Upsilon", 'Φ' => "Phi", 'Χ' => "Chi", 'Ψ' => "Psi", 'Ω' => "Omega",
+        'ϕ' => "phi", 'ϑ' => "theta", 'ϵ' => "epsilon",
+        _ => return None,
+    })
 }
 
 /// Mangle a local variable or parameter name (only keywords need care; locals may shadow members).
@@ -78,7 +114,7 @@ pub fn mangle_local(name: &str) -> String {
     if GD_BASE_MEMBERS.contains(&name) {
         return format!("{}_", name);
     }
-    name.to_string()
+    ascii_identifier(name)
 }
 
 #[cfg(test)]
@@ -91,5 +127,8 @@ mod tests {
         assert_eq!(mangle("match"), "match_");
         assert_eq!(mangle("speed"), "speed");
         assert_eq!(mangle("Start"), "Start");
+        assert_eq!(mangle("φ"), "phi");
+        assert_eq!(mangle_local("Δθ"), "Deltatheta");
+        assert_eq!(mangle("x€"), "x_u20ac");
     }
 }
