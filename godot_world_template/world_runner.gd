@@ -204,8 +204,32 @@ func mouse_delta(d: Vector2) -> void:
 	Input.parse_input_event(e)
 	await process_frame
 
+## Marks the last click on screenshots: a small ring drawn on a HUD layer for a while.
+var _marks: CanvasLayer = null
+
+func _mark_click(px: Vector2) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if _marks == null:
+		_marks = CanvasLayer.new()
+		_marks.name = "ClickMarks"
+		_marks.layer = 120
+		root.add_child(_marks)
+	var m := Control.new()
+	m.name = "Mark"
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.position = px
+	m.draw.connect(func():
+		m.draw_arc(Vector2.ZERO, 9.0, 0.0, TAU, 32, Color(1, 0.2, 0.2, 0.95), 3.0)
+		m.draw_line(Vector2(-14, 0), Vector2(14, 0), Color(1, 0.2, 0.2, 0.95), 2.0)
+		m.draw_line(Vector2(0, -14), Vector2(0, 14), Color(1, 0.2, 0.2, 0.95), 2.0))
+	_marks.add_child(m)
+	create_timer(2.0).timeout.connect(m.queue_free)
+
 ## Press or release a mouse button at the current cursor position.
 func mouse_button(pressed: bool, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
+	if pressed:
+		_mark_click(_mouse_px)
 	var e := InputEventMouseButton.new()
 	e.position = _mouse_px
 	e.global_position = _mouse_px

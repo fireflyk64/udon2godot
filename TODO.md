@@ -259,11 +259,18 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       dragged through the pointer (HSlider, onValueChanged), a Toggle, an InputField typed into
       through the window (the pointer forwards keys to the last clicked canvas) and submitted with
       Enter (onEndEdit), and a screen-space canvas button (Godot's own GUI; its full-window root
-      must ignore the mouse or it swallows every click meant for the world). Open: hit-point
-      overlay on screenshots, Dropdown/ScrollRect coverage.
+      must ignore the mouse or it swallows every click meant for the world). Clicks driven by a
+      scenario draw a red ring on the HUD for two seconds so screenshots show where they landed.
+      Open: Dropdown/ScrollRect coverage.
 - [x] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
       `scripts/play_world.sh`), `scenarios/player.gd` on the fixture (walk, strafe, jump, tracking
-      data, Esc frees the mouse, clicks through the player camera). Open: stations, VR events.
+      data, Esc frees the mouse, clicks through the player camera). Stations: the pointer offers
+      "Sit" on a `VRCStation` collider, a click seats the player (use_station, OnStationEntered),
+      the body follows the enter location and ignores locomotion, Space leaves through the exit
+      location (OnStationExited); `Chair.cs` + the Chair box in the fixture, 21 checks. Fixed on the
+      way in the importer: forward references inside component settings (a station's exit location,
+      a pickup's ExactGrip) were misfiled into `udon_refs` instead of the component config, and
+      references to children not built yet were dropped. Open: VR events, `UseAttachedStation`.
 - [x] Godot 4.7.2 and the latest unidot_importer (2026-09-15): `origin/main` (the 4.7 parse fixes and
       the ImageMagick check) merged into the fork branch `udon-integration` without conflicts;
       `scripts/*.sh`, `scripts/setup_deps.sh`, the project features and the README moved to 4.7.2.

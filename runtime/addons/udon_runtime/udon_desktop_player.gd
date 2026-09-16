@@ -22,6 +22,8 @@ var _prompt: Label = null
 var _pitch: float = 0.0
 var _move_axis: Vector2 = Vector2.ZERO
 var _jump_queued: bool = false
+## Station adapter (udon_station.gd) the player sits in, or null.
+var station = null
 
 
 func _ready() -> void:
@@ -113,13 +115,47 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_mouse_captured(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED)
 		elif event.keycode == KEY_SPACE:
 			if event.pressed:
-				_jump_queued = true
+				if station != null:
+					leave_station()
+				else:
+					_jump_queued = true
 			udon.input_event("InputJump", event.pressed)
 
+
+## Sit in a station (called by the pointer after use_station): the body follows the station's
+## enter location (vehicles move) and locomotion stops until Space exits it.
+func sit_in(st) -> void:
+	station = st
+	velocity = Vector3.ZERO
+	_follow_station()
+
+func leave_station() -> void:
+	if station == null:
+		return
+	if station.disable_station_exit:
+		return
+	var st = station
+	station = null
+	st.exit_station(get_node("/root/Udon").local_player())
+
+func _follow_station() -> void:
+	if station == null or not (station.node is Node3D):
+		return
+	var loc: Node3D = station.enter_location if station.enter_location != null else station.node
+	global_position = loc.global_position
+	if station.seated:
+		rotation.y = loc.global_transform.basis.get_euler().y
 
 func _physics_process(delta: float) -> void:
 	var udon: Node = get_node("/root/Udon")
 	var p = udon.local_player()
+	if station != null:
+		if station.occupant == null:  # left by a script (ExitStation)
+			station = null
+		else:
+			_follow_station()
+			_jump_queued = false
+			return
 	var loco: Dictionary = p._locomotion if p != null else {"walk_speed": 2.0, "run_speed": 4.0, "strafe_speed": 2.0, "jump_impulse": 3.0, "gravity_strength": 1.0}
 	var axis := Vector2.ZERO
 	if p == null or not p.is_immobilized():

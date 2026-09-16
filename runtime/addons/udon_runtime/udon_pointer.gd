@@ -136,7 +136,8 @@ func _update_hit() -> void:
 		var t: Node = _reactive_ancestor(body["collider"], body_d)
 		if t != null:
 			new_hit["target"] = t
-			new_hit["kind"] = "pickup" if _is_pickup(t) else "interact"
+			var udon: Node = get_node("/root/Udon")
+			new_hit["kind"] = "pickup" if _is_pickup(t) else ("station" if udon.has_component(t, "station") else "interact")
 	_apply_hit(new_hit)
 
 
@@ -151,6 +152,8 @@ func _reactive_ancestor(collider: Node, dist: float) -> Node:
 			var pk = udon.pickup(n)
 			if pk != null and pk.pickupable and dist <= maxf(pk.proximity, 0.1):
 				return n
+		if udon.has_component(n, "station") and dist <= 2.5:
+			return n
 		if n.has_method("Interact") and n.has_meta("udon_class") and n.get("DisableInteractive") != true and dist <= float(n.get("proximity") if n.get("proximity") != null else 2.0):
 			if not n.has_method("udon_has_interact") or n.udon_has_interact():
 				return n
@@ -183,6 +186,8 @@ func _apply_hit(new_hit: Dictionary) -> void:
 			if new_hit["kind"] == "pickup":
 				var pk = get_node("/root/Udon").pickup(target)
 				hover_text = str(pk.interaction_text) if pk.interaction_text != "" else "Grab"
+			elif new_hit["kind"] == "station":
+				hover_text = "Sit"
 			else:
 				hover_text = str(target.get("InteractionText"))
 		hover_changed.emit(hover_target, hover_text)
@@ -238,6 +243,13 @@ func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 			udon.input_event("InputUse", true)
 		elif hit.get("kind") == "pickup":
 			_grab(hit["target"])
+		elif hit.get("kind") == "station":
+			var st = udon.station(hit["target"])
+			var pl = udon.local_player()
+			if st != null and pl != null and st.occupant == null:
+				st.use_station(pl)
+				if pl.node != null and pl.node.has_method("sit_in"):
+					pl.node.sit_in(st)
 		elif hit.get("kind") == "interact":
 			udon.input_event("InputUse", true)
 			hit["target"].Interact()
