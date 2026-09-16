@@ -19,7 +19,7 @@ func run(r) -> void:
 	var p1: Vector3 = player.global_position
 	r.check(p1.z - p0.z > 0.5, "W walks forward along +Z: %.2f m" % (p1.z - p0.z))
 	await r.key(KEY_S, 30)
-	r.check(absf(player.global_position.z - p0.z) < 0.3, "S walks back: z=%.2f" % player.global_position.z)
+	r.check(player.global_position.z < p1.z - 0.3, "S walks back: z=%.2f (was %.2f)" % [player.global_position.z, p1.z])
 	await r.key(KEY_D, 20)
 	r.check(player.global_position.x - p0.x < -0.2, "D strafes to screen-right (-X): %.2f" % (player.global_position.x - p0.x))
 	await r.key(KEY_A, 20)

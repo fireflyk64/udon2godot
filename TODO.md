@@ -213,7 +213,7 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       rotation/lossyScale` on RectTransforms). Verified by `tests/unity_fixture` UiCanvas (63 checks
       on the display: positions, viewport mapping, rendered colours at projected pivots, window
       clicks) and the billiards canvases (2.8 × 1.6 m menu, 1.4 × 0.95 m scoreboard).
-- [~] Pointer → canvas input by raycast + `SubViewport.push_input` (mouse now, VR ray later). One
+- [x] Pointer → canvas input by raycast + `SubViewport.push_input` (mouse now, VR ray later). One
       `UdonPointer` node (runtime): each frame take the ray (camera through the mouse position, or a
       controller's -Z), `intersect_ray` against the `udon_ui_shape` areas (collide with areas, hit from
       the readable side only), convert the hit point to the plane's local XY, then to viewport pixels
@@ -243,7 +243,7 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       behaviour with `Interact` calls it (within `proximity`); on a `udon_pickup` node the click picks
       it up (`OnPickup`, held at a hand offset in front of the camera, `exact_gun`/`exact_grip`
       orientation), left mouse while held = `OnPickupUseDown/Up`, drop with G / right click (`OnDrop`).
-- [~] Test apparatus for interaction: (1) a test scene in `tests/unity_fixture` with a world canvas
+- [x] Test apparatus for interaction: (1) a test scene in `tests/unity_fixture` with a world canvas
       (buttons, toggle, slider at known Unity coordinates, one nested canvas, one scaled one) and a
       screen-space canvas; (2) scenario API in `world_runner.gd` that drives real input through the
       window: `r.mouse_move(px)`, `r.click(px)` (`Input.parse_input_event`), `r.key(KEY_E)`,
@@ -257,18 +257,27 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       `mouse_move`, `click`, `key`, `camera`, `--face` for canvases), `scripts/test_unity_fixture.sh`
       runs the display pass when DISPLAY is set. Open: slider/toggle/input field coverage, a
       screen-space canvas, hit-point overlay on screenshots.
-- [~] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
+- [x] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
       `scripts/play_world.sh`), `scenarios/player.gd` on the fixture (walk, strafe, jump, tracking
       data, Esc frees the mouse, clicks through the player camera). Open: stations, VR events.
-- [ ] Godot 4.7 and the latest unidot_importer: V-Sekai pushed fixes for Godot 4.7 to
-      unidot_importer. Merge `origin/main` into the fork branch `udon-integration`
-      (fireflyk64/unidot_importer), download the 4.7 editor into `tools/`, point `scripts/*.sh`,
-      `scripts/setup_deps.sh` and the project features at 4.7, and run `scripts/ci.sh`. Commit
-      before, revert if the fixture, billiards or coverage runs break; keep 4.6.3 in that case.
-- [ ] Billiards played interactively: the scenario drives the game only through simulated input
-      (look at the Start button and click, Join, 8-ball, Play, pick up the cue, aim with the mouse,
-      E to lock, click to shoot) and the same checks as today pass; `scripts/play_world.sh <world>`
-      launches it for a person. Acceptance for "works interactively".
+- [x] Godot 4.7.2 and the latest unidot_importer (2026-09-15): `origin/main` (the 4.7 parse fixes and
+      the ImageMagick check) merged into the fork branch `udon-integration` without conflicts;
+      `scripts/*.sh`, `scripts/setup_deps.sh`, the project features and the README moved to 4.7.2.
+      verify, coverage, the fixture (headless, display, player) and the billiards import + scenario
+      all pass on 4.7.2. One behavioural change: 4.7 defaults to Jolt Physics, which let the
+      CharacterBody3D fall through the fixture's floor (a unit BoxShape3D under a node scaled
+      (10, 1, 10), the shape unidot produces for scaled Unity colliders); imported worlds pin
+      `physics/3d/physics_engine = GodotPhysics3D` in `godot_world_template/project.godot`. Jolt
+      support (baking the scale into shapes at import) stays under Long term.
+- [x] Billiards played interactively: `scenarios/billiards_play.gd` (16 checks) drives the game only
+      through window input: the START canvas button through the pointer, Mode8Ball and Play (the
+      opener is seated automatically, JoinOrange stays hidden), the orange cue grip picked up through
+      the pointer (VRC_Pickup → OnPickup → DesktopManager.holdingCue), E enters the desktop aiming
+      view, mouse deltas put the cursor on the apex ball, Mouse0 held + pull back builds power,
+      release fires the shot and the balls move. Found on the way: `Input.GetKey(KeyCode.Mouse0)`
+      never read the real mouse (the provider rejected mouse keycodes before its mouse branch).
+      `scripts/test_world_billiards.sh` runs it headless (PLAY_SHOTS=1 on the display with
+      screenshots); `scripts/play_world.sh <world>` launches it for a person.
 
 ## Next
 

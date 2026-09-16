@@ -127,6 +127,14 @@ func find(name_or_path: String) -> Node:
 		return _scene.get_node(name_or_path)
 	return _scene.find_child(name_or_path, true, false)
 
+## First visible button (BaseButton) of that name; Unity menus often wrap a button in a container of
+## the same name, which `find` would return.
+func find_button(name: String) -> BaseButton:
+	for n in _all(_scene):
+		if n is BaseButton and String(n.name) == name and n.is_visible_in_tree():
+			return n
+	return null
+
 ## First converted behaviour of a class.
 func behaviour(cls: String) -> Node:
 	for n in _all(_scene):
@@ -176,25 +184,83 @@ func pixel(px: Vector2) -> Color:
 	return img.get_pixelv(Vector2i(int(px.x), int(px.y)))
 
 ## Real input through the window: a mouse move to a window pixel, a click there, a key tap.
+var _mouse_px: Vector2 = Vector2.ZERO
+
 func mouse_move(px: Vector2) -> void:
 	var e := InputEventMouseMotion.new()
 	e.position = px
 	e.global_position = px
-	e.relative = px - root.get_viewport().get_mouse_position()
+	e.relative = px - _mouse_px
+	_mouse_px = px
 	Input.parse_input_event(e)
+	await process_frame
+
+## Relative mouse motion without moving the cursor (mouse look, Unity's Mouse X / Mouse Y axes).
+func mouse_delta(d: Vector2) -> void:
+	var e := InputEventMouseMotion.new()
+	e.position = _mouse_px
+	e.global_position = _mouse_px
+	e.relative = d
+	Input.parse_input_event(e)
+	await process_frame
+
+## Press or release a mouse button at the current cursor position.
+func mouse_button(pressed: bool, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
+	var e := InputEventMouseButton.new()
+	e.position = _mouse_px
+	e.global_position = _mouse_px
+	e.button_index = button
+	e.pressed = pressed
+	e.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed and button == MOUSE_BUTTON_LEFT else 0
+	Input.parse_input_event(e)
+	await process_frame
+
+## World point (Godot space) at the centre of a control on a world canvas.
+func control_world(ctl: Control) -> Vector3:
+	var uu: Node = u()
+	var cv: Node = uu._ui_world_canvas(ctl)
+	var px: Vector2 = ctl.get_global_transform() * (ctl.size * 0.5)
+	return uu.to_gd_v(uu.ui_viewport_to_world(cv, px))
+
+## Look at a control of a world canvas (desktop player) and click it through the window.
+func click_control(ctl: Control) -> void:
+	var w: Vector3 = control_world(ctl)
+	if _player != null:
+		_player.look_at_point(w)
+		await process_frame
+		await process_frame
+	await click(project(w))
+
+## Stand the desktop player `dist` metres in front of a world-canvas control (its readable side)
+## and look at it.
+func face_control(ctl: Control, dist: float = 1.5) -> void:
+	var cv: Node3D = u()._ui_world_canvas(ctl)
+	var w: Vector3 = control_world(ctl)
+	var normal: Vector3 = -cv.global_transform.basis.z.normalized() if cv != null else Vector3.FORWARD
+	normal.y = 0.0
+	await place_player(w + normal.normalized() * dist)
+	if _player != null:
+		_player.look_at_point(w)
+		await process_frame
+
+## Put the desktop player at a point (Godot space), on the ground below it.
+func place_player(pos: Vector3) -> void:
+	if _player == null:
+		return
+	var space: PhysicsDirectSpaceState3D = root.get_viewport().world_3d.direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 2.0, 0), pos - Vector3(0, 50.0, 0))
+	q.exclude = [_player.get_rid()]
+	var hit: Dictionary = space.intersect_ray(q)
+	if not hit.is_empty():
+		pos.y = hit["position"].y + 0.05
+	_player.global_position = pos
+	_player.velocity = Vector3.ZERO
 	await process_frame
 
 func click(px: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
 	await mouse_move(px)
 	for pressed in [true, false]:
-		var e := InputEventMouseButton.new()
-		e.position = px
-		e.global_position = px
-		e.button_index = button
-		e.pressed = pressed
-		e.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed and button == MOUSE_BUTTON_LEFT else 0
-		Input.parse_input_event(e)
-		await process_frame
+		await mouse_button(pressed, button)
 	await process_frame
 
 func key(keycode: Key, hold_frames: int = 1) -> void:
@@ -261,8 +327,10 @@ func _spawn_player() -> void:
 func player() -> Node:
 	return _player
 
-## Spawn point of the world: the scene descriptor's first spawn, else the origin.
+## Spawn point of the world: the scene descriptor's first spawn, else the origin, snapped onto the
+## ground below (a spawn marker inside a floor collider would otherwise start the body in a wall).
 func _spawn_transform() -> Transform3D:
+	var t: Transform3D = Transform3D(Basis(), Vector3(0, 0.1, 0))
 	for n in _scene.find_children("*", "Node3D", true, false):
 		if n.has_meta("udon_scene_descriptor"):
 			var cfg: Dictionary = n.get_meta("udon_scene_descriptor")
@@ -270,10 +338,15 @@ func _spawn_transform() -> Transform3D:
 			if not sp.is_empty():
 				var spawn: Node3D = n.get_node_or_null(sp[0])
 				if spawn != null:
-					var t: Transform3D = spawn.global_transform
-					return Transform3D(Basis(Vector3.UP, t.basis.get_euler().y), t.origin)
+					var st: Transform3D = spawn.global_transform
+					t = Transform3D(Basis(Vector3.UP, st.basis.get_euler().y), st.origin)
 			break
-	return Transform3D(Basis(), Vector3(0, 0.1, 0))
+	var space: PhysicsDirectSpaceState3D = root.get_viewport().world_3d.direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(t.origin + Vector3(0, 2.0, 0), t.origin - Vector3(0, 50.0, 0))
+	var hit: Dictionary = space.intersect_ray(q)
+	if not hit.is_empty():
+		t.origin.y = hit["position"].y + 0.05
+	return t
 
 func _spawn_desktop_player() -> void:
 	var body: CharacterBody3D = load("res://addons/udon_runtime/udon_desktop_player.gd").new()

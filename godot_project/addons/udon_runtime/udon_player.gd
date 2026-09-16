@@ -63,6 +63,8 @@ func set_velocity(v: Vector3) -> void:
 
 ## Returns {"position": Vector3, "rotation": Quaternion} for a TrackingDataType.
 func get_tracking_data(kind: int) -> Dictionary:
+	if node != null and node.has_method("udon_tracking"):
+		return node.udon_tracking(kind)
 	var pos: Vector3 = get_position()
 	var rot: Quaternion = get_rotation()
 	match kind:

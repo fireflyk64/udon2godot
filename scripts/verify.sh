@@ -2,10 +2,10 @@
 # Build the converter, run its tests, convert the fixture and reference corpora, then run the
 # Godot end-to-end harness and the sandbox compile check.
 #
-#   GODOT=/path/to/Godot_v4.6.3-stable_linux.x86_64 scripts/verify.sh
+#   GODOT=/path/to/Godot_v4.7.2-stable_linux.x86_64 scripts/verify.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-GODOT="${GODOT:-tools/Godot_v4.6.3-stable_linux.x86_64}"
+GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
 
 echo "== cargo build & test"
 cargo build --release

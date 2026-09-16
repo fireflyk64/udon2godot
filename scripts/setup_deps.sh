@@ -13,7 +13,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-GODOT_VERSION=4.6.3-stable
+GODOT_VERSION=4.7.2-stable
 GODOT_BIN=tools/Godot_v${GODOT_VERSION}_linux.x86_64
 SANDBOX_RELEASE=v0.56   # the release gdscript.elf and the non-Linux libraries were taken from
 SANDBOX_ADDON=godot_project/addons/godot_sandbox

@@ -8,7 +8,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 SRC=$(realpath "$1"); OUT=$(realpath -m "$2"); shift 2
-GODOT="${GODOT:-tools/Godot_v4.6.3-stable_linux.x86_64}"
+GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
 BIN=target/release/udon2godot
 cargo build --release -q || exit 1
 mkdir -p "$OUT/addons" "$OUT/converted"

@@ -43,7 +43,7 @@ entries.
 ## Building and using
 
 The converter only needs cargo. For the Godot side, `scripts/setup_deps.sh` fetches once what is
-not in git: the Godot 4.6.3 Linux editor into `tools/`, the godot-sandbox release binaries for the
+not in git: the Godot 4.7.2 Linux editor into `tools/`, the godot-sandbox release binaries for the
 platforms other than Linux x86_64, and the reference repositories into `refs/` (the
 [unidot_importer fork](https://github.com/fireflyk64/unidot_importer), MS-VRCSA-Billiards, vrcbce,
 SaccFlightAndVehicles). Then `scripts/verify.sh` runs the tests and `scripts/ci.sh` everything.
@@ -80,10 +80,10 @@ Then in the Godot project:
 5. Optionally implement `UdonWorldProvider` (see below) and call `Udon.set_provider(p)`, or
    use the bundled `UdonNetworkProvider` for multiplayer.
 
-`godot_project/` is a ready-made test project (Godot 4.6.3):
+`godot_project/` is a ready-made test project (Godot 4.7.2):
 
 ```sh
-GODOT=tools/Godot_v4.6.3-stable_linux.x86_64
+GODOT=tools/Godot_v4.7.2-stable_linux.x86_64
 $GODOT --headless --path godot_project -s e2e_counter.gd          # lifecycle of one converted script
 $GODOT --headless --path godot_project -s coverage_runner.gd      # the API coverage fixtures
 $GODOT --headless --path godot_project -s compile_check.gd [-- res://dir ...]
@@ -100,7 +100,7 @@ a Unity asset folder (or a full project's `Assets`) into a runnable Godot projec
 ```sh
 scripts/import_world.sh refs/MS-VRCSA-Billiards /tmp/worlds/billiards
 scripts/world_doctor.py /tmp/worlds/billiards                       # what converted, what did not, why
-tools/Godot_v4.6.3-stable_linux.x86_64 --headless --path /tmp/worlds/billiards -s world_runner.gd \
+tools/Godot_v4.7.2-stable_linux.x86_64 --headless --path /tmp/worlds/billiards -s world_runner.gd \
     -- --scene res://MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn --frames 120 --debug-scripts --dump-refs
 scripts/test_world_billiards.sh /tmp/worlds/billiards               # lobby → join → 8-ball → break, with screenshots
 scripts/test_unity_fixture.sh /tmp/worlds/fixture                   # hand-written Unity scene: transforms, refs, raycasts, onClick
@@ -342,7 +342,7 @@ tools/          gen_catalog.py (stub generator), gen_particles.py, gen_ui.py (ca
 runtime/addons/udon_runtime/   Godot addon: udon_behaviour.gd, udon.gd, u.gd, udon_world_provider.gd,
                 udon_network_provider.gd, udon_player.gd, adapters (pickup, station, object sync/pool, video)
 tests/          Rust integration tests, C# fixtures and tests/coverage/ API fixtures
-godot_project/  Godot 4.6 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd;
+godot_project/  Godot 4.7 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd;
                 addons/godot_sandbox/ (customized plugin scripts + MAX_LEVEL 16 Linux build)
 godot_world_template/  project skeleton for scripts/import_world.sh (world_runner.gd, scenarios/)
 refs/           reference checkouts made by scripts/setup_deps.sh (ignored)

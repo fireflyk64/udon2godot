@@ -306,11 +306,11 @@ func clear_simulated_input() -> void:
 func get_key(keycode: int) -> bool:
 	if _sim_keys.has(keycode):
 		return _sim_keys[keycode]
+	if keycode >= 323 and keycode <= 329:  # KeyCode.Mouse0..Mouse6
+		return Input.is_mouse_button_pressed((keycode - 323 + 1) as MouseButton)
 	var k: Key = keycode_to_key(keycode)
 	if k == KEY_NONE:
 		return false
-	if keycode >= 323 and keycode <= 329:
-		return Input.is_mouse_button_pressed((keycode - 323 + 1) as MouseButton)
 	return Input.is_key_pressed(k)
 
 func get_key_down(keycode: int) -> bool:

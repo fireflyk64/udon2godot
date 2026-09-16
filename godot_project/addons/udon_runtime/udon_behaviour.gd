@@ -273,3 +273,16 @@ func SetProgramVariable(var_name: String, value) -> void:
 # Unity Behaviour/Component conveniences used by the catalog defaults.
 func Interact() -> void:
 	pass
+
+## Does the converted script define Interact (the base class only carries the empty default)?
+var _udon_interact_cache: int = -1
+func udon_has_interact() -> bool:
+	if _udon_interact_cache < 0:
+		_udon_interact_cache = 0
+		var scr: Script = get_script()
+		if scr != null:
+			for m in scr.get_script_method_list():
+				if str(m.get("name", "")) == "Interact":
+					_udon_interact_cache = 1
+					break
+	return _udon_interact_cache == 1

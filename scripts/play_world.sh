@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=$(realpath "$1")
-GODOT="${GODOT:-tools/Godot_v4.6.3-stable_linux.x86_64}"
+GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
 SCENE="${2:-}"
 if [ -z "$SCENE" ]; then
   REL=$(cd "$OUT" && find . -name "*.tscn" -not -name "*.prefab.tscn" -not -path "./addons/*" -printf "%s %p\n" | sort -rn | head -1 | cut -d' ' -f2- | sed 's|^\./||')

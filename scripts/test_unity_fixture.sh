@@ -4,7 +4,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/fixture}
-GODOT="${GODOT:-tools/Godot_v4.6.3-stable_linux.x86_64}"
+GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
 SCENE=res://unity_fixture/Fixture/Fixture.tscn
 if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ "${REIMPORT:-0}" = 1 ]; then
   rm -rf "$OUT"

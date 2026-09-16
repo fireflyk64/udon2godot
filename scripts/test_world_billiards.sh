@@ -5,7 +5,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/billiards}
-GODOT="${GODOT:-tools/Godot_v4.6.3-stable_linux.x86_64}"
+GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
 SCENE=res://MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn
 if [ ! -f "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" ] || [ "${REIMPORT:-0}" = 1 ]; then
   rm -rf "$OUT"
@@ -33,4 +33,17 @@ if [ -n "${DISPLAY:-}" ]; then
     echo "SCREENSHOTS FAILED (see $OUT/shots.log)"; tail -3 "$OUT/shots.log"; CODE=1
   fi
 fi
+# interactive: the desktop player plays through window input only (START button, lobby canvas, cue
+# pickup, E, aim and shoot). Input needs no rendering, so this runs headless; PLAY_SHOTS=1 runs it on
+# the display at a small resolution and keeps screenshots of each step in $OUT/shots.
+echo "== interactive (desktop player: START button, lobby canvas, cue pickup, aim and shoot)"
+if [ -n "${DISPLAY:-}" ] && [ "${PLAY_SHOTS:-0}" = 1 ]; then
+  timeout 1500 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 640x360 --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --play --debug-scripts --scenario res://scenarios/billiards_play.gd --shot "$OUT/shots/play.png" > "$OUT/play.log" 2>&1
+else
+  timeout 600 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --play --pointer --debug-scripts --scenario res://scenarios/billiards_play.gd > "$OUT/play.log" 2>&1
+fi
+PCODE=$?
+grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/play.log"
+echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/play.log")  (log: $OUT/play.log)"
+[ $PCODE -ne 0 ] && CODE=$PCODE
 exit $CODE

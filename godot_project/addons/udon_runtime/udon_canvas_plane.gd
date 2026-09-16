@@ -43,8 +43,43 @@ func _fit_and_nest() -> void:
 	_nest(canvas)
 
 
-## Resize the viewport and plane to the union of the converted controls (Unity canvases do not
-## clip their children).
+## Largest viewport edge; beyond it the pixel density (`k`) drops so quad, viewport and root scale
+## keep describing the same canvas units.
+const MAX_VIEWPORT_PX := 8192.0
+
+
+## Does this control draw anything? Unity RectTransforms without a Graphic become plain Controls
+## (menus, anchors, layout groups) whose rects are layout helpers, often far larger than the
+## content they hold (a 100 × 100 container scaled 200× is common), and must not size the plane.
+static func draws(c: Control) -> bool:
+	return c.get_class() != "Control"
+
+
+## Append the rect, in root units, of every drawing control at or below `c`, hidden ones included
+## (menus toggled at runtime must fit the plane). `to_root` maps c's parent space to root space;
+## `Control.get_transform()` carries position, rotation and scale around the pivot, so a child of a
+## scaled container lands where Unity draws it.
+static func content_bounds(c: Control, to_root: Transform2D, out: Array) -> void:
+	var xf: Transform2D = to_root * c.get_transform()
+	if draws(c):
+		out.append(xf * Rect2(Vector2.ZERO, c.size))
+	for ch in c.get_children():
+		if ch is Control:
+			content_bounds(ch, xf, out)
+
+
+## Pixel density that keeps `size` units within the viewport limit.
+static func fit_density(k: float, size: Vector2) -> float:
+	var kk: float = k
+	if size.x * kk > MAX_VIEWPORT_PX:
+		kk = MAX_VIEWPORT_PX / size.x
+	if size.y * kk > MAX_VIEWPORT_PX:
+		kk = MAX_VIEWPORT_PX / size.y
+	return maxf(kk, 1e-4)
+
+
+## Resize the viewport and plane to the union of the drawing controls (Unity canvases do not clip
+## their children) and move the plane so the canvas keeps its world placement.
 func _fit(canvas: Node) -> void:
 	var cfg: Dictionary = canvas.get_meta("udon_canvas")
 	var root: Control = canvas.get_node_or_null(cfg.get("root", NodePath()))
@@ -53,16 +88,21 @@ func _fit(canvas: Node) -> void:
 	var k: float = float(cfg.get("k", 1.0))
 	var rsize: Vector2 = cfg.get("size", root.size)
 	var union: Rect2 = Rect2(Vector2.ZERO, rsize)
-	var base: Vector2 = root.global_position
-	for c in root.find_children("*", "Control", true, false):
-		if not c.is_visible_in_tree():
-			continue
-		var r: Rect2 = c.get_global_rect()
-		union = union.merge(Rect2((r.position - base) / k, r.size / k))
+	var rects: Array = []
+	for ch in root.get_children():
+		if ch is Control:
+			content_bounds(ch, Transform2D.IDENTITY, rects)
+	for r in rects:
+		union = union.merge(r)
 	if union.size.x <= 0.0 or union.size.y <= 0.0:
 		return
-	var w: int = clampi(int(ceil(union.size.x * k)), 1, 8192)
-	var h: int = clampi(int(ceil(union.size.y * k)), 1, 8192)
+	var kk: float = fit_density(k, union.size)
+	if not is_equal_approx(kk, k):
+		root.scale = Vector2(kk, kk)
+		cfg["k"] = kk
+		k = kk
+	var w: int = clampi(int(ceil(union.size.x * k)), 1, int(MAX_VIEWPORT_PX))
+	var h: int = clampi(int(ceil(union.size.y * k)), 1, int(MAX_VIEWPORT_PX))
 	if _vp.size != Vector2i(w, h):
 		_vp.size = Vector2i(w, h)
 	root.position = -union.position * k
