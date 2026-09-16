@@ -408,9 +408,7 @@ func get_position(n_: Node) -> Vector3:
 	var n: Node3D = n_ as Node3D
 	if n == null:
 		if n_ is Control:
-			# UI elements: canvas pixels, Y up like Unity's RectTransform
-			var gp: Vector2 = n_.global_position
-			return Vector3(gp.x, -gp.y, 0.0)
+			return _ui_get_world_position(n_)
 		return Vector3.ZERO
 	return from_gd_v(n.global_position)
 
@@ -418,7 +416,7 @@ func set_position(n_: Node, p: Vector3) -> void:
 	var n: Node3D = n_ as Node3D
 	if n == null:
 		if n_ is Control:
-			n_.global_position = Vector2(p.x, -p.y)
+			_ui_set_world_position(n_, p)
 		return
 	if not _parent_invertible(n):
 		return
@@ -427,24 +425,32 @@ func set_position(n_: Node, p: Vector3) -> void:
 func get_local_position(n_: Node) -> Vector3:
 	var n: Node3D = n_ as Node3D
 	if n == null:
+		if n_ is Control:
+			return _ui_get_local_position(n_)
 		return Vector3.ZERO
 	return from_gd_v(n.position)
 
 func set_local_position(n_: Node, p: Vector3) -> void:
 	var n: Node3D = n_ as Node3D
 	if n == null:
+		if n_ is Control:
+			_ui_set_local_position(n_, p)
 		return
 	n.position = to_gd_v(p)
 
 func get_global_rotation(n_: Node) -> Quaternion:
 	var n: Node3D = n_ as Node3D
 	if n == null:
+		if n_ is Control:
+			return _ui_get_world_rotation(n_)
 		return Quaternion()
 	return from_gd_q(unity_basis(n).get_rotation_quaternion())
 
 func set_global_rotation(n_: Node, q: Quaternion) -> void:
 	var n: Node3D = n_ as Node3D
 	if n == null:
+		if n_ is Control:
+			_ui_set_world_rotation(n_, q)
 		return
 	if not _parent_invertible(n):
 		return
@@ -455,6 +461,125 @@ func set_global_rotation(n_: Node, q: Quaternion) -> void:
 		b = b * _LOOK_FIX
 	t.basis = b.scaled(s)
 	n.global_transform = t
+
+# --- RectTransforms: controls inside canvases --------------------------------------------------
+# A world canvas is a Node3D (`udon_canvas` meta, mode "world") whose SubViewport holds the UI; the
+# root Control covers the Unity canvas rect (its position/scale are the fit and pixel density).
+# Root units are the canvas units of Unity (x right, y down); the canvas node's local space has
+# X mirrored (the plane's texture U runs along -X) and Y up, with the Unity pivot at the origin.
+# A RectTransform's Unity position is its pivot point.
+
+## The world canvas whose viewport holds `c`, or null for screen-space canvases and loose controls.
+func _ui_world_canvas(c: Control) -> Node:
+	var n: Node = c.get_parent()
+	while n != null and not (n is SubViewport):
+		n = n.get_parent()
+	if n == null:
+		return null
+	var cv: Node = n.get_parent()
+	if cv is Node3D and cv.has_meta("udon_canvas") and str(cv.get_meta("udon_canvas").get("mode", "")) == "world":
+		return cv
+	return null
+
+## The canvas's pivot in root units.
+func _ui_canvas_pivot(cfg: Dictionary) -> Vector2:
+	var pv: Vector2 = cfg.get("pivot", Vector2(0.5, 0.5))
+	var rs: Vector2 = cfg.get("size", Vector2.ZERO)
+	return Vector2(pv.x * rs.x, (1.0 - pv.y) * rs.y)
+
+func _ui_root_to_local(cfg: Dictionary, r: Vector2) -> Vector3:
+	var pv: Vector2 = _ui_canvas_pivot(cfg)
+	return Vector3(pv.x - r.x, pv.y - r.y, 0.0)
+
+func _ui_local_to_root(cfg: Dictionary, l: Vector3) -> Vector2:
+	var pv: Vector2 = _ui_canvas_pivot(cfg)
+	return Vector2(pv.x - l.x, pv.y - l.y)
+
+## Transform from the parent of `c` into root units (identity for children of the root).
+func _ui_parent_to_root(c: Control, root: Control) -> Transform2D:
+	var parent: Node = c.get_parent()
+	if parent == root or not (parent is CanvasItem):
+		return Transform2D.IDENTITY
+	return root.get_global_transform().affine_inverse() * parent.get_global_transform()
+
+## Unity local position of a RectTransform: its pivot relative to the parent's pivot, Y up.
+func _ui_parent_pivot(c: Control) -> Vector2:
+	var parent: Node = c.get_parent()
+	if parent is Control:
+		var vp: Node = parent.get_parent()
+		if vp is SubViewport and vp.get_parent() != null and vp.get_parent().has_meta("udon_canvas"):
+			var cfg: Dictionary = vp.get_parent().get_meta("udon_canvas")
+			if str(cfg.get("mode", "")) == "world":
+				return _ui_canvas_pivot(cfg)
+			return Vector2(cfg.get("size", parent.size)) * 0.5
+		return parent.pivot_offset
+	return Vector2.ZERO
+
+func _ui_get_local_position(c: Control) -> Vector3:
+	var d: Vector2 = c.position + c.pivot_offset - _ui_parent_pivot(c)
+	return Vector3(d.x, -d.y, 0.0)
+
+func _ui_set_local_position(c: Control, p: Vector3) -> void:
+	c.position = _ui_parent_pivot(c) + Vector2(p.x, -p.y) - c.pivot_offset
+
+## World position (script space) of a control's pivot; screen-space canvases report pixels, Y up.
+func _ui_get_world_position(c: Control) -> Vector3:
+	var cv: Node = _ui_world_canvas(c)
+	if cv == null:
+		var gp: Vector2 = c.global_position + c.pivot_offset
+		return Vector3(gp.x, -gp.y, 0.0)
+	var root: Control = canvas_root(cv)
+	var cfg: Dictionary = cv.get_meta("udon_canvas")
+	var xf: Transform2D = root.get_global_transform().affine_inverse() * c.get_global_transform()
+	var r: Vector2 = xf * c.pivot_offset
+	return from_gd_v(cv.global_transform * _ui_root_to_local(cfg, r))
+
+func _ui_set_world_position(c: Control, p: Vector3) -> void:
+	var cv: Node = _ui_world_canvas(c)
+	if cv == null:
+		c.global_position = Vector2(p.x, -p.y) - c.pivot_offset
+		return
+	var root: Control = canvas_root(cv)
+	var cfg: Dictionary = cv.get_meta("udon_canvas")
+	var r: Vector2 = _ui_local_to_root(cfg, cv.global_transform.affine_inverse() * to_gd_v(p))
+	var t: Vector2 = _ui_parent_to_root(c, root).affine_inverse() * r
+	c.position = t - c.pivot_offset
+
+## World rotation of a control: the canvas orientation turned about its normal by the control's
+## accumulated 2D rotation (Godot's 2D angle is positive from +x towards +y, which is the same
+## sense as a turn about the canvas's local +Z once both axes are flipped).
+func _ui_get_world_rotation(c: Control) -> Quaternion:
+	var cv: Node = _ui_world_canvas(c)
+	if cv == null:
+		return Quaternion()
+	var root: Control = canvas_root(cv)
+	var ang: float = (root.get_global_transform().affine_inverse() * c.get_global_transform()).get_rotation()
+	var b: Basis = cv.global_transform.basis.orthonormalized() * Basis(Vector3(0.0, 0.0, 1.0), ang)
+	return from_gd_q(b.get_rotation_quaternion())
+
+func _ui_set_world_rotation(c: Control, q: Quaternion) -> void:
+	var cv: Node = _ui_world_canvas(c)
+	if cv == null:
+		return
+	var root: Control = canvas_root(cv)
+	var rel: Basis = cv.global_transform.basis.orthonormalized().inverse() * Basis(to_gd_q(q).normalized())
+	var ang: float = rel.get_euler(EULER_ORDER_YXZ).z
+	var parent_ang: float = _ui_parent_to_root(c, root).get_rotation()
+	c.rotation = ang - parent_ang
+
+## Viewport pixel under a world point on a world canvas (any point: the plane is unbounded here).
+func ui_world_to_viewport(canvas_node: Node, world_point: Vector3) -> Vector2:
+	var cfg: Dictionary = canvas_node.get_meta("udon_canvas")
+	var root: Control = canvas_root(canvas_node)
+	var r: Vector2 = _ui_local_to_root(cfg, canvas_node.global_transform.affine_inverse() * to_gd_v(world_point))
+	return root.get_global_transform() * r
+
+## World point (script space) of a viewport pixel of a world canvas.
+func ui_viewport_to_world(canvas_node: Node, px: Vector2) -> Vector3:
+	var cfg: Dictionary = canvas_node.get_meta("udon_canvas")
+	var root: Control = canvas_root(canvas_node)
+	var r: Vector2 = root.get_global_transform().affine_inverse() * px
+	return from_gd_v(canvas_node.global_transform * _ui_root_to_local(cfg, r))
 
 func get_local_rotation(n_: Node) -> Quaternion:
 	var n: Node3D = n_ as Node3D
@@ -3823,15 +3948,9 @@ func ui_click_world(canvas_node: Node, world_point: Vector3) -> bool:
 	if str(cfg.get("mode", "")) != "world":
 		return false
 	var vp: SubViewport = canvas_node.get_node_or_null(cfg["viewport"])
-	var plane: Node3D = canvas_node.get_node_or_null(cfg["plane"])
-	if vp == null or plane == null:
+	if vp == null or canvas_root(canvas_node) == null:
 		return false
-	var local: Vector3 = plane.global_transform.affine_inverse() * to_gd_v(world_point)
-	var units: Vector2 = cfg.get("plane_size", cfg.get("size", Vector2(vp.size)))
-	var k: float = float(cfg.get("k", 1.0))
-	# the plane is a half-turned QuadMesh: texture U runs along -X, V down from the top
-	var px: Vector2 = Vector2((units.x * 0.5 - local.x) * k, (units.y * 0.5 - local.y) * k)
-	return ui_click_viewport(vp, px)
+	return ui_click_viewport(vp, ui_world_to_viewport(canvas_node, world_point))
 
 func ui_click_viewport(vp: SubViewport, px: Vector2) -> bool:
 	var down := InputEventMouseButton.new()

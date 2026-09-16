@@ -4,6 +4,7 @@
 ##         -- --scene res://X.tscn --frames 240 --shot out.png [--shot-every 60] [--camera "x,y,z" --look "x,y,z"]
 ##         [--shadows]  (real-time shadows on all lights, substitute for baked lightmaps)
 ##         [--frame NodePath --view "x,y,z" --dist 1.2 --fov 60]  (frame a node; view = direction to the camera)
+##         [--face NodePath [--face-back]]  (camera in front of a world canvas so its UI fills the view)
 ##   optional: --debug-scripts (guest backtraces with function names)
 ##             --dump-refs (list converted behaviours and unbound references)
 ##             --press "NodePath"  (ui_press on a converted control after the scene settled)
@@ -59,6 +60,8 @@ func _init() -> void:
 		_place_camera(_parse_v3(str(_args["camera"])), _parse_v3(str(_args.get("look", "0,0,0"))))
 	elif _args.has("frame"):
 		_frame_node(str(_args["frame"]))
+	elif _args.has("face"):
+		_face_canvas(str(_args["face"]))
 	if _args.has("spawn"):
 		_spawn_player()
 	if _args.has("light") or (_args.has("shot") and not _has_visible_light()):
@@ -214,6 +217,33 @@ func _frame_node(path: String) -> void:
 	print("[world_runner] framed %s: center=%s size=%s" % [path, str(center), str(aabb.size)])
 
 
+## Put the camera in front of a world canvas (its readable side, or the back with --face-back) so
+## the fitted plane fills the view.
+func _face_canvas(path: String) -> void:
+	var n: Node = _scene.get_node_or_null(path) if _scene.has_node(path) else _scene.find_child(path, true, false)
+	if n == null or not n.has_meta("udon_canvas"):
+		print("[world_runner] face: no world canvas at " + path)
+		return
+	var cfg: Dictionary = n.get_meta("udon_canvas")
+	var plane: MeshInstance3D = n.get_node_or_null(cfg.get("plane", NodePath()))
+	if plane == null:
+		print("[world_runner] face: canvas without plane " + path)
+		return
+	var aabb: AABB = plane.get_global_transform() * plane.get_aabb()
+	var center: Vector3 = aabb.get_center()
+	var normal: Vector3 = -n.global_transform.basis.z.normalized()
+	if _args.has("face-back"):
+		normal = -normal
+	var gs: Vector3 = n.global_transform.basis.get_scale()
+	var units: Vector2 = cfg.get("plane_size", cfg.get("size", Vector2.ONE))
+	var size: Vector2 = Vector2(units.x * gs.x, units.y * gs.y)
+	var fov: float = float(_args.get("fov", 60))
+	var dist: float = maxf(size.x, size.y * 16.0 / 9.0) * 0.5 / tan(deg_to_rad(fov) * 0.5) * float(_args.get("dist", 1.1))
+	_place_camera(center + normal * dist, center)
+	root.get_node("RunnerCamera").fov = fov
+	print("[world_runner] facing %s: center=%s size=%.2fx%.2f m normal=%s" % [path, str(center), size.x, size.y, str(normal)])
+
+
 func _has_visible_light() -> bool:
 	for l in _scene.find_children("*", "Light3D", true, false):
 		if l.is_visible_in_tree():
@@ -288,6 +318,8 @@ func _parse_v3(s: String) -> Vector3:
 func _screenshot(path: String) -> void:
 	if _args.has("frame"):
 		_frame_node(str(_args["frame"]))
+	elif _args.has("face"):
+		_face_canvas(str(_args["face"]))
 	var cam: Camera3D = root.get_node_or_null("RunnerCamera")
 	if cam != null:
 		# world scripts may activate their own cameras (desktop views); screenshots use ours
