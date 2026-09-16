@@ -102,7 +102,8 @@ scripts/import_world.sh refs/MS-VRCSA-Billiards /tmp/worlds/billiards
 scripts/world_doctor.py /tmp/worlds/billiards                       # what converted, what did not, why
 tools/Godot_v4.7.2-stable_linux.x86_64 --headless --path /tmp/worlds/billiards -s world_runner.gd \
     -- --scene res://MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn --frames 120 --debug-scripts --dump-refs
-scripts/test_world_billiards.sh /tmp/worlds/billiards               # lobby → join → 8-ball → break, with screenshots
+scripts/play_world.sh /tmp/worlds/billiards                         # play it: WASD, mouse look, click, Esc frees the mouse
+scripts/test_world_billiards.sh /tmp/worlds/billiards               # lobby → join → 8-ball → break, with screenshots; then played through window input
 scripts/test_unity_fixture.sh /tmp/worlds/fixture                   # hand-written Unity scene: transforms, refs, raycasts, onClick
 scripts/ci.sh                                                       # all suites, one Godot at a time
 ```
@@ -148,6 +149,28 @@ public events and `Udon.simulate_*` input), `--frame <node> --view "x,y,z" --dis
 renders screenshots (`--display-driver x11 --rendering-method gl_compatibility` on a headless box);
 `--shadows` turns on real-time shadows for every light, the stand-in for the lightmaps Unity
 baked (lightmap data cannot be imported).
+
+Playing: `--play` (what `scripts/play_world.sh` passes) spawns the desktop player
+(`udon_runtime/udon_desktop_player.gd`, a CharacterBody3D with a first-person camera: WASD / arrows,
+Shift run, Space jump, mouse look while the mouse is captured, Esc / Tab frees it) at the scene
+descriptor's spawn and runs until the window closes. It stands in for the VRChat player
+(`Networking.LocalPlayer` position, velocity, tracking data, `InputJump` / `InputMove*` /
+`InputLook*` events) and Unity's input axes and keys read the real devices (`Horizontal` / `Vertical`
+= WASD and arrows, `Mouse X` / `Mouse Y` = the frame's mouse deltas, `KeyCode.Mouse0`, `Jump`,
+`Fire1`, …). The pointer (`udon_runtime/udon_pointer.gd`, `Udon.pointer()`) raycasts from the
+camera through the mouse (the view centre while captured, or a ray a controller supplies): a hit on a
+world canvas is turned into mouse events pushed into that canvas's SubViewport at the pixel the
+canvas mapping gives (hover, press, release, drag), a hit on a behaviour's collider calls `Interact`
+within its proximity, and a hit on a `VRC_Pickup` grabs it (left click use, right click or G drop).
+World canvases are sized from the union of their drawing controls with the RectTransform scales
+applied, and `transform.position` / `localPosition` of UI elements convert between world metres and
+canvas units, so menus that scripts move onto table anchor spots land where Unity puts them.
+`godot_world_template/scenarios/fixture.gd` (with `player.gd`) and `billiards_play.gd` verify this
+through real window input: the fixture clicks colour-coded buttons at known Unity coordinates and
+samples the rendered colours at their projected pivots, the billiards scenario opens the lobby,
+starts 8-ball, picks up the cue, aims and shoots through the pointer and the keyboard only. Imported
+worlds pin Godot Physics (`physics/3d/physics_engine`): Godot 4.7's default, Jolt, lets bodies fall
+through the scaled box colliders unidot produces for scaled Unity colliders.
 
 Unity project settings (layer names, gravity, fixed timestep, layer collision matrix, input axes)
 are converted by `scripts/unity_project_settings.py` when a `ProjectSettings` folder exists; asset
@@ -340,11 +363,14 @@ data/known_externs.txt  Udon extern signatures (from udonweft)
 tools/          gen_catalog.py (stub generator), gen_particles.py, gen_ui.py (catalog generators);
                 scripts/setup_deps.sh puts the Godot editor and release zips here (ignored)
 runtime/addons/udon_runtime/   Godot addon: udon_behaviour.gd, udon.gd, u.gd, udon_world_provider.gd,
-                udon_network_provider.gd, udon_player.gd, adapters (pickup, station, object sync/pool, video)
+                udon_network_provider.gd, udon_player.gd, adapters (pickup, station, object sync/pool, video),
+                udon_canvas_plane.gd (world canvases), udon_pointer.gd, udon_desktop_player.gd
 tests/          Rust integration tests, C# fixtures and tests/coverage/ API fixtures
 godot_project/  Godot 4.7 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd;
                 addons/godot_sandbox/ (customized plugin scripts + MAX_LEVEL 16 Linux build)
-godot_world_template/  project skeleton for scripts/import_world.sh (world_runner.gd, scenarios/)
+godot_world_template/  project skeleton for scripts/import_world.sh: world_runner.gd, scenarios/
+                (fixture.gd, player.gd, billiards.gd, billiards_play.gd)
 refs/           reference checkouts made by scripts/setup_deps.sh (ignored)
-scripts/        setup_deps.sh, verify.sh, coverage_test.sh, net_test.sh, import_world.sh, ci.sh
+scripts/        setup_deps.sh, verify.sh, coverage_test.sh, net_test.sh, import_world.sh, play_world.sh,
+                test_unity_fixture.sh, test_world_billiards.sh, world_doctor.py, ci.sh
 ```
