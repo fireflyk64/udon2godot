@@ -44,6 +44,8 @@ var _held_offset: Transform3D = Transform3D()
 ## get_mouse_position() reports the OS cursor and ignores injected events).
 var mouse_pos: Vector2 = Vector2.ZERO
 var _hover_canvas: Node = null
+## Canvas that received the last press: keyboard input goes to its viewport (text fields).
+var _focus_canvas: Node = null
 var _hover_px: Vector2 = Vector2.ZERO
 var _mask: int = 0
 var _frozen: Variant = null
@@ -134,7 +136,8 @@ func _update_hit() -> void:
 		var t: Node = _reactive_ancestor(body["collider"], body_d)
 		if t != null:
 			new_hit["target"] = t
-			new_hit["kind"] = "pickup" if _is_pickup(t) else "interact"
+			var udon: Node = get_node("/root/Udon")
+			new_hit["kind"] = "pickup" if _is_pickup(t) else ("station" if udon.has_component(t, "station") else "interact")
 	_apply_hit(new_hit)
 
 
@@ -149,6 +152,8 @@ func _reactive_ancestor(collider: Node, dist: float) -> Node:
 			var pk = udon.pickup(n)
 			if pk != null and pk.pickupable and dist <= maxf(pk.proximity, 0.1):
 				return n
+		if udon.has_component(n, "station") and dist <= 2.5:
+			return n
 		if n.has_method("Interact") and n.has_meta("udon_class") and n.get("DisableInteractive") != true and dist <= float(n.get("proximity") if n.get("proximity") != null else 2.0):
 			if not n.has_method("udon_has_interact") or n.udon_has_interact():
 				return n
@@ -181,6 +186,8 @@ func _apply_hit(new_hit: Dictionary) -> void:
 			if new_hit["kind"] == "pickup":
 				var pk = get_node("/root/Udon").pickup(target)
 				hover_text = str(pk.interaction_text) if pk.interaction_text != "" else "Grab"
+			elif new_hit["kind"] == "station":
+				hover_text = "Sit"
 			else:
 				hover_text = str(target.get("InteractionText"))
 		hover_changed.emit(hover_target, hover_text)
@@ -223,9 +230,11 @@ func _push_button(cv: Node, px: Vector2, button: int, pressed: bool, double_clic
 func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 	_mask |= _mask_of(button)
 	if hit.get("kind") == "canvas":
+		_focus_canvas = hit["canvas"]
 		_push_button(hit["canvas"], hit["px"], button, true, double_click)
 		pointer_pressed.emit(hit["canvas"], hit["point"], button)
 		return
+	_focus_canvas = null
 	pointer_pressed.emit(null, hit.get("point", ray_origin), button)
 	var udon: Node = get_node("/root/Udon")
 	if button == MOUSE_BUTTON_LEFT:
@@ -234,6 +243,13 @@ func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 			udon.input_event("InputUse", true)
 		elif hit.get("kind") == "pickup":
 			_grab(hit["target"])
+		elif hit.get("kind") == "station":
+			var st = udon.station(hit["target"])
+			var pl = udon.local_player()
+			if st != null and pl != null and st.occupant == null:
+				st.use_station(pl)
+				if pl.node != null and pl.node.has_method("sit_in"):
+					pl.node.sit_in(st)
 		elif hit.get("kind") == "interact":
 			udon.input_event("InputUse", true)
 			hit["target"].Interact()
@@ -277,9 +293,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			press(event.button_index, event.double_click)
 		else:
 			release(event.button_index)
-	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_G and held != null:
+	elif event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_G and held != null and _focus_canvas == null:
 			drop()
+		elif _focus_canvas != null and is_instance_valid(_focus_canvas):
+			var vp: SubViewport = _viewport_of(_focus_canvas)
+			if vp != null:
+				vp.push_input(event, true)
 
 
 # --- pickups ------------------------------------------------------------------------------------
@@ -292,7 +312,17 @@ func _grab(node: Node) -> void:
 	held = pk
 	_held_node = node
 	var carry: Transform3D = _carry_transform()
-	_held_offset = carry.affine_inverse() * node.global_transform
+	# VRC_Pickup orientation: Any keeps the pose it was grabbed with; Grip / Gun snap the ExactGrip /
+	# ExactGun transform onto the hand (here: the carry point on the ray)
+	var grip: Node3D = null
+	if pk.orientation == 1 and pk.exact_grip is Node3D:
+		grip = pk.exact_grip
+	elif pk.orientation == 2 and pk.exact_gun is Node3D:
+		grip = pk.exact_gun
+	if grip != null:
+		_held_offset = grip.global_transform.affine_inverse() * node.global_transform
+	else:
+		_held_offset = carry.affine_inverse() * node.global_transform
 	if node is RigidBody3D:
 		_frozen = node.freeze
 		node.freeze = true
