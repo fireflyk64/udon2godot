@@ -257,6 +257,14 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       `mouse_move`, `click`, `key`, `camera`, `--face` for canvases), `scripts/test_unity_fixture.sh`
       runs the display pass when DISPLAY is set. Open: slider/toggle/input field coverage, a
       screen-space canvas, hit-point overlay on screenshots.
+- [~] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
+      `scripts/play_world.sh`), `scenarios/player.gd` on the fixture (walk, strafe, jump, tracking
+      data, Esc frees the mouse, clicks through the player camera). Open: stations, VR events.
+- [ ] Godot 4.7 and the latest unidot_importer: V-Sekai pushed fixes for Godot 4.7 to
+      unidot_importer. Merge `origin/main` into the fork branch `udon-integration`
+      (fireflyk64/unidot_importer), download the 4.7 editor into `tools/`, point `scripts/*.sh`,
+      `scripts/setup_deps.sh` and the project features at 4.7, and run `scripts/ci.sh`. Commit
+      before, revert if the fixture, billiards or coverage runs break; keep 4.6.3 in that case.
 - [ ] Billiards played interactively: the scenario drives the game only through simulated input
       (look at the Start button and click, Join, 8-ball, Play, pick up the cue, aim with the mouse,
       E to lock, click to shoot) and the same checks as today pass; `scripts/play_world.sh <world>`

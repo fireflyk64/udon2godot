@@ -44,6 +44,25 @@ func _world_ready(_udon: Node) -> void:
 func _process(_delta: float) -> void:
 	_keys_prev = _keys_down.duplicate()
 	_keys_down.clear()
+	_mouse_delta_frame = _mouse_delta
+	_mouse_delta = Vector2.ZERO
+	_scroll_frame = _scroll
+	_scroll = 0.0
+
+## Mouse motion and wheel of the current frame (Unity's Mouse X / Mouse Y / Mouse ScrollWheel).
+var _mouse_delta: Vector2 = Vector2.ZERO
+var _mouse_delta_frame: Vector2 = Vector2.ZERO
+var _scroll: float = 0.0
+var _scroll_frame: float = 0.0
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_mouse_delta += event.relative
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_scroll += event.factor if event.factor > 0.0 else 1.0
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_scroll -= event.factor if event.factor > 0.0 else 1.0
 
 ## Behaviours that enter the tree after the world started still get OnPlayerJoined for every player
 ## already present (VRChat raises it for everyone in the instance when the local player joins).
@@ -316,17 +335,34 @@ func get_axis(axis: String) -> float:
 		return float(_sim_axes[axis])
 	match axis:
 		"Horizontal":
-			return Input.get_axis("ui_left", "ui_right")
+			return clampf(Input.get_axis("ui_left", "ui_right") + _key_axis(KEY_A, KEY_D), -1.0, 1.0)
 		"Vertical":
-			return Input.get_axis("ui_down", "ui_up")
+			return clampf(Input.get_axis("ui_down", "ui_up") + _key_axis(KEY_S, KEY_W), -1.0, 1.0)
 		"Mouse X":
-			return 0.0
+			return _mouse_delta_frame.x * 0.1  # Unity's default axis sensitivity
 		"Mouse Y":
-			return 0.0
+			return -_mouse_delta_frame.y * 0.1  # Unity: up is positive
+		"Mouse ScrollWheel":
+			return _scroll_frame * 0.1
 		_:
 			if InputMap.has_action(axis):
 				return Input.get_action_strength(axis)
 			return 0.0
+
+func _key_axis(neg: Key, pos: Key) -> float:
+	return (1.0 if Input.is_physical_key_pressed(pos) else 0.0) - (1.0 if Input.is_physical_key_pressed(neg) else 0.0)
+
+## Unity's default InputManager buttons when the project defines no action of that name.
+const _DEFAULT_BUTTONS: Dictionary = {"Jump": [KEY_SPACE], "Fire1": [KEY_CTRL, -MOUSE_BUTTON_LEFT], "Fire2": [KEY_ALT, -MOUSE_BUTTON_RIGHT], "Fire3": [KEY_SHIFT, -MOUSE_BUTTON_MIDDLE], "Submit": [KEY_ENTER, KEY_KP_ENTER], "Cancel": [KEY_ESCAPE]}
+
+func _default_button_held(button: String) -> bool:
+	for k in _DEFAULT_BUTTONS.get(button, []):
+		if k < 0:
+			if Input.is_mouse_button_pressed(-k as MouseButton):
+				return true
+		elif Input.is_key_pressed(k as Key):
+			return true
+	return false
 
 ## mode: 0 = held, 1 = pressed this frame, 2 = released this frame
 func get_button(button: String, mode: int) -> bool:
@@ -341,7 +377,19 @@ func get_button(button: String, mode: int) -> bool:
 			_:
 				return bool(st["held"])
 	if not InputMap.has_action(button):
-		return false
+		if not _DEFAULT_BUTTONS.has(button):
+			return false
+		var now: bool = _default_button_held(button)
+		var key: String = "btn:" + button
+		var prev: bool = _keys_prev.get(key, false)
+		_keys_down[key] = now
+		match mode:
+			1:
+				return now and not prev
+			2:
+				return prev and not now
+			_:
+				return now
 	match mode:
 		1:
 			return Input.is_action_just_pressed(button)
@@ -375,7 +423,7 @@ func mouse_position() -> Vector2:
 	return Vector2(p.x, vp.get_visible_rect().size.y - p.y)
 
 func mouse_scroll_delta() -> Vector2:
-	return Vector2.ZERO
+	return Vector2(0.0, _scroll_frame)
 
 func any_key(_just_pressed: bool) -> bool:
 	return Input.is_anything_pressed()

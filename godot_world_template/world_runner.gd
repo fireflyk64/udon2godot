@@ -10,6 +10,8 @@
 ##             --press "NodePath"  (ui_press on a converted control after the scene settled)
 ##             --call "NodePath:Method"  (call an event on a converted behaviour)
 ##             --spawn (put a simple player body at the scene descriptor spawn / origin)
+##             --play (desktop player: WASD, mouse look, click to use; runs until the window closes
+##                     unless --frames is given; scripts/play_world.sh wraps this)
 ##             --scenario res://scenarios/x.gd  (drive the world; see godot_world_template/scenarios)
 extends SceneTree
 
@@ -19,6 +21,7 @@ var _frames: int = 120
 var _shots: int = 0
 var _scene: Node = null
 var _errors: int = 0
+var _player: Node = null
 
 
 func _init() -> void:
@@ -64,8 +67,12 @@ func _init() -> void:
 		_face_canvas(str(_args["face"]))
 	if _args.has("spawn"):
 		_spawn_player()
+	if _args.has("play"):
+		_spawn_desktop_player()
 	if DisplayServer.get_name() != "headless" or _args.has("pointer"):
 		root.get_node("Udon").pointer()
+	if _args.has("play") and not _has_visible_light():
+		_add_light()
 	if _args.has("light") or (_args.has("shot") and not _has_visible_light()):
 		_add_light()
 	if _args.has("shadows"):
@@ -73,7 +80,8 @@ func _init() -> void:
 	var scenario_ok: bool = true
 	if _args.has("scenario"):
 		scenario_ok = await _run_scenario(str(_args["scenario"]))
-	for f in range(_frames):
+	var limit: int = 0 if _args.has("play") and not _args.has("frames") else _frames
+	while limit == 0 or _frame < limit:
 		await process_frame
 		_frame += 1
 		if _frame == 30:
@@ -139,9 +147,12 @@ func shot(tag: String) -> void:
 func u() -> Node:
 	return root.get_node("U")
 
-## The runner's camera (created by --camera/--frame/--face or on demand).
+## The current camera: the player's or the game's when one is active, else the runner's
+## (created by --camera/--frame/--face or on demand).
 func camera() -> Camera3D:
-	var cam: Camera3D = root.get_node_or_null("RunnerCamera")
+	var cam: Camera3D = root.get_viewport().get_camera_3d()
+	if cam == null:
+		cam = root.get_node_or_null("RunnerCamera")
 	if cam == null:
 		_place_camera(Vector3(0, 1.6, -2), Vector3(0, 1.5, 3))
 		cam = root.get_node("RunnerCamera")
@@ -246,7 +257,32 @@ func _spawn_player() -> void:
 	print("[world_runner] player body at " + str(body.global_position))
 
 
-## Put the camera where the visual bounds of a node (or the whole scene with ".") fill the view.
+## The desktop player spawned by --play (or null).
+func player() -> Node:
+	return _player
+
+## Spawn point of the world: the scene descriptor's first spawn, else the origin.
+func _spawn_transform() -> Transform3D:
+	for n in _scene.find_children("*", "Node3D", true, false):
+		if n.has_meta("udon_scene_descriptor"):
+			var cfg: Dictionary = n.get_meta("udon_scene_descriptor")
+			var sp: Array = cfg.get("spawns", [])
+			if not sp.is_empty():
+				var spawn: Node3D = n.get_node_or_null(sp[0])
+				if spawn != null:
+					var t: Transform3D = spawn.global_transform
+					return Transform3D(Basis(Vector3.UP, t.basis.get_euler().y), t.origin)
+			break
+	return Transform3D(Basis(), Vector3(0, 0.1, 0))
+
+func _spawn_desktop_player() -> void:
+	var body: CharacterBody3D = load("res://addons/udon_runtime/udon_desktop_player.gd").new()
+	body.name = "DesktopPlayer"
+	body.capture_mouse = DisplayServer.get_name() != "headless" and not _args.has("scenario")
+	root.add_child(body)
+	body.global_transform = _spawn_transform()
+	_player = body
+	print("[world_runner] desktop player at " + str(body.global_position))
 func _frame_node(path: String) -> void:
 	var n: Node = _scene if path == "." else (_scene.get_node_or_null(path) if _scene.has_node(path) else _scene.find_child(path, true, false))
 	if n == null:

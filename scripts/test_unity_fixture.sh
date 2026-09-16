@@ -30,5 +30,11 @@ if [ -n "${DISPLAY:-}" ]; then
   grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/scenario_display.log"
   echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario_display.log")  (log: $OUT/scenario_display.log)"
   [ $DCODE -ne 0 ] && CODE=$DCODE
+  echo "== desktop player (walk, jump, tracking data, clicks through the player camera)"
+  timeout 300 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --play --scenario res://scenarios/player.gd --shot "$OUT/shots/player.png" > "$OUT/scenario_player.log" 2>&1
+  PCODE=$?
+  grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/scenario_player.log"
+  echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario_player.log")  (log: $OUT/scenario_player.log)"
+  [ $PCODE -ne 0 ] && CODE=$PCODE
 fi
 exit $CODE

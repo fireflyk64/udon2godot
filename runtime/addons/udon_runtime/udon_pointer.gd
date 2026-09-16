@@ -25,8 +25,8 @@ signal hover_changed(target: Node, text: String)
 ## "custom" (`set_ray`).
 var source: String = "mouse"
 var enabled: bool = true
-## Bodies the ray ignores (the player's own body).
-var exclude: Array[RID] = []
+## Bodies the ray ignores (the player's own body), as RIDs.
+var exclude: Array = []
 
 var ray_origin: Vector3 = Vector3.ZERO
 var ray_dir: Vector3 = Vector3.FORWARD
@@ -100,7 +100,7 @@ func _update_hit() -> void:
 		return
 	var to: Vector3 = ray_origin + ray_dir * max_distance
 	var q := PhysicsRayQueryParameters3D.create(ray_origin, to, collision_mask)
-	q.exclude = exclude
+	q.exclude = Array(exclude, TYPE_RID, "", null)
 	q.collide_with_areas = false
 	q.collide_with_bodies = true
 	var body: Dictionary = space.intersect_ray(q)
