@@ -184,9 +184,73 @@ reflection, platform). Re-run `tools/gen_catalog.py` after each item so the gene
       Component boilerplate (it is a dictionary here), StringBuilder `Chars` indexer externs, two
       `List<T>`-taking Mesh methods (generics are not Udon), static-only twins.
 
+## Interactive play: pointer, player, test apparatus
+
+Playing an imported world with mouse and keyboard, not only through scenarios. Status of the
+MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the imported world, and
+`--shot` from a wide view): the table, balls and physics are right; the world canvases are wrong.
+
+- [ ] Canvas planes are far too big, with the content displaced and stretched. Measured: the
+      scorecard canvas (Unity rect 1.4 × 0.2 units at scale 1 → 1.4 m × 0.2 m) gets a 274 m × 55 m
+      plane; the practice menu (`intl.menu`, Unity rect 0 × 0 at scale 0.005 whose children are
+      300 × 100 px menus) gets a 100 m × 100 m plane with the viewport clamped at 8192 px, so the
+      texture is stretched about 10× and every point on it maps to the wrong control. Causes, all in
+      the fit-to-content step (`_finalize_world_canvas` in `udon_integration.gd` at import, `_fit` in
+      `udon_canvas_plane.gd` at runtime): the union is taken over nested canvases and scaled Controls
+      whose rects are in pixels while `Control.scale` (0.005) only scales their drawing, and at runtime
+      `get_global_rect()` ignores `scale` altogether; when the viewport hits the 8192 px clamp the
+      quad keeps the unclamped size instead of lowering the pixel density. Fix: compute child bounds in
+      canvas units from the stored `udon_rect` data (anchors, offsets, pivot, scale applied around the
+      pivot) recursively, skip inactive nodes, let nested canvases contribute only their scaled rect,
+      and when the viewport would exceed the clamp, reduce `k` (pixels per unit) so quad, viewport and
+      root scale stay consistent. Acceptance: every world canvas's plane equals the Unity rect × scale
+      (within one child overflow that is really there), the plane centre stays where the Unity canvas
+      is, and a point on the plane maps back to the control under it.
+- [ ] Pointer → canvas input by raycast + `SubViewport.push_input` (mouse now, VR ray later). One
+      `UdonPointer` node (runtime): each frame take the ray (camera through the mouse position, or a
+      controller's -Z), `intersect_ray` against the `udon_ui_shape` areas (collide with areas, hit from
+      the readable side only), convert the hit point to the plane's local XY, then to viewport pixels
+      with the canvas config (`k`, `offset`, `pivot`, `plane_center`; X is mirrored because the quad
+      faces -Z), and push `InputEventMouseMotion` / `InputEventMouseButton` (button mask, double click,
+      hover enter/exit when the canvas under the pointer changes) into that canvas's viewport, the way
+      `udon_canvas_plane.gd` already forwards input into nested canvases. Same pointer drives
+      `Interact` on behaviours (proximity, `DisableInteractive`) and pickups (see below). Design after
+      V-Sekai/interaction_system + canvas_plane (`interaction_system` branch): their
+      `function_pointer_receiver` signals (`pointer_pressed/moved/release` with world points) are the
+      seam; the raycast pointer emits the same signals so the Lasso-based manager (Voronoi snapping,
+      good for VR, needs the engine module) can replace the picking step later, both stay possible.
+      Keep `U.ui_click_world(canvas, point)` as the scripted path and make it share the math.
+- [ ] Desktop player controller (replaces the static `--spawn` body): `desktop_player.gd` in the
+      runtime, spawned by `world_runner.gd --play` (and usable from any game). CharacterBody3D +
+      capsule at the scene descriptor spawn, WASD / arrows, Shift run, Space jump, mouse look with the
+      mouse captured, Esc/Tab frees the mouse for canvases. Provides VRCPlayerApi data: position,
+      rotation, velocity, grounded, tracking data (Head = camera, hands = camera offsets), eye height.
+      Input plumbing in `udon_world_provider.gd`: `Horizontal`/`Vertical` from WASD actions
+      (registered with `InputMap.add_action` at startup when the project has none), `Mouse X`/`Mouse Y`
+      from the relative mouse motion of the frame, `Jump`/`Fire1` buttons, `Udon.input_event`
+      (InputJump/InputUse/InputGrab/InputDrop/InputMove*/InputLook*) fired from the same actions.
+- [ ] Pickups and Interact from the pointer: hover shows `InteractionText`, left click / E on a
+      behaviour with `Interact` calls it (within `proximity`); on a `udon_pickup` node the click picks
+      it up (`OnPickup`, held at a hand offset in front of the camera, `exact_gun`/`exact_grip`
+      orientation), left mouse while held = `OnPickupUseDown/Up`, drop with G / right click (`OnDrop`).
+- [ ] Test apparatus for interaction: (1) a test scene in `tests/unity_fixture` with a world canvas
+      (buttons, toggle, slider at known Unity coordinates, one nested canvas, one scaled one) and a
+      screen-space canvas; (2) scenario API in `world_runner.gd` that drives real input through the
+      window: `r.mouse_move(px)`, `r.click(px)` (`Input.parse_input_event`), `r.key(KEY_E)`,
+      `r.look_at_node(n)`, `r.click_node(n)` (project the control's world centre through the camera to
+      window pixels, then click there); (3) checks: the pixel the pointer computes for a control equals
+      the control's own rect (math roundtrip both ways), the button's `pressed` fires, the slider
+      value changes, nested and scaled canvases respond; (4) screenshots after each step with the hit
+      point drawn, kept in `out/` for eyeballing; (5) the fixture run is part of `scripts/ci.sh` under
+      the X display like the billiards shots.
+- [ ] Billiards played interactively: the scenario drives the game only through simulated input
+      (look at the Start button and click, Join, 8-ball, Play, pick up the cue, aim with the mouse,
+      E to lock, click to shoot) and the same checks as today pass; `scripts/play_world.sh <world>`
+      launches it for a person. Acceptance for "works interactively".
+
 ## Next
 
-- Reference player controller (desktop + VR input events, pickups, stations, interact proximity).
+- VR input: controller rays through the same pointer, stations, VR-only events.
 - Realistic rendering: lightmaps cannot be imported; `--shadows` substitutes real-time shadows. Ambient
   occlusion / GI fallback needs the Forward+ renderer (not available on the headless box).
 
