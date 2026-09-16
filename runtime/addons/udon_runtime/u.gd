@@ -640,6 +640,14 @@ func set_local_scale(n_: Node, s: Vector3) -> void:
 func lossy_scale(n_: Node) -> Vector3:
 	var n: Node3D = n_ as Node3D
 	if n == null:
+		if n_ is Control:
+			# canvas scale times the control's accumulated 2D scale (the root's pixel density removed)
+			var cv: Node = _ui_world_canvas(n_)
+			var root: Control = canvas_root(cv) if cv != null else null
+			var s2: Vector2 = (root.get_global_transform().affine_inverse() * n_.get_global_transform()).get_scale() if root != null else n_.get_global_transform().get_scale()
+			var gs: Vector3 = cv.global_transform.basis.get_scale() if cv != null else Vector3.ONE
+			# a RectTransform's z scale has no Control counterpart; UI scales are uniform in practice
+			return Vector3(gs.x * s2.x, gs.y * s2.y, gs.z * s2.x)
 		return Vector3.ZERO
 	return n.global_transform.basis.get_scale()
 

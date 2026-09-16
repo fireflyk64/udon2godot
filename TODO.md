@@ -190,7 +190,7 @@ Playing an imported world with mouse and keyboard, not only through scenarios. S
 MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the imported world, and
 `--shot` from a wide view): the table, balls and physics are right; the world canvases are wrong.
 
-- [ ] Canvas planes are far too big, with the content displaced and stretched. Measured: the
+- [x] Canvas planes are far too big, with the content displaced and stretched. Measured: the
       scorecard canvas (Unity rect 1.4 × 0.2 units at scale 1 → 1.4 m × 0.2 m) gets a 274 m × 55 m
       plane; the practice menu (`intl.menu`, Unity rect 0 × 0 at scale 0.005 whose children are
       300 × 100 px menus) gets a 100 m × 100 m plane with the viewport clamped at 8192 px, so the
@@ -205,8 +205,15 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       and when the viewport would exceed the clamp, reduce `k` (pixels per unit) so quad, viewport and
       root scale stay consistent. Acceptance: every world canvas's plane equals the Unity rect × scale
       (within one child overflow that is really there), the plane centre stays where the Unity canvas
-      is, and a point on the plane maps back to the control under it.
-- [ ] Pointer → canvas input by raycast + `SubViewport.push_input` (mouse now, VR ray later). One
+      is, and a point on the plane maps back to the control under it. Done: both fits take the union
+      of drawing controls through `Control.get_transform()` (import: anchors/offsets, runtime: the
+      laid-out tree); the second cause was `U.set_position` on Controls writing world metres into
+      viewport pixels when scripts move menus onto table anchor spots (`setTransform(.MENU,
+      MenuAnchor)`), now converted through the canvas node (`transform.position/localPosition/
+      rotation/lossyScale` on RectTransforms). Verified by `tests/unity_fixture` UiCanvas (63 checks
+      on the display: positions, viewport mapping, rendered colours at projected pivots, window
+      clicks) and the billiards canvases (2.8 × 1.6 m menu, 1.4 × 0.95 m scoreboard).
+- [~] Pointer → canvas input by raycast + `SubViewport.push_input` (mouse now, VR ray later). One
       `UdonPointer` node (runtime): each frame take the ray (camera through the mouse position, or a
       controller's -Z), `intersect_ray` against the `udon_ui_shape` areas (collide with areas, hit from
       the readable side only), convert the hit point to the plane's local XY, then to viewport pixels
@@ -220,6 +227,9 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       seam; the raycast pointer emits the same signals so the Lasso-based manager (Voronoi snapping,
       good for VR, needs the engine module) can replace the picking step later, both stay possible.
       Keep `U.ui_click_world(canvas, point)` as the scripted path and make it share the math.
+      Done for the mouse: `udon_pointer.gd` (`Udon.pointer()`), hover enter/exit, Interact and
+      pickups on solid hits, `set_ray`/`press`/`release` for other sources. Open: a VR/controller
+      source, Lasso snapping as an alternative picker, hover prompt in a HUD.
 - [ ] Desktop player controller (replaces the static `--spawn` body): `desktop_player.gd` in the
       runtime, spawned by `world_runner.gd --play` (and usable from any game). CharacterBody3D +
       capsule at the scene descriptor spawn, WASD / arrows, Shift run, Space jump, mouse look with the
@@ -233,7 +243,7 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       behaviour with `Interact` calls it (within `proximity`); on a `udon_pickup` node the click picks
       it up (`OnPickup`, held at a hand offset in front of the camera, `exact_gun`/`exact_grip`
       orientation), left mouse while held = `OnPickupUseDown/Up`, drop with G / right click (`OnDrop`).
-- [ ] Test apparatus for interaction: (1) a test scene in `tests/unity_fixture` with a world canvas
+- [~] Test apparatus for interaction: (1) a test scene in `tests/unity_fixture` with a world canvas
       (buttons, toggle, slider at known Unity coordinates, one nested canvas, one scaled one) and a
       screen-space canvas; (2) scenario API in `world_runner.gd` that drives real input through the
       window: `r.mouse_move(px)`, `r.click(px)` (`Input.parse_input_event`), `r.key(KEY_E)`,
@@ -242,7 +252,11 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       the control's own rect (math roundtrip both ways), the button's `pressed` fires, the slider
       value changes, nested and scaled canvases respond; (4) screenshots after each step with the hit
       point drawn, kept in `out/` for eyeballing; (5) the fixture run is part of `scripts/ci.sh` under
-      the X display like the billiards shots.
+      the X display like the billiards shots. Done: UiCanvas in the fixture (corner/centre buttons,
+      2× container, nested canvas), `world_runner.gd` scenario API (`project`, `pixel`, `capture`,
+      `mouse_move`, `click`, `key`, `camera`, `--face` for canvases), `scripts/test_unity_fixture.sh`
+      runs the display pass when DISPLAY is set. Open: slider/toggle/input field coverage, a
+      screen-space canvas, hit-point overlay on screenshots.
 - [ ] Billiards played interactively: the scenario drives the game only through simulated input
       (look at the Start button and click, Join, 8-ball, Play, pick up the cue, aim with the mouse,
       E to lock, click to shoot) and the same checks as today pass; `scripts/play_world.sh <world>`
@@ -267,3 +281,12 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
     continues.
   - Performance: per-frame host round-trip cost for Update-heavy scripts, binary translation settings.
   - Editor import plugin wrapping the headless pipeline.
+
+  - Let's keep trying some more Udon prefabs. There are hundreds out there. Some examples:
+    1. https://github.com/Varneon/UdonEssentials (Console, Event Dispatcher, Player list)
+    2. https://github.com/emymin/EmyChess
+    3. https://github.com/Toly65/UdonCombatSystem (might be hard to test without VR, but it does support some desktop features)
+    4. https://github.com/Foorack/UdonZip
+    5. https://github.com/vr-voyage/vrchat-3d-model-loader-tablet and https://github.com/vr-voyage/vrchat-glb-loader - Test case for web download. There are some model files local here which can be converted to .glb and served over http://localhost if needed. Either way, you will need to download the examples and convert them using the tools provided in vrchat-glb-loader to use a compatible texture format, though Godot also supports Basis Universal.
+    6. https://github.com/Varneon/VUdon-Udonity inspector (will be emulated in Godot). might be a good stress test of GameObject/Component <-> Node mappings
+    7. https://github.com/Guribo/UdonUtils/tree/master/Packages/tlp.udonutils/Runtime/Scenes/Examples

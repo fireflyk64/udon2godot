@@ -64,6 +64,8 @@ func _init() -> void:
 		_face_canvas(str(_args["face"]))
 	if _args.has("spawn"):
 		_spawn_player()
+	if DisplayServer.get_name() != "headless" or _args.has("pointer"):
+		root.get_node("Udon").pointer()
 	if _args.has("light") or (_args.has("shot") and not _has_visible_light()):
 		_add_light()
 	if _args.has("shadows"):
@@ -136,6 +138,63 @@ func shot(tag: String) -> void:
 
 func u() -> Node:
 	return root.get_node("U")
+
+## The runner's camera (created by --camera/--frame/--face or on demand).
+func camera() -> Camera3D:
+	var cam: Camera3D = root.get_node_or_null("RunnerCamera")
+	if cam == null:
+		_place_camera(Vector3(0, 1.6, -2), Vector3(0, 1.5, 3))
+		cam = root.get_node("RunnerCamera")
+	return cam
+
+## Window pixel of a world point (Godot space) through the runner's camera.
+func project(p: Vector3) -> Vector2:
+	return camera().unproject_position(p)
+
+## Grab the rendered frame (null when headless).
+func capture() -> Image:
+	await process_frame
+	await process_frame
+	return root.get_viewport().get_texture().get_image()
+
+## Colour of the rendered frame at a window pixel (transparent black when headless).
+func pixel(px: Vector2) -> Color:
+	var img: Image = await capture()
+	if img == null or px.x < 0 or px.y < 0 or px.x >= img.get_width() or px.y >= img.get_height():
+		return Color(0, 0, 0, 0)
+	return img.get_pixelv(Vector2i(int(px.x), int(px.y)))
+
+## Real input through the window: a mouse move to a window pixel, a click there, a key tap.
+func mouse_move(px: Vector2) -> void:
+	var e := InputEventMouseMotion.new()
+	e.position = px
+	e.global_position = px
+	e.relative = px - root.get_viewport().get_mouse_position()
+	Input.parse_input_event(e)
+	await process_frame
+
+func click(px: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
+	await mouse_move(px)
+	for pressed in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.position = px
+		e.global_position = px
+		e.button_index = button
+		e.pressed = pressed
+		e.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed and button == MOUSE_BUTTON_LEFT else 0
+		Input.parse_input_event(e)
+		await process_frame
+	await process_frame
+
+func key(keycode: Key, hold_frames: int = 1) -> void:
+	for pressed in [true, false]:
+		var e := InputEventKey.new()
+		e.keycode = keycode
+		e.physical_keycode = keycode
+		e.pressed = pressed
+		Input.parse_input_event(e)
+		for i in range(hold_frames):
+			await process_frame
 
 func udon() -> Node:
 	return root.get_node("Udon")

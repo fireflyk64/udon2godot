@@ -20,4 +20,15 @@ timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCE
 CODE=$?
 grep -E "^\[scenario\]|^\[fixture\]|FAIL |SCENARIO|unbound" "$OUT/scenario.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario.log")  (log: $OUT/scenario.log)"
+if [ -n "${DISPLAY:-}" ]; then
+  # on a display the scenario also samples the rendered UI canvas and clicks it through the window
+  # (pointer raycast → SubViewport input); screenshots land in $OUT/shots
+  echo "== UI rendering + window input (display $DISPLAY)"
+  mkdir -p "$OUT/shots"
+  timeout 300 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --scenario res://scenarios/fixture.gd --shot "$OUT/shots/fixture.png" > "$OUT/scenario_display.log" 2>&1
+  DCODE=$?
+  grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/scenario_display.log"
+  echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario_display.log")  (log: $OUT/scenario_display.log)"
+  [ $DCODE -ne 0 ] && CODE=$DCODE
+fi
 exit $CODE

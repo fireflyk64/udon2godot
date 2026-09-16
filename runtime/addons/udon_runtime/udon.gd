@@ -101,6 +101,16 @@ func input_event(event_name: String, value, hand_type: int = 0) -> void:
 		if b.has_method(event_name):
 			b.callv(event_name, [value, args])
 
+## The pointer (mouse / controller ray → world canvases, Interact, pickups), created on first use.
+var _pointer: Node = null
+
+func pointer() -> Node:
+	if _pointer == null or not is_instance_valid(_pointer):
+		_pointer = load("res://addons/udon_runtime/udon_pointer.gd").new()
+		_pointer.name = "UdonPointer"
+		add_child(_pointer)
+	return _pointer
+
 # --- simulated input for tests and bots (forwarded to the provider) ---------------------------
 func simulate_key(keycode: int, pressed: bool) -> void:
 	provider.simulate_key(keycode, pressed)

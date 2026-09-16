@@ -18,6 +18,20 @@ public class Fixture : UdonSharpBehaviour
     public int checks;
     public int failures;
     public string log = "";
+    // UI canvas fixture (UiCanvas: 1000 x 600 px at scale 0.001 = 1 x 0.6 m, centre (0, 1.5, 3))
+    public Transform uiTL;
+    public Transform uiTR;
+    public Transform uiBL;
+    public Transform uiBR;
+    public Transform uiScaledBtn;
+    public Transform uiCenter;
+    public int pressedTL;
+    public int pressedTR;
+    public int pressedBL;
+    public int pressedBR;
+    public int pressedScaled;
+    public int pressedCenter;
+    public string lastPressed = "";
 
     private bool Near(float a, float b) { return Mathf.Abs(a - b) < 0.001f; }
     private bool NearV(Vector3 a, Vector3 b) { return (a - b).magnitude < 0.001f; }
@@ -93,6 +107,20 @@ public class Fixture : UdonSharpBehaviour
             CanvasGroup cg = cv.GetComponent<CanvasGroup>();
             Check(cg != null && Near(cg.alpha, 0.8f) && cg.interactable, "imported CanvasGroup alpha " + (cg == null ? "null" : cg.alpha.ToString()));
         }
+        if (uiTL != null && uiBR != null && uiScaledBtn != null && uiCenter != null)
+        {
+            // RectTransform.position is the pivot in world space; localPosition is relative to the parent's pivot
+            Check(NearV(uiTL.position, new Vector3(-0.44f, 1.77f, 3f)), "uiTL world position " + uiTL.position);
+            Check(NearV(uiTL.localPosition, new Vector3(-440f, 270f, 0f)), "uiTL local position " + uiTL.localPosition);
+            Check(NearV(uiBR.position, new Vector3(0.44f, 1.23f, 3f)), "uiBR world position " + uiBR.position);
+            Check(NearV(uiCenter.position, new Vector3(0f, 1.5f, 3f)), "uiCenter world position " + uiCenter.position);
+            Check(NearV(uiScaledBtn.position, new Vector3(0f, 1.7f, 3f)), "uiScaledBtn world position (inside a 2x container) " + uiScaledBtn.position);
+            Check(NearV(uiScaledBtn.lossyScale, new Vector3(0.002f, 0.002f, 0.002f)), "uiScaledBtn lossyScale " + uiScaledBtn.lossyScale);
+            uiCenter.position = new Vector3(0.1f, 1.4f, 3f);
+            Check(NearV(uiCenter.position, new Vector3(0.1f, 1.4f, 3f)) && NearV(uiCenter.localPosition, new Vector3(100f, -100f, 0f)), "uiCenter moved by world position: " + uiCenter.position + " local " + uiCenter.localPosition);
+            uiCenter.localPosition = Vector3.zero;
+            Check(NearV(uiCenter.position, new Vector3(0f, 1.5f, 3f)), "uiCenter moved back by local position: " + uiCenter.position);
+        }
         ParticleSystem fx = GetComponentInChildren<ParticleSystem>();
         Check(fx != null, "particle system imported under Marker");
         if (fx != null)
@@ -115,4 +143,11 @@ public class Fixture : UdonSharpBehaviour
     {
         pressed++;
     }
+
+    public void OnTL() { pressedTL++; lastPressed = "TL"; }
+    public void OnTR() { pressedTR++; lastPressed = "TR"; }
+    public void OnBL() { pressedBL++; lastPressed = "BL"; }
+    public void OnBR() { pressedBR++; lastPressed = "BR"; }
+    public void OnScaled() { pressedScaled++; lastPressed = "Scaled"; }
+    public void OnCenter() { pressedCenter++; lastPressed = "Center"; }
 }

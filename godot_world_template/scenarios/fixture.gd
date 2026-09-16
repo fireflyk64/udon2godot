@@ -35,3 +35,70 @@ func run(r) -> void:
 		r.check(pm != null and pm.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_RING and is_equal_approx(pm.spread, 20.0) and is_equal_approx(pm.emission_ring_radius, 0.25), "cone shape → ring emission")
 		r.check(pm != null and pm.color_ramp != null and pm.turbulence_enabled, "colour ramp and turbulence")
 		r.check(gp.material_override is BaseMaterial3D and gp.material_override.billboard_mode == BaseMaterial3D.BILLBOARD_PARTICLES, "billboard particle material")
+	await _ui_checks(r, fx)
+
+
+## UiCanvas: 1000 × 600 px at scale 0.001 (1 × 0.6 m) centred at Unity (0, 1.5, 3); buttons TL/TR/
+## BL/BR (120 × 60, centres 60 px in from the corners), Center (200 × 80), ScaledBtn (80 × 30 inside a
+## 2× container at (0, 200)), a nested canvas with a text. Checks the plane fit, the world ↔ canvas
+## mapping and clicks through it; with a display, samples the rendered colours at the projected
+## button centres (texture orientation) and clicks through the window.
+func _ui_checks(r, fx: Node) -> void:
+	var cv: Node = r.find("UiCanvas")
+	r.check(cv != null and cv.has_meta("udon_canvas"), "UiCanvas imported as a world canvas")
+	if cv == null or not cv.has_meta("udon_canvas"):
+		return
+	var cfg: Dictionary = cv.get_meta("udon_canvas")
+	var ps: Vector2 = cfg.get("plane_size", Vector2.ZERO)
+	r.check(ps.is_equal_approx(Vector2(1000, 600)), "plane fits the canvas rect exactly (no container overflow): " + str(ps))
+	var vp: SubViewport = cv.get_node_or_null(cfg.get("viewport", NodePath()))
+	r.check(vp != null and vp.size == Vector2i(1024, 615), "viewport 1024 px per metre: " + str(vp.size if vp else null))
+	var u: Node = r.u()
+	# expected Unity world positions of the button pivots
+	var expect: Dictionary = {"TL": Vector3(-0.44, 1.77, 3), "TR": Vector3(0.44, 1.77, 3), "BL": Vector3(-0.44, 1.23, 3), "BR": Vector3(0.44, 1.23, 3), "Center": Vector3(0, 1.5, 3), "ScaledBtn": Vector3(0, 1.7, 3)}
+	var counters: Dictionary = {"TL": "pressedTL", "TR": "pressedTR", "BL": "pressedBL", "BR": "pressedBR", "Center": "pressedCenter", "ScaledBtn": "pressedScaled"}
+	for name in expect:
+		var btn: Node = r.find(name)
+		r.check(btn is BaseButton, name + " is a button: " + str(btn))
+		if not (btn is BaseButton):
+			continue
+		var pos: Vector3 = u.get_position(btn)
+		r.check(pos.is_equal_approx(expect[name]), "%s world position %s (expected %s)" % [name, str(pos), str(expect[name])])
+		# viewport pixel of the pivot vs. the control's own centre in the viewport
+		var px: Vector2 = u.ui_world_to_viewport(cv, expect[name])
+		var own: Vector2 = btn.get_global_transform() * (btn.size * 0.5)
+		r.check(px.distance_to(own) < 1.0, "%s pivot maps to the control's centre: %s vs %s" % [name, str(px), str(own)])
+		var back: Vector3 = u.ui_viewport_to_world(cv, px)
+		r.check(back.is_equal_approx(expect[name]), "%s viewport → world round trip: %s" % [name, str(back)])
+		var before: int = int(fx.get(counters[name]))
+		u.ui_click_world(cv, expect[name])
+		await r.wait(3)
+		r.check(int(fx.get(counters[name])) == before + 1 and str(fx.get("lastPressed")) == name.trim_suffix("Btn"), "%s pressed through ui_click_world: %d → %d, last=%s" % [name, before, int(fx.get(counters[name])), str(fx.get("lastPressed"))])
+	var nested: Node = r.find("NestedText")
+	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
+	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)
+	if DisplayServer.get_name() == "headless":
+		print("[fixture] headless: rendering and window-input checks skipped")
+		return
+	# camera 1.2 m in front of the canvas (its readable side is -Z in Unity = -Z here too)
+	r._place_camera(u.to_gd_v(Vector3(0, 1.5, 1.8)), u.to_gd_v(Vector3(0, 1.5, 3)))
+	r.camera().fov = 60
+	await r.wait(3)
+	await r.shot("ui")
+	var colors: Dictionary = {"TL": Color(1, 0, 0), "TR": Color(0, 1, 0), "BL": Color(0, 0, 1), "BR": Color(1, 1, 0), "Center": Color(1, 1, 1), "ScaledBtn": Color(1, 0, 1)}
+	var win: Vector2 = Vector2(r.root.get_viewport().get_visible_rect().size)
+	var tl_px: Vector2 = r.project(u.to_gd_v(expect["TL"]))
+	var br_px: Vector2 = r.project(u.to_gd_v(expect["BR"]))
+	r.check(tl_px.x < win.x * 0.5 and tl_px.y < win.y * 0.5 and br_px.x > win.x * 0.5 and br_px.y > win.y * 0.5, "TL projects to the upper left and BR to the lower right of the window: %s %s" % [str(tl_px), str(br_px)])
+	for name in colors:
+		var wp: Vector2 = r.project(u.to_gd_v(expect[name]))
+		var c: Color = await r.pixel(wp)
+		var want: Color = colors[name]
+		var ok: bool = absf(c.r - want.r) < 0.3 and absf(c.g - want.g) < 0.3 and absf(c.b - want.b) < 0.3
+		r.check(ok, "%s renders its colour at the projected pivot %s: %s (want %s)" % [name, str(wp), str(c), str(want)])
+	# clicks through the window: the pointer must raycast the canvas and push the event into it
+	for name in counters:
+		var before: int = int(fx.get(counters[name]))
+		await r.click(r.project(u.to_gd_v(expect[name])))
+		await r.wait(3)
+		r.check(int(fx.get(counters[name])) == before + 1, "%s pressed by a window click: %d → %d" % [name, before, int(fx.get(counters[name]))])
