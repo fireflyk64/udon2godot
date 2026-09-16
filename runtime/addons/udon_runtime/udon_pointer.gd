@@ -312,7 +312,17 @@ func _grab(node: Node) -> void:
 	held = pk
 	_held_node = node
 	var carry: Transform3D = _carry_transform()
-	_held_offset = carry.affine_inverse() * node.global_transform
+	# VRC_Pickup orientation: Any keeps the pose it was grabbed with; Grip / Gun snap the ExactGrip /
+	# ExactGun transform onto the hand (here: the carry point on the ray)
+	var grip: Node3D = null
+	if pk.orientation == 1 and pk.exact_grip is Node3D:
+		grip = pk.exact_grip
+	elif pk.orientation == 2 and pk.exact_gun is Node3D:
+		grip = pk.exact_gun
+	if grip != null:
+		_held_offset = grip.global_transform.affine_inverse() * node.global_transform
+	else:
+		_held_offset = carry.affine_inverse() * node.global_transform
 	if node is RigidBody3D:
 		_frozen = node.freeze
 		node.freeze = true
