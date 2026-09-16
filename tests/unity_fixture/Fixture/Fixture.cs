@@ -32,6 +32,16 @@ public class Fixture : UdonSharpBehaviour
     public int pressedScaled;
     public int pressedCenter;
     public string lastPressed = "";
+    public Slider slider;
+    public Toggle toggle;
+    public InputField input;
+    public int sliderChanged;
+    public int toggled;
+    public int inputEnded;
+    public int overlayPressed;
+    public float sliderValue;
+    public bool toggleOn;
+    public string inputText = "";
 
     private bool Near(float a, float b) { return Mathf.Abs(a - b) < 0.001f; }
     private bool NearV(Vector3 a, Vector3 b) { return (a - b).magnitude < 0.001f; }
@@ -121,6 +131,9 @@ public class Fixture : UdonSharpBehaviour
             uiCenter.localPosition = Vector3.zero;
             Check(NearV(uiCenter.position, new Vector3(0f, 1.5f, 3f)), "uiCenter moved back by local position: " + uiCenter.position);
         }
+        Check(slider != null && Near(slider.value, 0.25f) && Near(slider.maxValue, 1f), "imported Slider value " + (slider == null ? "null" : slider.value.ToString()));
+        Check(toggle != null && !toggle.isOn, "imported Toggle off");
+        Check(input != null && input.text == "", "imported InputField empty");
         ParticleSystem fx = GetComponentInChildren<ParticleSystem>();
         Check(fx != null, "particle system imported under Marker");
         if (fx != null)
@@ -150,4 +163,8 @@ public class Fixture : UdonSharpBehaviour
     public void OnBR() { pressedBR++; lastPressed = "BR"; }
     public void OnScaled() { pressedScaled++; lastPressed = "Scaled"; }
     public void OnCenter() { pressedCenter++; lastPressed = "Center"; }
+    public void OnSlider() { sliderChanged++; sliderValue = slider.value; }
+    public void OnToggle() { toggled++; toggleOn = toggle.isOn; }
+    public void OnInput() { inputEnded++; inputText = input.text; }
+    public void OnOverlay() { overlayPressed++; }
 }

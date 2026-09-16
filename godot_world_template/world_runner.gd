@@ -263,15 +263,32 @@ func click(px: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
 		await mouse_button(pressed, button)
 	await process_frame
 
-func key(keycode: Key, hold_frames: int = 1) -> void:
+func key(keycode: Key, hold_frames: int = 1, unicode: int = 0) -> void:
 	for pressed in [true, false]:
 		var e := InputEventKey.new()
 		e.keycode = keycode
 		e.physical_keycode = keycode
 		e.pressed = pressed
+		e.unicode = unicode
 		Input.parse_input_event(e)
 		for i in range(hold_frames):
 			await process_frame
+
+## Type text: one key event per character (letters, digits, space), then Enter when `submit`.
+func type_text(text: String, submit: bool = true) -> void:
+	for ch in text:
+		var code: int = ch.unicode_at(0)
+		var keycode: Key = (OS.find_keycode_from_string(ch.to_upper()) as Key) if ch != " " else KEY_SPACE
+		await key(keycode, 1, code)
+	if submit:
+		await key(KEY_ENTER)
+
+## World point (Godot space) at a fraction of a control's rect on a world canvas (0..1, top-left origin).
+func control_world_at(ctl: Control, frac: Vector2) -> Vector3:
+	var uu: Node = u()
+	var cv: Node = uu._ui_world_canvas(ctl)
+	var px: Vector2 = ctl.get_global_transform() * (ctl.size * frac)
+	return uu.to_gd_v(uu.ui_viewport_to_world(cv, px))
 
 func udon() -> Node:
 	return root.get_node("Udon")

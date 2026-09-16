@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/fixture}
 GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
 SCENE=res://unity_fixture/Fixture/Fixture.tscn
+mkdir -p "$(dirname "$OUT")"   # the import log sits next to the world folder
 if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ "${REIMPORT:-0}" = 1 ]; then
   rm -rf "$OUT"
   scripts/import_world.sh tests/unity_fixture "$OUT" > "$OUT.import.log" 2>&1 || true

@@ -10,7 +10,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 WORLDS=${1:-/tmp/udon2godot_worlds}
 FAILED=()
-run() { echo; echo "===== $1"; shift; "$@" || FAILED+=("$1"); }
+run() { local name=$1; shift; echo; echo "===== $name"; "$@" || FAILED+=("$name"); }
 run verify scripts/verify.sh
 run coverage scripts/coverage_test.sh
 run net scripts/net_test.sh

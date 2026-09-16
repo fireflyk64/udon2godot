@@ -255,8 +255,12 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       the X display like the billiards shots. Done: UiCanvas in the fixture (corner/centre buttons,
       2× container, nested canvas), `world_runner.gd` scenario API (`project`, `pixel`, `capture`,
       `mouse_move`, `click`, `key`, `camera`, `--face` for canvases), `scripts/test_unity_fixture.sh`
-      runs the display pass when DISPLAY is set. Open: slider/toggle/input field coverage, a
-      screen-space canvas, hit-point overlay on screenshots.
+      runs the display pass when DISPLAY is set. Also covered (74 checks on the display): a Slider
+      dragged through the pointer (HSlider, onValueChanged), a Toggle, an InputField typed into
+      through the window (the pointer forwards keys to the last clicked canvas) and submitted with
+      Enter (onEndEdit), and a screen-space canvas button (Godot's own GUI; its full-window root
+      must ignore the mouse or it swallows every click meant for the world). Open: hit-point
+      overlay on screenshots, Dropdown/ScrollRect coverage.
 - [x] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
       `scripts/play_world.sh`), `scenarios/player.gd` on the fixture (walk, strafe, jump, tracking
       data, Esc frees the mouse, clicks through the player camera). Open: stations, VR events.

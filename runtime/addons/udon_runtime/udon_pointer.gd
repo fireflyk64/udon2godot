@@ -44,6 +44,8 @@ var _held_offset: Transform3D = Transform3D()
 ## get_mouse_position() reports the OS cursor and ignores injected events).
 var mouse_pos: Vector2 = Vector2.ZERO
 var _hover_canvas: Node = null
+## Canvas that received the last press: keyboard input goes to its viewport (text fields).
+var _focus_canvas: Node = null
 var _hover_px: Vector2 = Vector2.ZERO
 var _mask: int = 0
 var _frozen: Variant = null
@@ -223,9 +225,11 @@ func _push_button(cv: Node, px: Vector2, button: int, pressed: bool, double_clic
 func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 	_mask |= _mask_of(button)
 	if hit.get("kind") == "canvas":
+		_focus_canvas = hit["canvas"]
 		_push_button(hit["canvas"], hit["px"], button, true, double_click)
 		pointer_pressed.emit(hit["canvas"], hit["point"], button)
 		return
+	_focus_canvas = null
 	pointer_pressed.emit(null, hit.get("point", ray_origin), button)
 	var udon: Node = get_node("/root/Udon")
 	if button == MOUSE_BUTTON_LEFT:
@@ -277,9 +281,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			press(event.button_index, event.double_click)
 		else:
 			release(event.button_index)
-	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_G and held != null:
+	elif event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_G and held != null and _focus_canvas == null:
 			drop()
+		elif _focus_canvas != null and is_instance_valid(_focus_canvas):
+			var vp: SubViewport = _viewport_of(_focus_canvas)
+			if vp != null:
+				vp.push_input(event, true)
 
 
 # --- pickups ------------------------------------------------------------------------------------
