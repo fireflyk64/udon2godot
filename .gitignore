@@ -17,3 +17,6 @@
 /godot_project/addons/godot_sandbox/bin/*.wasm
 /godot_project/addons/godot_sandbox/bin/*.framework/
 !/godot_project/addons/godot_sandbox/bin/libgodot_riscv.linux.template_release.x86_64.so
+
+# Godot regenerates uid files for the runtime copy in the test project (the source is runtime/)
+/godot_project/addons/udon_runtime/**/*.uid
