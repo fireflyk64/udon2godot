@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Community prefab worlds: import each example scene through the world pipeline and run its
 # scenario (scripts/setup_deps.sh --community clones the repositories; what is missing is skipped).
-#   scripts/test_world_community.sh [worlds_dir]      (REIMPORT=1 forces fresh imports)
+#   scripts/test_world_community.sh [worlds_dir]      (REIMPORT=1 forces fresh imports, ONLY=<name> runs one,
+#                                                       SHOTS=0 skips the display pass)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 WORLDS=${1:-/tmp/udon2godot_worlds}
@@ -12,6 +13,7 @@ FAILED=()
 # name | unity assets folder | scene (res://) | scenario
 world() {
   local name=$1 src=$2 scene=$3 scenario=$4 out="$WORLDS/$1"
+  if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then return 0; fi
   echo; echo "===== $name"
   if [ ! -d "$src" ]; then echo "skipped: $src is not cloned (scripts/setup_deps.sh --community)"; return 0; fi
   local tscn="$out/${scene#res://}"
@@ -44,6 +46,7 @@ world() {
 }
 
 world emychess refs/EmyChess/Packages/com.emymin.emychess/Runtime res://Runtime/ExampleScene.tscn res://scenarios/emychess.gd
+world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs/Essentials" res://Examples/UdonEssentials_ExampleScene.tscn res://scenarios/udon_essentials.gd
 
 echo
 if [ ${#FAILED[@]} -eq 0 ]; then echo "COMMUNITY WORLDS PASSED"; exit 0; fi

@@ -415,7 +415,12 @@ scenario, like the pool table.
       an owner that never matched and written into a shared dictionary, so nothing was saved
       (fork 66854ef + next). Fixture: `Holder.prefab` with a scripted child, `Outer.prefab` nesting
       it, value and reference overrides from the scene and from the outer prefab, hidden fields
-      (62 / 95 / 25 / 16 checks).
+      (62 / 95 / 25 / 16 checks). `a && f(out x)` / `a || f(out x)`: the statements the right
+      operand needs used to run unconditionally (a warning said so), which breaks the usual
+      `x != null && x.TryGet(out y)` guard; they are now inside `if _t:` / `if not _t:` with the
+      declared locals kept outside (TExt checks the side effects; the pool table's desktop
+      button raycast is guarded by its state again). Attribute / editor / exception classes are
+      skipped instead of lowered (UdonUtils: 67 warnings and 2 errors -> 4 warnings).
 
 ## Next
 

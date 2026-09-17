@@ -1447,8 +1447,31 @@ impl<'p> Lowerer<'p> {
                 self.hoist_ok = false;
                 let b = self.lower_cond(rhs);
                 self.hoist_ok = saved;
+                let _ = span;
                 if self.pre.len() > pre_len {
-                    self.warn(span, "right operand of a short-circuit operator needed hoisted statements; it is now evaluated unconditionally");
+                    // The right operand needs statements (an `out` argument, a by-ref call): they
+                    // run only when the left operand lets them, as C# does.
+                    //     var _t = a
+                    //     if _t:            (`if not _t:` for ||)
+                    //         <statements>
+                    //         _t = b
+                    // Locals the operand declares (`out var x`) stay visible after the block.
+                    let rhs_pre: Vec<GStmt> = self.pre.split_off(pre_len);
+                    let mut body: Vec<GStmt> = Vec::new();
+                    for st in rhs_pre {
+                        let is_decl_default = matches!(&st, GStmt::VarDecl { init: Some(i), .. } if matches!(i, GExpr::Int(_) | GExpr::Float(_) | GExpr::Str(_) | GExpr::Bool(_) | GExpr::Null | GExpr::Raw(_)) || matches!(i, GExpr::Array(v) if v.is_empty()));
+                        if is_decl_default {
+                            self.pre.push(st);
+                        } else {
+                            body.push(st);
+                        }
+                    }
+                    let tmp = self.fresh_tmp();
+                    self.pre.push(GStmt::VarDecl { name: tmp.clone(), ty: Some("bool".into()), init: Some(a) });
+                    body.push(GStmt::Assign { target: GExpr::ident(&tmp), op: "=", value: b });
+                    let cond = if op == BinOp::And { GExpr::ident(&tmp) } else { GExpr::Unary("not", Box::new(GExpr::ident(&tmp))) };
+                    self.pre.push(GStmt::If { branches: vec![(cond, body)], els: None });
+                    return Lw::new(GExpr::ident(&tmp), Ty::Bool);
                 }
                 let gop = if op == BinOp::And { "and" } else { "or" };
                 return Lw::new(a.bin(gop, b), Ty::Bool);

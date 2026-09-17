@@ -123,6 +123,20 @@ pub struct ClassInfo {
 }
 
 impl ClassInfo {
+    /// Attribute, editor and exception classes are ordinary C# next to the Udon programs:
+    /// UdonSharp never compiles them and nothing can run them, so they are not converted.
+    pub fn is_editor_only(&self) -> bool {
+        if self.is_behaviour {
+            return false;
+        }
+        let Some(base) = &self.base else { return false };
+        let short = base.rsplit('.').next().unwrap_or(base);
+        matches!(short, "Attribute" | "PropertyAttribute" | "DefaultExecutionOrder" | "Editor" | "EditorWindow" | "PropertyDrawer" | "DecoratorDrawer" | "Exception" | "AssetPostprocessor" | "ScriptedImporter")
+            || short.ends_with("Attribute")
+            || short.ends_with("Exception")
+            || short.ends_with("Drawer")
+    }
+
     pub fn field(&self, name: &str) -> Option<&FieldInfo> {
         self.fields.iter().find(|f| f.name == name)
     }
@@ -342,7 +356,7 @@ impl Program {
                             if let Some(prev) = seen_methods.get(&key) {
                                 // Overloads with the same arity are ambiguous in GDScript; keep the first and warn.
                                 let prev_m = &ci.methods[*prev];
-                                if prev_m.params.iter().map(|p| &p.ty).ne(params.iter().map(|p| &p.ty)) {
+                                if !ci.is_editor_only() && prev_m.params.iter().map(|p| &p.ty).ne(params.iter().map(|p| &p.ty)) {
                                     diags.warn(md.span, format!("method `{}.{}` is overloaded with the same arity; GDScript cannot overload, the later definition is renamed `{}_{}`", name, md.name, md.name, params.len()));
                                 }
                             }
@@ -364,7 +378,9 @@ impl Program {
                             });
                         }
                         Member::Constructor(cd2) => {
-                            diags.warn(cd2.span, format!("constructor in `{}` ignored: Udon behaviours cannot declare constructors", name));
+                            if !ci.is_editor_only() {
+                                diags.warn(cd2.span, format!("constructor in `{}` ignored: Udon behaviours cannot declare constructors", name));
+                            }
                         }
                         Member::Type(_) => {}
                     }

@@ -113,6 +113,14 @@ namespace Coverage
             return n;
         }
 
+        private int touched;
+        private bool Touch(out int v)
+        {
+            touched++;
+            v = 7;
+            return true;
+        }
+
         public void RunTests()
         {
             int[] three = new int[3];
@@ -145,6 +153,18 @@ namespace Coverage
             name = oldName;
             Check(Mathf.Abs(Single.Parse("1.5") - 1.5f) < 0.001f && Int32.MaxValue == int.MaxValue, "BCL aliases of keyword types");
             Check(BreakAfterInner(new int[] { 2, 1, 3 }) == 103, "break after a nested foreach leaves the outer loop: " + BreakAfterInner(new int[] { 2, 1, 3 }));
+            // && and || whose right operand needs statements (an out argument): it must not run when
+            // the left operand decides, the usual `x != null && x.TryGet(out y)` guard relies on it
+            bool no = failCount > 1000;
+            bool yes = !no;
+            int a1, a2;
+            bool r1 = no && Touch(out a1);
+            bool r2 = yes || Touch(out a2);
+            Check(!r1 && r2 && touched == 0, "short-circuit skips a right operand with an out argument: touched " + touched);
+            bool r3 = yes && Touch(out int a3);
+            Check(r3 && a3 == 7 && touched == 1, "and runs it when the left operand lets it: " + a3 + " touched " + touched);
+            int[] missing = null;
+            Check(!(missing != null && missing.TryFirst(out int firstOfNone)), "null guard before an extension call with an out argument");
             var d = new DataDictionary { ["ok"] = true, ["n"] = 3 };
             Check(d.Count == 2 && d["n"].Int == 3 && d["ok"].Boolean, "index initializer on DataDictionary");
             var l = new DataList { 1, 2, 3 };

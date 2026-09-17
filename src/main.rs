@@ -239,7 +239,16 @@ fn main() {
     let mut total_warn = 0usize;
     let mut total_err = 0usize;
     let mut report: BTreeMap<String, ReportEntry> = BTreeMap::new();
+    let mut skipped = 0usize;
     for class in &prog.classes {
+        if class.is_editor_only() {
+            skipped += 1;
+            if !args.quiet {
+                let file = class.source_files.first().cloned().unwrap_or_default();
+                eprintln!("{}: note: `{}` derives from `{}` (attribute / editor code, not an Udon program); skipped", file, class.name, class.base.clone().unwrap_or_default());
+            }
+            continue;
+        }
         let out = lower_class(&prog, class, &opts);
         let file = class.source_files.first().cloned().unwrap_or_default();
         for d in &out.diags.items {
@@ -280,7 +289,8 @@ fn main() {
         }
     }
     if !args.quiet {
-        println!("{} class(es), {} warning(s), {} error(s)", prog.classes.len(), total_warn, total_err);
+        let skipped_note = if skipped > 0 { format!(" ({} attribute / editor class(es) skipped)", skipped) } else { String::new() };
+        println!("{} class(es), {} warning(s), {} error(s){}", prog.classes.len() - skipped, total_warn, total_err, skipped_note);
     }
     if had_error {
         std::process::exit(1);
@@ -409,6 +419,9 @@ fn manifest_json(prog: &Program, res_prefix: &str, report: &BTreeMap<String, Rep
     let mut s = String::from("{\n  \"version\": 1,\n  \"classes\": {\n");
     let mut first = true;
     for class in &prog.classes {
+        if class.is_editor_only() {
+            continue;
+        }
         if !first {
             s.push_str(",\n");
         }

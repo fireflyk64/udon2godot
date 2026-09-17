@@ -7,6 +7,7 @@
 # 3. host + client over ENet                                              (scripts/net_test.sh)
 # 4. Unity fixture scene through unidot + udon_integration                (scripts/test_unity_fixture.sh)
 # 5. MS-VRCSA-Billiards import + gameplay scenario (+ screenshots on X)   (scripts/test_world_billiards.sh)
+# 6. community prefab worlds with an example scene, when cloned            (scripts/test_world_community.sh)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 WORLDS=${1:-/tmp/udon2godot_worlds}
@@ -32,6 +33,8 @@ run coverage scripts/coverage_test.sh
 run net scripts/net_test.sh
 run fixture env REIMPORT=1 scripts/test_unity_fixture.sh "$WORLDS/fixture"
 run billiards env REIMPORT=1 scripts/test_world_billiards.sh "$WORLDS/billiards"
+# community prefab worlds (scripts/setup_deps.sh --community; repositories that are not cloned are skipped)
+run community env REIMPORT=1 scripts/test_world_community.sh "$WORLDS"
 echo
 if [ ${#FAILED[@]} -eq 0 ]; then echo "CI PASSED"; exit 0; fi
 echo "CI FAILED: ${FAILED[*]}"; exit 1
