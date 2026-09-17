@@ -136,6 +136,14 @@ The pipeline:
    persistent calls to `SendCustomEvent`. Prefab assets referenced by scripts become inactive template
    nodes under `UdonPrefabs`; RenderTexture assets become `UdonRenderTexture` resources backed by
    viewports on demand.
+   Older content is covered too: **UdonSharp 0.x** scenes have no C# proxy components, their
+   field values live in `UdonBehaviour.serializedPublicVariablesBytesString` (Odin Serializer's
+   binary format, base64) with object references as indices into
+   `publicVariablesUnityEngineObjects`; `udon_odin.gd` decodes that table (and prefab-instance
+   overrides of it), `tools/odin_encode.py` writes one for the fixture. Scenes saved against
+   the SDK's DLLs reference every SDK component through one GUID; the class is the fileID
+   (`VRC_Pickup`, `VRCObjectSync`, `VRCObjectPool`, `VRCSpatialAudioSource`, `VRC_UiShape`,
+   video player, scene descriptor).
 4. Materials: Godot cannot run Unity shaders, so unidot's material conversion now reads the
    ShaderLab source of custom shaders (`shaderlab.gd`) and applies its render state to the
    StandardMaterial3D it builds (blend mode, ZWrite, Cull, ZTest, render queue, unlit); skybox
