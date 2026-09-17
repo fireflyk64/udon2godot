@@ -53,6 +53,14 @@ namespace Coverage
             Check(mid.Length == 5 && mid[0] == 'W' && mid[4] == 'd', "ToCharArray(start, length)");
             Check(char.IsDigit("a1", 1) && !char.IsDigit("a1", 0) && char.IsUpper("aB", 1) && char.IsWhiteSpace("a b", 1), "char.IsX(string, index)");
 
+            // custom date and time formats (a player list prints "dd MMMM yyyy hh:mm:ss")
+            DateTime when = new DateTime(2026, 9, 17, 15, 4, 5);
+            Check(when.ToString("dd MMMM yyyy hh:mm:ss tt") == "17 September 2026 03:04:05 PM", "DateTime custom format with month name and 12-hour clock: " + when.ToString("dd MMMM yyyy hh:mm:ss tt"));
+            Check(when.ToString("ddd, d MMM yy 'at' H:mm") == "Thu, 17 Sep 26 at 15:04" && when.ToString("dddd") == "Thursday", "short names, quoted literal: " + when.ToString("ddd, d MMM yy 'at' H:mm"));
+            Check(new DateTime(2024, 2, 29).ToString("dddd yyyy-MM-dd") == "Thursday 2024-02-29" && when.ToString("s") == "2026-09-17T15:04:05", "day of week in a leap year, sortable format");
+            TimeSpan span = TimeSpan.FromSeconds(3725.5);
+            Check(span.ToString(@"hh\:mm\:ss") == "01:02:05" && span.ToString(@"m\:ss\.f") == "2:05.5" && TimeSpan.FromSeconds(90000).ToString(@"d\.hh\:mm") == "1.01:00", "TimeSpan custom formats: " + span.ToString(@"hh\:mm\:ss"));
+
             // StringBuilder
             var sb = new StringBuilder("ab");
             sb.AppendFormat(CultureInfo.InvariantCulture, "{0}{1}", 1, 2);

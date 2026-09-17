@@ -1214,6 +1214,11 @@ func _is_component_child(c: Node) -> bool:
 		return false
 	if c.has_method("udon_class"):
 		return false
+	# Unity UI: every RectTransform GameObject is one Control (a Button, a Label, an image ...), so
+	# a Control child is always a child object (`content.childCount`, `row.GetChild(4)`), never a
+	# component of its parent
+	if c is Control:
+		return false
 	return true
 
 func get_components(n: Node, type_name: String) -> Array:
@@ -4857,26 +4862,169 @@ func datetime_add_seconds(d: Dictionary, s: float) -> Dictionary:
 func datetime_diff(a: Dictionary, b: Dictionary) -> Dictionary:
 	return timespan_from_seconds(float(a.get("unix", 0.0)) - float(b.get("unix", 0.0)))
 
+const _MONTH_NAMES: Array = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+const _DAY_NAMES: Array = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+## Length of the run of `ch` that starts at `i`.
+func _run_length(fmt: String, i: int, ch: String) -> int:
+	var n: int = 0
+	while i + n < fmt.length() and fmt[i + n] == ch:
+		n += 1
+	return n
+
+## Day of the week (0 = Sunday) of a Gregorian date (Sakamoto's method).
+func day_of_week(y: int, m: int, d: int) -> int:
+	var t: Array = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+	if m < 3:
+		y -= 1
+	return posmod(y + y / 4 - y / 100 + y / 400 + t[clampi(m, 1, 12) - 1] + d, 7)
+
+## DateTime.ToString(format): .NET custom format strings (yyyy yy MMMM MMM MM M dddd ddd dd d HH H
+## hh h mm m ss s fff ff f tt t, 'quoted' and \escaped literals) and the common standard ones.
 func datetime_format(d: Dictionary, fmt: String) -> String:
-	if fmt == "":
-		return "%04d-%02d-%02d %02d:%02d:%02d" % [d.get("year", 0), d.get("month", 0), d.get("day", 0), d.get("hour", 0), d.get("minute", 0), d.get("second", 0)]
-	var out: String = fmt
-	out = out.replace("yyyy", "%04d" % d.get("year", 0)).replace("MM", "%02d" % d.get("month", 0)).replace("dd", "%02d" % d.get("day", 0))
-	out = out.replace("HH", "%02d" % d.get("hour", 0)).replace("mm", "%02d" % d.get("minute", 0)).replace("ss", "%02d" % d.get("second", 0))
-	out = out.replace("fff", "%03d" % d.get("millisecond", 0))
+	var year: int = int(d.get("year", 0))
+	var month: int = int(d.get("month", 0))
+	var day: int = int(d.get("day", 0))
+	var hour: int = int(d.get("hour", 0))
+	var minute: int = int(d.get("minute", 0))
+	var second: int = int(d.get("second", 0))
+	var ms: int = int(d.get("millisecond", 0))
+	if fmt == "" or fmt == "G":
+		return "%02d/%02d/%04d %02d:%02d:%02d" % [month, day, year, hour, minute, second]
+	if fmt.length() == 1:
+		match fmt:
+			"d":
+				return "%02d/%02d/%04d" % [month, day, year]
+			"D":
+				return datetime_format(d, "dddd, dd MMMM yyyy")
+			"t":
+				return "%02d:%02d" % [hour, minute]
+			"T":
+				return "%02d:%02d:%02d" % [hour, minute, second]
+			"g":
+				return "%02d/%02d/%04d %02d:%02d" % [month, day, year, hour, minute]
+			"s":
+				return "%04d-%02d-%02dT%02d:%02d:%02d" % [year, month, day, hour, minute, second]
+			"u":
+				return "%04d-%02d-%02d %02d:%02d:%02dZ" % [year, month, day, hour, minute, second]
+			"o", "O":
+				return "%04d-%02d-%02dT%02d:%02d:%02d.%03d0000" % [year, month, day, hour, minute, second, ms]
+			"M", "m":
+				return datetime_format(d, "MMMM dd")
+			"Y", "y":
+				return datetime_format(d, "yyyy MMMM")
+	var out: String = ""
+	var i: int = 0
+	var h12: int = hour % 12 if hour % 12 != 0 else 12
+	while i < fmt.length():
+		var ch: String = fmt[i]
+		if ch == "\\" and i + 1 < fmt.length():
+			out += fmt[i + 1]
+			i += 2
+			continue
+		if ch == "'" or ch == "\"":
+			var close: int = fmt.find(ch, i + 1)
+			if close < 0:
+				close = fmt.length()
+			out += fmt.substr(i + 1, close - i - 1)
+			i = close + 1
+			continue
+		if ch == "%":
+			i += 1
+			continue
+		var n: int = _run_length(fmt, i, ch)
+		match ch:
+			"y":
+				out += ("%04d" % year) if n >= 3 else ("%02d" % (year % 100) if n == 2 else str(year % 100))
+			"M":
+				if n >= 4:
+					out += _MONTH_NAMES[clampi(month, 1, 12) - 1]
+				elif n == 3:
+					out += String(_MONTH_NAMES[clampi(month, 1, 12) - 1]).substr(0, 3)
+				else:
+					out += ("%02d" % month) if n == 2 else str(month)
+			"d":
+				if n >= 4:
+					out += _DAY_NAMES[day_of_week(year, month, day)]
+				elif n == 3:
+					out += String(_DAY_NAMES[day_of_week(year, month, day)]).substr(0, 3)
+				else:
+					out += ("%02d" % day) if n == 2 else str(day)
+			"H":
+				out += ("%02d" % hour) if n >= 2 else str(hour)
+			"h":
+				out += ("%02d" % h12) if n >= 2 else str(h12)
+			"m":
+				out += ("%02d" % minute) if n >= 2 else str(minute)
+			"s":
+				out += ("%02d" % second) if n >= 2 else str(second)
+			"f", "F":
+				out += ("%03d" % ms).substr(0, mini(n, 3)) + "0".repeat(maxi(n - 3, 0))
+			"t":
+				var ampm: String = "AM" if hour < 12 else "PM"
+				out += ampm if n >= 2 else ampm.substr(0, 1)
+			"z":
+				out += "+00:00" if n >= 3 else ("+00" if n == 2 else "+0")
+			"K":
+				out += "Z"
+			_:
+				out += ch.repeat(n)
+		i += n
 	return out
 
 func timespan_from_seconds(s: float) -> Dictionary:
 	return {"total_seconds": s}
 
-func timespan_format(t: Dictionary, _fmt: String) -> String:
-	var s: float = float(t.get("total_seconds", 0.0))
-	var neg: bool = s < 0.0
-	s = absf(s)
-	var h: int = int(s / 3600.0)
+## TimeSpan.ToString(format): "c" / empty is [-][d.]hh:mm:ss, custom strings use d dd hh h mm m
+## ss s fff with \\escaped and 'quoted' literals (`hh\\:mm\\:ss`).
+func timespan_format(t: Dictionary, fmt: String) -> String:
+	var total: float = float(t.get("total_seconds", 0.0))
+	var neg: bool = total < 0.0
+	var s: float = absf(total)
+	var days: int = int(s / 86400.0)
+	var h: int = int(fmod(s, 86400.0) / 3600.0)
 	var m: int = int(fmod(s, 3600.0) / 60.0)
-	var sec: float = fmod(s, 60.0)
-	return ("-" if neg else "") + "%02d:%02d:%02d" % [h, m, int(sec)]
+	var sec: int = int(fmod(s, 60.0))
+	var ms: int = int(fmod(s, 1.0) * 1000.0)
+	if fmt == "" or fmt == "c" or fmt == "g" or fmt == "G":
+		var body: String = "%02d:%02d:%02d" % [h, m, sec]
+		if days > 0:
+			body = str(days) + "." + body
+		return ("-" if neg else "") + body
+	var out: String = ""
+	var i: int = 0
+	while i < fmt.length():
+		var ch: String = fmt[i]
+		if ch == "\\" and i + 1 < fmt.length():
+			out += fmt[i + 1]
+			i += 2
+			continue
+		if ch == "'" or ch == "\"":
+			var close: int = fmt.find(ch, i + 1)
+			if close < 0:
+				close = fmt.length()
+			out += fmt.substr(i + 1, close - i - 1)
+			i = close + 1
+			continue
+		if ch == "%":
+			i += 1
+			continue
+		var n: int = _run_length(fmt, i, ch)
+		match ch:
+			"d":
+				out += str(days).pad_zeros(n)
+			"h":
+				out += ("%02d" % h) if n >= 2 else str(h)
+			"m":
+				out += ("%02d" % m) if n >= 2 else str(m)
+			"s":
+				out += ("%02d" % sec) if n >= 2 else str(sec)
+			"f", "F":
+				out += ("%03d" % ms).substr(0, mini(n, 3)) + "0".repeat(maxi(n - 3, 0))
+			_:
+				out += ch.repeat(n)
+		i += n
+	return out
 
 # ---------------------------------------------------------------------------
 # Input key mapping

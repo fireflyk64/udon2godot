@@ -16,6 +16,8 @@ public class Fixture : UdonSharpBehaviour
     public VRC.SDK3.Components.VRCObjectPool pool;
     public GameObject itemTemplate;
     public Transform itemParent;
+    // a VerticalLayoutGroup + ContentSizeFitter list: SpawnListItem adds entries the way a player list does
+    public Transform listParent;
     // the inactive instance of the same prefab that sits in the canvas (a stripped GameObject of a
     // nested prefab instance): the usual in-scene template
     public GameObject nestedItem;
@@ -203,6 +205,17 @@ public class Fixture : UdonSharpBehaviour
     public void OnToggle() { toggled++; toggleOn = toggle.isOn; }
     public void OnInput() { inputEnded++; inputText = input.text; }
     public void OnOverlay() { overlayPressed++; }
+    public void SpawnListItem()
+    {
+        GameObject item = VRCInstantiate(itemTemplate);
+        item.SetActive(true);
+        Transform t = item.transform;
+        t.SetParent(listParent);
+        t.localPosition = Vector3.zero;
+        t.localEulerAngles = Vector3.zero;
+        t.localScale = Vector3.one;
+        item.name = "ListEntry" + listParent.childCount;
+    }
     public void SpawnItem()
     {
         GameObject item = VRCInstantiate(nestedItem != null && itemsSpawned % 2 == 1 ? nestedItem : itemTemplate);

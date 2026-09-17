@@ -440,18 +440,23 @@ UdonEssentials' player list adds its entries under a `VerticalLayoutGroup` + `Co
 the importer ignored layout components, so an instantiated entry had zero width (its anchors
 stretch over a parent that Unity sizes through the layout) and the list showed nothing.
 
-- [ ] `udon_layout_group.gd` (runtime): Horizontal / Vertical layout (padding, spacing, child
-      alignment, childControlWidth/Height, childForceExpandWidth/Height, reverse arrangement), Grid
-      layout (cell size, spacing, start corner / axis, constraint), `ContentSizeFitter` (preferred /
-      min size per axis), `LayoutElement` (min / preferred / flexible, ignoreLayout); re-layout
-      when children are added, removed, shown, hidden or resized.
-- [ ] Importer: layout components become `udon_layout` / `udon_fitter` / `udon_layout_element`
-      metadata and the script is attached.
-- [ ] Fixture: a vertical list with a fitter that receives instantiated entries, a horizontal row
-      with flexible elements, a grid; rendered positions checked.
+- [x] `udon_layout_group.gd` (runtime, on a helper child so the Control keeps its script slot):
+      Horizontal / Vertical layout (padding, spacing, child alignment, childControlWidth/Height,
+      childForceExpandWidth/Height, reverse arrangement; minimum -> preferred -> flexible
+      distribution as in Unity), Grid layout (cell size, spacing, start corner / axis, constraint),
+      `ContentSizeFitter` (grows away from the pivot), `LayoutElement` (min / preferred / flexible,
+      ignoreLayout); re-layout when children are added, removed, shown, hidden or resized.
+- [x] Importer: layout components become `udon_layout` / `udon_fitter` / `udon_layout_element`
+      metadata and the helper is added.
+- [x] Fixture: a vertical list with a fitter that receives instantiated entries (and loses a hidden
+      one), a horizontal row with a preferred and two flexible elements (1 : 2), a two-column grid;
+      positions and sizes checked (fixture 95 / 130). Found on the way: `transform.childCount` /
+      `GetChild` did not count UI children (every Control was taken for a component of its
+      parent), so `content.childCount` was 0 and `row.GetChild(4)` null.
 - [ ] UdonEssentials scenario checks the entry's rectangle; screenshot of the list.
-- [ ] `DateTime.ToString` custom formats: `MMMM`, `MMM`, `dddd`, `ddd`, `hh`, `h`, `tt`, quoted
-      literals (the list shows "17 0909 2026 hh:58:49" for "dd MMMM yyyy hh:mm:ss").
+- [x] `DateTime.ToString` / `TimeSpan.ToString` custom formats: a tokenizer for `yyyy yy MMMM MMM
+      MM M dddd ddd dd d HH H hh h mm m ss s f.. tt t`, quoted and escaped literals, the standard
+      one-letter formats, day of week; `hh\:mm\:ss` for time spans (coverage 928).
 
 ## UdonSharp 0.x scenes (no C# proxy components)
 

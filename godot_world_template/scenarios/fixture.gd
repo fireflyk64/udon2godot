@@ -191,6 +191,7 @@ func _ui_checks(r, fx: Node) -> void:
 	# Image on that object: the image's colour must not bring the graphic back
 	var mask_vp: Node = srect.get_node_or_null("Viewport") if srect != null else null  # (canvases have a SubViewport of that name too)
 	r.check(mask_vp is TextureRect and mask_vp.clip_contents and is_zero_approx(mask_vp.self_modulate.a), "mask with a hidden graphic stays invisible whatever the component order: " + str(mask_vp.self_modulate if mask_vp is TextureRect else null))
+	await _layout_checks(r, fx)
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)
@@ -299,3 +300,44 @@ func _ui_checks(r, fx: Node) -> void:
 		await r.click(rect.get_center())
 		await r.wait(3)
 		r.check(int(fx.get("overlayPressed")) == 1, "overlay button clicked through the window: %d" % int(fx.get("overlayPressed")))
+
+
+func _rect_is(c: Node, x: float, y: float, w: float, h: float) -> bool:
+	return c is Control and absf(c.position.x - x) < 0.6 and absf(c.position.y - y) < 0.6 and absf(c.size.x - w) < 0.6 and absf(c.size.y - h) < 0.6
+
+
+## Unity auto layout (udon_layout_group.gd): a vertical list with a ContentSizeFitter that grows
+## with instantiated entries, a horizontal row with a fixed and two flexible elements, a grid.
+func _layout_checks(r, fx: Node) -> void:
+	await r.wait(3)
+	var vlist: Node = r.find("VList")
+	var a: Node = r.find("VItemA")
+	var b: Node = r.find("VItemB")
+	r.check(vlist is Control and vlist.get_node_or_null("UdonLayout") != null, "layout group gets its layout helper: " + str(vlist))
+	if not (vlist is Control):
+		return
+	# 240 wide, padding 10 / 10 / 5 / 5, spacing 4: children are stretched to 220 and keep their 40 px
+	r.check(_rect_is(a, 10, 5, 220, 40) and _rect_is(b, 10, 49, 220, 40), "vertical group: width controlled and expanded, height kept: %s %s / %s %s" % [str(a.position), str(a.size), str(b.position), str(b.size)])
+	r.check(absf(vlist.size.y - 94.0) < 0.6 and absf(vlist.size.x - 240.0) < 0.6, "ContentSizeFitter: height = padding + entries + spacing (94): " + str(vlist.size))
+	var top_before: float = vlist.get_global_rect().position.y
+	fx.SpawnListItem()
+	await r.wait(4)
+	var entry: Node = null
+	var names: Array = []
+	for c in vlist.get_children():
+		names.append(String(c.name))
+		if c is Control and String(c.name).begins_with("ListEntry"):
+			entry = c
+	r.check(entry is Control and String(entry.name) == "ListEntry3", "the entry is named after childCount, which does not count the layout helper: " + str(names))
+	r.check(entry is Control and _rect_is(entry, 10, 93, 220, 40), "an instantiated entry is laid out like the others: %s %s" % [str(entry.position if entry is Control else null), str(entry.size if entry is Control else null)])
+	r.check(absf(vlist.size.y - 138.0) < 0.6 and absf(vlist.get_global_rect().position.y - top_before) < 0.6, "the fitted list grew downwards from its top pivot: %s" % str(vlist.size))
+	if entry is Control:
+		entry.visible = false
+		await r.wait(4)
+		r.check(absf(vlist.size.y - 94.0) < 0.6, "a hidden entry leaves the layout: " + str(vlist.size))
+		entry.visible = true
+		await r.wait(4)
+	# 300 x 40 row: preferred 60, then the rest shared 1 : 2
+	r.check(_rect_is(r.find("HFixed"), 0, 0, 60, 40) and _rect_is(r.find("HFlex1"), 60, 0, 80, 40) and _rect_is(r.find("HFlex2"), 140, 0, 160, 40), "horizontal group: preferred width, flexible widths 1 : 2, heights expanded: %s %s %s" % [str(r.find("HFixed").size), str(r.find("HFlex1").size), str(r.find("HFlex2").size)])
+	# two columns of 50 x 30 cells, spacing 10 x 5, padding 5
+	r.check(_rect_is(r.find("Cell0"), 5, 5, 50, 30) and _rect_is(r.find("Cell1"), 65, 5, 50, 30) and _rect_is(r.find("Cell2"), 5, 40, 50, 30), "grid: fixed column count, cell size and spacing: %s %s %s" % [str(r.find("Cell0").position), str(r.find("Cell1").position), str(r.find("Cell2").position)])
