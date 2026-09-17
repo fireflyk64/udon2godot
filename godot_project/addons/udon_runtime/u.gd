@@ -4440,6 +4440,37 @@ func decimal_from_bits(bits: Array) -> float:
 	var flags: int = int(bits[3])
 	return decimal_from_parts(int(bits[0]), int(bits[1]), int(bits[2]), (flags & (1 << 31)) != 0, (flags >> 16) & 255)
 
+# --- array extension methods (VUdon ArrayExtensions style: a new array is returned) ----------------
+
+func arr_added(a: Array, x) -> Array:
+	var b: Array = a.duplicate()
+	b.append(x)
+	return b
+
+func arr_added_unique(a: Array, x) -> Array:
+	return a.duplicate() if a.has(x) else arr_added(a, x)
+
+func arr_inserted(a: Array, i: int, x) -> Array:
+	var b: Array = a.duplicate()
+	b.insert(clampi(i, 0, b.size()), x)
+	return b
+
+func arr_removed(a: Array, x) -> Array:
+	var b: Array = a.duplicate()
+	b.erase(x)
+	return b
+
+func arr_removed_at(a: Array, i: int) -> Array:
+	var b: Array = a.duplicate()
+	if i >= 0 and i < b.size():
+		b.remove_at(i)
+	return b
+
+func arr_reversed(a: Array) -> Array:
+	var b: Array = a.duplicate()
+	b.reverse()
+	return b
+
 func to_char_array(s: String) -> Array:
 	var out: Array = []
 	for ch in s:

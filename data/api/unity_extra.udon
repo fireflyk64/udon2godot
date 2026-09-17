@@ -3554,3 +3554,72 @@ type Group
 
 type Match
   static Synchronized(Match): Match => $1
+
+# --- enums community prefabs use (Udonity's inspectors, the glTF loaders) --------------------------
+
+type LogType kind=enum extern=UnityEngineLogType
+  enum Error = 0
+  enum Assert = 1
+  enum Warning = 2
+  enum Log = 3
+  enum Exception = 4
+
+type AmbientMode kind=enum extern=UnityEngineRenderingAmbientMode
+  enum Skybox = 0
+  enum Trilight = 1
+  enum Flat = 3
+  enum Custom = 4
+
+type RenderingPath kind=enum extern=UnityEngineRenderingPath
+  enum UsePlayerSettings = -1
+  enum VertexLit = 0
+  enum Forward = 1
+  enum DeferredLighting = 2
+  enum DeferredShading = 3
+
+type LightShadowResolution kind=enum extern=UnityEngineRenderingLightShadowResolution
+  enum FromQualitySettings = -1
+  enum Low = 0
+  enum Medium = 1
+  enum High = 2
+  enum VeryHigh = 3
+
+type FogMode kind=enum extern=UnityEngineFogMode
+  enum Linear = 1
+  enum Exponential = 2
+  enum ExponentialSquared = 3
+
+type BlendMode kind=enum extern=UnityEngineRenderingBlendMode
+  enum Zero = 0
+  enum One = 1
+  enum DstColor = 2
+  enum SrcColor = 3
+  enum OneMinusDstColor = 4
+  enum SrcAlpha = 5
+  enum OneMinusSrcColor = 6
+  enum DstAlpha = 7
+  enum OneMinusDstAlpha = 8
+  enum SrcAlphaSaturate = 9
+  enum OneMinusSrcAlpha = 10
+
+type RenderQueue kind=enum extern=UnityEngineRenderingRenderQueue
+  enum Background = 1000
+  enum Geometry = 2000
+  enum AlphaTest = 2450
+  enum GeometryLast = 2500
+  enum Transparent = 3000
+  enum Overlay = 4000
+
+type MeshTopology kind=enum extern=UnityEngineMeshTopology
+  enum Triangles = 0
+  enum Quads = 2
+  enum Lines = 3
+  enum LineStrip = 4
+  enum Points = 5
+
+type MaterialGlobalIlluminationFlags kind=enum extern=UnityEngineMaterialGlobalIlluminationFlags
+  enum None = 0
+  enum RealtimeEmissive = 1
+  enum BakedEmissive = 2
+  enum AnyEmissive = 3
+  enum EmissiveIsBlack = 4

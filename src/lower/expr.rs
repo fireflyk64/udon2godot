@@ -370,12 +370,9 @@ impl<'p> Lowerer<'p> {
                 if self.prog.is_user_class(&n) {
                     if let Some((_, f)) = self.prog.find_field(&n, name) {
                         if f.is_const {
-                            // cross-class constant: inline literal initializer when possible
-                            if n != self.class.name {
-                                if let Some(init) = &f.init {
-                                    let lw = self.lower_expr(init);
-                                    return Lw::new(lw.e, f.ty.clone());
-                                }
+                            // cross-class constant: inlined through the guarded static path
+                            if n != self.class.name && f.init.is_some() {
+                                return self.static_member(&n, name, span);
                             }
                             return Lw::new(GExpr::ident(&f.gd_name), f.ty.clone());
                         }
@@ -398,8 +395,14 @@ impl<'p> Lowerer<'p> {
                             return self.apply_getter(&m, Some(&t), span);
                         }
                     }
-                    self.warn(span, format!("unknown member `{}` on `{}`; emitted as dynamic access", name, n));
-                    return Lw::unknown(t.e.member(&crate::names::mangle(name)));
+                    // A project class may share its name with a catalog type (`Toggle` in one
+                    // namespace, UnityEngine.UI.Toggle used elsewhere): a member only the catalog
+                    // type has means the source refers to that type.
+                    let shadowed = self.prog.catalog.get(&n).is_some() && (self.prog.catalog.field(&n, name, false).is_some() || !self.prog.catalog.members(&n, name).is_empty());
+                    if !shadowed {
+                        self.warn(span, format!("unknown member `{}` on `{}`; emitted as dynamic access", name, n));
+                        return Lw::unknown(t.e.member(&crate::names::mangle(name)));
+                    }
                 }
                 // catalog type
                 if let Some(m) = self.prog.catalog.field(&n, name, false) {
@@ -772,6 +775,14 @@ impl<'p> Lowerer<'p> {
                         return self.call_catalog(&base_name, name, Some(t), args, type_args, span);
                     }
                 }
+                if let Some(r) = self.try_extension_call(&t, name, args, type_args, span) {
+                    return r;
+                }
+                // same-named catalog type (see member_on): the method only exists there
+                if self.prog.catalog.get(&n).is_some() && !self.prog.catalog.members(&n, name).is_empty() {
+                    let canon = self.prog.catalog.resolve_name(&n).unwrap_or(&n).to_string();
+                    return self.call_catalog(&canon, name, Some(t), args, type_args, span);
+                }
                 self.warn(span, format!("unknown method `{}` on `{}`; emitted as dynamic call", name, n));
                 let a = self.lower_args_plain(args);
                 Lw::unknown(t.e.method(&crate::names::mangle(name), a))
@@ -788,18 +799,21 @@ impl<'p> Lowerer<'p> {
                 }
                 if self.prog.catalog.get(&n).is_some() {
                     let canon = self.prog.catalog.resolve_name(&n).unwrap().to_string();
-                    return self.call_catalog(&canon, name, Some(t), args, type_args, span);
+                    return self.catalog_or_extension(&canon, name, t, args, type_args, span);
+                }
+                if let Some(r) = self.try_extension_call(&t, name, args, type_args, span) {
+                    return r;
                 }
                 self.warn(span, format!("method `{}` on unknown type `{}`; emitted as dynamic call", name, n));
                 let a = self.lower_args_plain(args);
                 Lw::unknown(t.e.method(name, a))
             }
-            Ty::String => self.call_catalog("string", name, Some(t), args, type_args, span),
-            Ty::Char => self.call_catalog("char", name, Some(t), args, type_args, span),
-            Ty::Array(_) | Ty::MultiArray(..) => self.call_catalog("Array", name, Some(t), args, type_args, span),
+            Ty::String => self.catalog_or_extension("string", name, t, args, type_args, span),
+            Ty::Char => self.catalog_or_extension("char", name, t, args, type_args, span),
+            Ty::Array(_) | Ty::MultiArray(..) => self.catalog_or_extension("Array", name, t, args, type_args, span),
             ty if ty.is_numeric() || ty.is_bool() => {
                 let tn = ty.name();
-                self.call_catalog(&tn, name, Some(t), args, type_args, span)
+                self.catalog_or_extension(&tn, name, t, args, type_args, span)
             }
             Ty::Object | Ty::Unknown | Ty::Null => {
                 // dynamic call; well-known Udon behaviour methods keep their names
@@ -823,6 +837,82 @@ impl<'p> Lowerer<'p> {
                 Lw::unknown(t.e.method(name, a))
             }
         }
+    }
+
+    /// A method of a catalog type, or a user extension method when the catalog type has none of
+    /// that name (`array._LengthSafe()`, `player._DisplayNameSafe()`).
+    fn catalog_or_extension(&mut self, canon: &str, name: &str, t: Lw, args: &[Arg], type_args: &[(String, Ty)], span: Span) -> Lw {
+        if self.prog.catalog.members(canon, name).is_empty() {
+            if let Some(r) = self.try_extension_call(&t, name, args, type_args, span) {
+                return r;
+            }
+        }
+        self.call_catalog(canon, name, Some(t), args, type_args, span)
+    }
+
+    /// How well a receiver fits the `this` parameter of an extension method (0 = not at all).
+    fn extension_fit(&self, recv: &Ty, param: &Ty) -> u32 {
+        let is_placeholder = |n: &str| !self.prog.is_user_class(n) && self.prog.catalog.get(n).is_none() && self.prog.user_enum(n).is_none();
+        match (recv, param) {
+            (Ty::Array(_), Ty::Array(pe)) | (Ty::MultiArray(..), Ty::Array(pe)) => match (&**pe, recv) {
+                (Ty::Named(n), _) if is_placeholder(n) => 2,
+                (pe, Ty::Array(re)) if **re == *pe => 3,
+                _ => 1,
+            },
+            (_, Ty::Named(p)) if is_placeholder(p) => 1,
+            (Ty::Named(r), Ty::Named(p)) => {
+                if r == p {
+                    3
+                } else if self.prog.class_chain(r).iter().any(|c| c.name == *p) || self.prog.catalog.chain(r).iter().any(|c| c.name == *p) {
+                    2
+                } else if self.prog.is_user_class(r) && self.prog.catalog_base_of_class(r).map_or(false, |b| b.name == *p || self.prog.catalog.chain(&b.name).iter().any(|c| c.name == *p)) {
+                    2
+                } else {
+                    0
+                }
+            }
+            (Ty::Unknown, _) | (Ty::Object, _) => 1,
+            (_, Ty::Object) => 1,
+            (a, b) if a == b => 3,
+            _ => 0,
+        }
+    }
+
+    /// `recv.Name(args)` where `Name` is a user extension method: lowered as the static call
+    /// `Class.Name(recv, args)`. The receiver is handed over through a scope alias so the ordinary
+    /// user-method call path (overloads, defaults, ref/out, cross-class routing) applies.
+    fn try_extension_call(&mut self, t: &Lw, name: &str, args: &[Arg], type_args: &[(String, Ty)], span: Span) -> Option<Lw> {
+        let prog: &'p crate::program::Program = self.prog;
+        let mut best: Option<(&'p crate::program::ClassInfo, u32)> = None;
+        for (c, m) in prog.extension_methods(name) {
+            let extra = m.params.len().saturating_sub(1);
+            let required = m.params.iter().skip(1).filter(|p| p.default.is_none() && p.mode != ParamMode::Params).count();
+            let variadic = m.params.last().map_or(false, |p| p.mode == ParamMode::Params);
+            if args.len() < required || (args.len() > extra && !variadic) {
+                continue;
+            }
+            let fit = self.extension_fit(&t.ty, &m.params[0].ty);
+            if fit > 0 && best.map_or(true, |(_, b)| fit > b) {
+                best = Some((c, fit));
+            }
+        }
+        let (class, _) = best?;
+        self.tmp_counter += 1;
+        let alias = format!("$ext{}", self.tmp_counter);
+        if self.scopes.is_empty() {
+            self.push_scope();
+        }
+        if let Some(sc) = self.scopes.last_mut() {
+            sc.insert(alias.clone(), Local { gd_name: t.e.render(), ty: t.ty.clone() });
+        }
+        let mut full: Vec<Arg> = vec![Arg { name: None, mode: ParamMode::Value, out_decl: None, expr: Expr::Ident(alias.clone(), span) }];
+        full.extend(args.iter().cloned());
+        let cn = class.name.clone();
+        let r = self.static_call(&cn, name, &full, type_args, span);
+        if let Some(sc) = self.scopes.last_mut() {
+            sc.remove(&alias);
+        }
+        Some(r)
     }
 
     fn lower_args_plain(&mut self, args: &[Arg]) -> Vec<GExpr> {

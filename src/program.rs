@@ -333,6 +333,19 @@ impl Program {
             prog.class_index.insert(name.clone(), prog.classes.len());
             prog.classes.push(ci);
         }
+        // A base written with a namespace-relative name (`class FloatField : Abstract.Field`) names a
+        // user class by its last segment.
+        let known: Vec<String> = prog.class_index.keys().cloned().collect();
+        for c in prog.classes.iter_mut() {
+            if let Some(b) = &c.base {
+                if !known.iter().any(|k| k == b) {
+                    let short = b.rsplit('.').next().unwrap_or(b).to_string();
+                    if short != *b && known.iter().any(|k| *k == short) {
+                        c.base = Some(short);
+                    }
+                }
+            }
+        }
         prog
     }
 
@@ -354,6 +367,19 @@ impl Program {
     }
 
     /// Walk the user class chain (inclusive).
+    /// Extension methods named `name`: static methods whose first parameter is `this T x`.
+    pub fn extension_methods(&self, name: &str) -> Vec<(&ClassInfo, &MethodInfo)> {
+        let mut out = Vec::new();
+        for c in &self.classes {
+            for m in &c.methods {
+                if m.is_static && m.name == name && m.decl.params.first().map_or(false, |p| p.this) {
+                    out.push((c, m));
+                }
+            }
+        }
+        out
+    }
+
     pub fn class_chain(&self, name: &str) -> Vec<&ClassInfo> {
         let mut out = Vec::new();
         let mut cur = self.class(name);

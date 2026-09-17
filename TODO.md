@@ -363,8 +363,16 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
     the way: a stack overflow on chained `new const` values across classes (constants are now
     inlined in the declaring class's context with a re-entry guard), `using A = B;` inside a
     namespace, index initializers, and object / collection initializers (they were dropped). All
-    324 files match tree-sitter structurally. Not done yet for these: scene import and runtime
-    scenarios, the remaining unmapped members and "unknown type" warnings (548 in Udonity). Examples:
+    324 files match tree-sitter structurally. Second pass (same day): user extension methods
+    (`this T x` parameters, resolved after the catalog), statics of classes with no live instance
+    (`Udon.call_static` / `static_get` create a holder node lazily), qualified base names
+    (`Varneon.VUdon.Editors.Foo` -> `Foo`), user types that shadow a catalog type fall back to the
+    catalog member, nine more Unity enums, `Type.Equals`, VUdon-style array extensions, and arrays
+    that are initialised with or compared against null stay untyped in SafeGDScript. Coverage fixture
+    `TExt.cs` (875 checks in total). Warnings now: UdonEssentials 4, EmyChess 1,
+    UdonCombatSystem 3, UdonZip 0, model-loader-tablet 18, glb-loader 26, Udonity 78 (was 548),
+    UdonUtils 390. Not done yet for these: scene import and runtime scenarios, the remaining
+    unmapped members and "unknown type" warnings. Examples:
     1. https://github.com/Varneon/UdonEssentials (Console, Event Dispatcher, Player list)
     2. https://github.com/emymin/EmyChess
     3. https://github.com/Toly65/UdonCombatSystem (might be hard to test without VR, but it does support some desktop features)

@@ -881,3 +881,24 @@ type string
 
 type object
   ctor() => U.new_object()
+
+# --- Type.Equals and the array extension methods of Varneon's VUdon ArrayExtensions (arrays are
+# fixed-size in C#: every method returns a new array, `arr = arr.Add(x)`) ---------------------------
+
+type Type
+  Equals(Type): bool => $0 == $1
+  Equals(object): bool => $0 == $1
+
+type Array
+  Add(object): Array => U.arr_added($0, $1)
+  AddUnique(object): Array => U.arr_added_unique($0, $1)
+  AddRange(Array): Array => ($0 + $1)
+  Insert(int, object): Array => U.arr_inserted($0, $1, $2)
+  Remove(object): Array => U.arr_removed($0, $1)
+  RemoveAt(int): Array => U.arr_removed_at($0, $1)
+  IndexOf(object): int => $0.find($1)
+  LastIndexOf(object): int => $0.rfind($1)
+  FirstOrDefault(): object => ($0[0] if $0.size() > 0 else null)
+  LastOrDefault(): object => ($0[-1] if $0.size() > 0 else null)
+  Resize(int): Array => U.array_resized($0, $1)
+  Reverse(): Array => U.arr_reversed($0)

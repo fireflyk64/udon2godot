@@ -567,7 +567,14 @@ impl<'p> Lowerer<'p> {
                 let _ = self.take_pre();
                 self.coerce(lw, &p.ty).e
             });
-            let ty = if p.mode == ParamMode::Params { Some("Array".into()) } else { self.gd_type(&p.ty) };
+            let mut ty = if p.mode == ParamMode::Params { Some("Array".into()) } else { self.gd_type(&p.ty) };
+            // An array parameter the body tests against null (`a == null ? 0 : a.Length`) must be
+            // able to receive null: a typed Array slot rejects it, so the parameter stays untyped.
+            if matches!(p.ty, Ty::Array(_) | Ty::MultiArray(..)) && p.mode != ParamMode::Params {
+                if m.decl.body.as_ref().map_or(false, |b| b.stmts.iter().any(|s| stmt_null_tests(s, &p.name))) {
+                    ty = None;
+                }
+            }
             let default = if p.mode == ParamMode::Params { Some(GExpr::Array(vec![])) } else { default };
             params.push(GParam { name: gd, ty, default });
         }
@@ -656,6 +663,9 @@ impl<'p> Lowerer<'p> {
                     let gd = self.declare_local(&d.name, ty.clone());
                     let hint = match &ty {
                         Ty::Null | Ty::Unknown => None,
+                        // `T[] x = null;` keeps its null (scripts test `x == null`): a typed Array
+                        // slot cannot hold it, so the local stays untyped
+                        Ty::Array(_) | Ty::MultiArray(..) if matches!(init, Some(GExpr::Null)) => None,
                         t => self.gd_type(t),
                     };
                     // Uninitialized locals get their C# default so typed slots never hold the
@@ -1147,6 +1157,46 @@ impl<'p> Lowerer<'p> {
 
 pub(crate) fn is_ident(e: &Expr, name: &str) -> bool {
     matches!(e.unparen(), Expr::Ident(n, _) if n == name)
+}
+
+/// Does the statement compare the variable `var` with null (`var == null`, `null != var`)?
+fn stmt_null_tests(s: &Stmt, var: &str) -> bool {
+    let e = |x: &Expr| expr_null_tests(x, var);
+    match s {
+        Stmt::Block(b) => b.stmts.iter().any(|s| stmt_null_tests(s, var)),
+        Stmt::LocalDecl { declarators, .. } => declarators.iter().any(|d| d.init.as_ref().map_or(false, e)),
+        Stmt::Expr(x, _) => e(x),
+        Stmt::If { cond, then, els, .. } => e(cond) || stmt_null_tests(then, var) || els.as_ref().map_or(false, |s| stmt_null_tests(s, var)),
+        Stmt::While { cond, body, .. } | Stmt::DoWhile { body, cond, .. } => e(cond) || stmt_null_tests(body, var),
+        Stmt::For { init, cond, update, body, .. } => init.iter().any(|s| stmt_null_tests(s, var)) || cond.as_ref().map_or(false, e) || update.iter().any(e) || stmt_null_tests(body, var),
+        Stmt::Foreach { iter, body, .. } => e(iter) || stmt_null_tests(body, var),
+        Stmt::Switch { subject, sections, .. } => e(subject) || sections.iter().any(|sec| sec.body.iter().any(|s| stmt_null_tests(s, var))),
+        Stmt::Return(x, _) | Stmt::Throw(x, _) => x.as_ref().map_or(false, e),
+        Stmt::Try { body, catches, finally, .. } => body.stmts.iter().any(|s| stmt_null_tests(s, var)) || catches.iter().any(|b| b.stmts.iter().any(|s| stmt_null_tests(s, var))) || finally.as_ref().map_or(false, |b| b.stmts.iter().any(|s| stmt_null_tests(s, var))),
+        Stmt::Lock { body, .. } => stmt_null_tests(body, var),
+        _ => false,
+    }
+}
+
+fn expr_null_tests(x: &Expr, var: &str) -> bool {
+    let is_var = |e: &Expr| matches!(e.unparen(), Expr::Ident(n, _) if n == var);
+    let is_null = |e: &Expr| matches!(e.unparen(), Expr::Lit(Lit::Null, _));
+    let r = |e: &Expr| expr_null_tests(e, var);
+    match x {
+        Expr::Binary { op: BinOp::Eq | BinOp::Ne, lhs, rhs, .. } if (is_var(lhs) && is_null(rhs)) || (is_null(lhs) && is_var(rhs)) => true,
+        Expr::Binary { lhs, rhs, .. } | Expr::Assign { lhs, rhs, .. } => r(lhs) || r(rhs),
+        Expr::Unary { expr, .. } | Expr::Cast { expr, .. } | Expr::Is { expr, .. } | Expr::As { expr, .. } => r(expr),
+        Expr::Paren(e, _) | Expr::Nameof(e, _) | Expr::Checked(e, _, _) => r(e),
+        Expr::Cond { cond, then, els, .. } => r(cond) || r(then) || r(els),
+        Expr::Member { target, .. } => r(target),
+        Expr::Call { callee, args, .. } => r(callee) || args.iter().any(|a| r(&a.expr)),
+        Expr::Index { target, indices, .. } => r(target) || indices.iter().any(r),
+        Expr::New { args, init, .. } => args.iter().any(|a| r(&a.expr)) || init.as_ref().map_or(false, |i| i.iter().any(r)),
+        Expr::NewArray { sizes, init, .. } => sizes.iter().flatten().any(r) || init.as_ref().map_or(false, |i| i.iter().any(r)),
+        Expr::ArrayInit(items, _) => items.iter().any(r),
+        Expr::Interp(pieces, _) => pieces.iter().any(|p| matches!(p, InterpPiece::Expr { expr, .. } if r(expr))),
+        _ => false,
+    }
 }
 
 fn is_const_expr(e: &GExpr) -> bool {

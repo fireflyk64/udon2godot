@@ -549,17 +549,72 @@ func register_class(class_name_: String, script: Script) -> void:
 	_static_registry[class_name_] = script
 
 func call_static(class_name_: String, method: String, args: Array):
-	var s = _static_registry.get(class_name_)
+	var s = _static_holder(class_name_)
 	if s == null:
-		push_error("Udon.call_static: class '%s' is not registered (Udon.register_class)" % class_name_)
+		push_error("Udon.call_static: class '%s' is not registered and has no converted script" % class_name_)
 		return null
 	return s.callv(method, args)
 
 func static_get(class_name_: String, member: String):
-	var s = _static_registry.get(class_name_)
+	var s = _static_holder(class_name_)
 	if s == null:
 		return null
 	return s.get(member)
+
+## The object static calls of a converted class go to: a live behaviour of that class when the
+## scene has one, else a holder instance of its script, found through Udon.register_class, the
+## conversion manifest (`udon/manifest`) or the usual output folders. Holders stay out of the tree:
+## a static helper needs no lifecycle (extension methods, utility classes).
+var _static_holders: Dictionary = {}
+var _manifest_classes = null
+
+func _static_holder(class_name_: String) -> Object:
+	var h = _static_holders.get(class_name_)
+	if h != null and is_instance_valid(h):
+		return h
+	for b in behaviours():
+		if b.has_meta("udon_class") and str(b.get_meta("udon_class")) == class_name_:
+			return b
+	var script: Script = _static_registry.get(class_name_) as Script
+	if script == null:
+		var path: String = _converted_script_path(class_name_)
+		if path != "":
+			script = load(path) as Script
+	if script == null:
+		return null
+	var n := Node.new()
+	n.name = "Static_" + class_name_
+	n.set_script(script)
+	_static_holders[class_name_] = n
+	return n
+
+func _converted_script_path(class_name_: String) -> String:
+	if _manifest_classes == null:
+		_manifest_classes = {}
+		var mp: String = str(ProjectSettings.get_setting("udon/manifest", "res://converted/udon_manifest.json"))
+		if FileAccess.file_exists(mp):
+			var parsed = JSON.parse_string(FileAccess.get_file_as_string(mp))
+			if parsed is Dictionary and parsed.get("classes") is Dictionary:
+				_manifest_classes = parsed["classes"]
+	var entry = _manifest_classes.get(class_name_)
+	if entry is Dictionary and str(entry.get("script", "")) != "":
+		return str(entry["script"])
+	var dirs: Array = [str(ProjectSettings.get_setting("udon/manifest", "res://converted/udon_manifest.json")).get_base_dir()]
+	for b in behaviours():
+		var scr: Script = b.get_script()
+		if scr != null and scr.resource_path != "" and not dirs.has(scr.resource_path.get_base_dir()):
+			dirs.append(scr.resource_path.get_base_dir())
+	for d in dirs:
+		var p: String = d.path_join(class_name_ + ".sgd")
+		if ResourceLoader.exists(p):
+			return p
+	return ""
+
+func _exit_tree() -> void:
+	for h in _static_holders.values():
+		if is_instance_valid(h):
+			h.free()
+	_static_holders.clear()
 
 # ---------------------------------------------------------------------------
 # Extras: network statistics, MIDI, economy, menus, player objects

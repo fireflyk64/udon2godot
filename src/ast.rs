@@ -213,6 +213,8 @@ pub enum ParamMode {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub attrs: Vec<Attribute>,
+    /// `this T x`: the first parameter of an extension method.
+    pub this: bool,
     pub mode: ParamMode,
     pub ty: TypeRef,
     pub name: String,

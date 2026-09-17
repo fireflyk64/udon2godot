@@ -621,13 +621,14 @@ impl Parser {
                 }
                 ParamMode::Value
             };
-            if self.is_kw(Kw::This) {
+            let this = self.is_kw(Kw::This);
+            if this {
                 self.advance();
             }
             let ty = self.parse_type()?;
             let name = self.expect_ident()?;
             let default = if self.eat_punct(P::Eq) { Some(self.parse_expr()?) } else { None };
-            params.push(Param { attrs, mode, ty, name, default, span });
+            params.push(Param { attrs, this, mode, ty, name, default, span });
             if !self.eat_punct(P::Comma) {
                 break;
             }
