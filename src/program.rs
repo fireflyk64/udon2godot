@@ -123,15 +123,16 @@ pub struct ClassInfo {
 }
 
 impl ClassInfo {
-    /// Attribute, editor and exception classes are ordinary C# next to the Udon programs:
-    /// UdonSharp never compiles them and nothing can run them, so they are not converted.
+    /// Attribute, editor and exception classes, and plain MonoBehaviours / ScriptableObjects
+    /// (editor-side descriptors), are ordinary C# next to the Udon programs: UdonSharp never
+    /// compiles them and nothing can run them, so they are not converted.
     pub fn is_editor_only(&self) -> bool {
         if self.is_behaviour {
             return false;
         }
         let Some(base) = &self.base else { return false };
         let short = base.rsplit('.').next().unwrap_or(base);
-        matches!(short, "Attribute" | "PropertyAttribute" | "DefaultExecutionOrder" | "Editor" | "EditorWindow" | "PropertyDrawer" | "DecoratorDrawer" | "Exception" | "AssetPostprocessor" | "ScriptedImporter")
+        matches!(short, "Attribute" | "PropertyAttribute" | "DefaultExecutionOrder" | "Editor" | "EditorWindow" | "PropertyDrawer" | "DecoratorDrawer" | "Exception" | "AssetPostprocessor" | "ScriptedImporter" | "MonoBehaviour" | "ScriptableObject")
             || short.ends_with("Attribute")
             || short.ends_with("Exception")
             || short.ends_with("Drawer")

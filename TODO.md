@@ -434,6 +434,25 @@ scenario, like the pool table.
       button raycast is guarded by its state again). Attribute / editor / exception classes are
       skipped instead of lowered (UdonUtils: 67 warnings and 2 errors -> 4 warnings).
 
+## Unity UI layout groups
+
+UdonEssentials' player list adds its entries under a `VerticalLayoutGroup` + `ContentSizeFitter`;
+the importer ignored layout components, so an instantiated entry had zero width (its anchors
+stretch over a parent that Unity sizes through the layout) and the list showed nothing.
+
+- [ ] `udon_layout_group.gd` (runtime): Horizontal / Vertical layout (padding, spacing, child
+      alignment, childControlWidth/Height, childForceExpandWidth/Height, reverse arrangement), Grid
+      layout (cell size, spacing, start corner / axis, constraint), `ContentSizeFitter` (preferred /
+      min size per axis), `LayoutElement` (min / preferred / flexible, ignoreLayout); re-layout
+      when children are added, removed, shown, hidden or resized.
+- [ ] Importer: layout components become `udon_layout` / `udon_fitter` / `udon_layout_element`
+      metadata and the script is attached.
+- [ ] Fixture: a vertical list with a fitter that receives instantiated entries, a horizontal row
+      with flexible elements, a grid; rendered positions checked.
+- [ ] UdonEssentials scenario checks the entry's rectangle; screenshot of the list.
+- [ ] `DateTime.ToString` custom formats: `MMMM`, `MMM`, `dddd`, `ddd`, `hh`, `h`, `tt`, quoted
+      literals (the list shows "17 0909 2026 hh:58:49" for "dd MMMM yyyy hh:mm:ss").
+
 ## UdonSharp 0.x scenes (no C# proxy components)
 
 UdonEssentials (2021) is an UdonSharp 0.x package: its prefabs carry only `UdonBehaviour`

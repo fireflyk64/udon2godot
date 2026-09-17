@@ -245,7 +245,7 @@ fn main() {
             skipped += 1;
             if !args.quiet {
                 let file = class.source_files.first().cloned().unwrap_or_default();
-                eprintln!("{}: note: `{}` derives from `{}` (attribute / editor code, not an Udon program); skipped", file, class.name, class.base.clone().unwrap_or_default());
+                eprintln!("{}: note: `{}` derives from `{}` (plain C# / editor code, not an Udon program); skipped", file, class.name, class.base.clone().unwrap_or_default());
             }
             continue;
         }
@@ -289,7 +289,7 @@ fn main() {
         }
     }
     if !args.quiet {
-        let skipped_note = if skipped > 0 { format!(" ({} attribute / editor class(es) skipped)", skipped) } else { String::new() };
+        let skipped_note = if skipped > 0 { format!(" ({} plain C# / editor class(es) skipped)", skipped) } else { String::new() };
         println!("{} class(es), {} warning(s), {} error(s){}", prog.classes.len() - skipped, total_warn, total_err, skipped_note);
     }
     if had_error {
