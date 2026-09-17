@@ -19,6 +19,14 @@ world() {
   local tscn="$out/${scene#res://}"
   local stale=""
   [ -f "$tscn" ] && stale=$(find refs/unidot_importer -maxdepth 1 -name "*.gd" -newer "$tscn" -type f 2>/dev/null | head -1)
+  # ... or when the converter now describes the scripts differently: values are set through the manifest
+  if [ -f "$tscn" ] && [ -z "$stale" ] && [ -f "$out/converted/udon_manifest.json" ]; then
+    local cs=()
+    mapfile -d '' cs < <(find "$src" -name "*.cs" -not -path "*/Editor/*" -not -path "*/editor/*" -print0)
+    cargo build --release -q && target/release/udon2godot -q --check --manifest "$out/converted/udon_manifest.new.json" --res-prefix res://converted "${cs[@]}" > /dev/null 2>&1
+    if [ -f "$out/converted/udon_manifest.new.json" ] && ! cmp -s "$out/converted/udon_manifest.json" "$out/converted/udon_manifest.new.json"; then stale="the converter's manifest"; fi
+    rm -f "$out/converted/udon_manifest.new.json"
+  fi
   if [ ! -f "$tscn" ] || [ -n "$stale" ] || [ "${REIMPORT:-0}" = 1 ]; then
     [ -n "$stale" ] && echo "re-importing: $stale is newer than the imported scene"
     rm -rf "$out"
@@ -45,6 +53,7 @@ world() {
     [ $dcode -ne 0 ] && code=$dcode
   fi
   godot_guard_report "$out"/*.log "$out.import.log"
+  godot_script_errors "$out/scenario.log" "$out/scenario_display.log" || code=1
   [ $code -ne 0 ] && FAILED+=("$name")
   return 0
 }

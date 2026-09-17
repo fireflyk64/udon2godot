@@ -9,6 +9,13 @@ OUT=${1:-/tmp/udon2godot_worlds/billiards}
 SCENE=res://MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn
 # a world imported before the importer changed is stale
 STALE=$(find refs/unidot_importer -maxdepth 1 -name "*.gd" -newer "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" -type f 2>/dev/null | head -1)
+# ... or when the converter now describes the scripts differently (fields, types, exported flags):
+# the import sets serialized values through that manifest
+if [ -z "$STALE" ] && [ -f "$OUT/converted/udon_manifest.json" ]; then
+  cargo build --release -q && target/release/udon2godot -q --check --manifest "$OUT/converted/udon_manifest.new.json" --res-prefix res://converted $(find refs/MS-VRCSA-Billiards -name "*.cs" -not -path "*/Editor/*") > /dev/null 2>&1
+  if [ -f "$OUT/converted/udon_manifest.new.json" ] && ! cmp -s "$OUT/converted/udon_manifest.json" "$OUT/converted/udon_manifest.new.json"; then STALE="the converter's manifest"; fi
+  rm -f "$OUT/converted/udon_manifest.new.json"
+fi
 if [ ! -f "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" ] || [ -n "$STALE" ] || [ "${REIMPORT:-0}" = 1 ]; then
   [ -n "$STALE" ] && echo "re-importing: $STALE is newer than the imported scene"
   rm -rf "$OUT"
@@ -51,4 +58,5 @@ grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/play.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/play.log")  (log: $OUT/play.log)"
 [ $PCODE -ne 0 ] && CODE=$PCODE
 godot_guard_report "$OUT"/*.log
+godot_script_errors "$OUT/scenario.log" "$OUT/play.log" || CODE=1
 exit $CODE

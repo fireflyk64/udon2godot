@@ -2,7 +2,7 @@
 ## Unity's numbers for the converted Fixture.cs and wires its Button.onClick persistent call.
 extends RefCounted
 
-func run(r) -> void:
+func run(r):
 	await r.wait(20)
 	var fx: Node = r.behaviour("Fixture")
 	r.check(fx != null, "Fixture behaviour present")
@@ -42,6 +42,9 @@ func run(r) -> void:
 ## BL/BR (120 × 60, centres 60 px in from the corners), Center (200 × 80), ScaledBtn (80 × 30 inside a
 ## 2× container at (0, 200)), a nested canvas with a text. Checks the plane fit, the world ↔ canvas
 ## mapping and clicks through it; with a display, samples the rendered colours at the projected
+	return true
+
+
 ## button centres (texture orientation) and clicks through the window.
 func _ui_checks(r, fx: Node) -> void:
 	var cv: Node = r.find("UiCanvas")

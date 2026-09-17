@@ -19,7 +19,7 @@ class Probe:
 			"_FixedUpdateDelegate":
 				fixed_updates += 1
 
-func run(r) -> void:
+func run(r):
 	await r.wait(40)
 	var udon: Node = r.udon()
 	var me = udon.local_player()
@@ -106,3 +106,4 @@ func run(r) -> void:
 		await r.wait(5)
 		await r.shot("playerlist")
 	await r.shot("essentials")
+	return true

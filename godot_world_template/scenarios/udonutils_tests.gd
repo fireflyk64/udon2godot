@@ -12,7 +12,7 @@ func _tests(r) -> Array:
 			out.append(n)
 	return out
 
-func run(r) -> void:
+func run(r):
 	await r.wait(60)
 	var controllers: Array = []
 	for n in r._all(r.root):
@@ -52,3 +52,4 @@ func run(r) -> void:
 	r.check(passed >= 1, "at least one of the package's own tests passes: %d" % passed)
 	r.check(other == 0, "every test reached a verdict within a minute: %d did not" % other)
 	await r.shot("udonutils_tests")
+	return true

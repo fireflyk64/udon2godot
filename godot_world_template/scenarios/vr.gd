@@ -5,7 +5,7 @@
 ## and sitting in a station with the trigger and leaving with A/X.
 extends RefCounted
 
-func run(r) -> void:
+func run(r):
 	await r.wait(10)
 	var u: Node = r.u()
 	var udon: Node = r.udon()
@@ -76,3 +76,4 @@ func run(r) -> void:
 		player.simulate_button("right", "ax_button", false)
 		await r.wait(3)
 		r.check(player.station == null and int(chair_script.get("exited")) >= 1, "A/X left the station: exited=%d" % int(chair_script.get("exited")))
+	return true

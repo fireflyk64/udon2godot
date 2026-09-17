@@ -8,7 +8,9 @@ OUT=${1:-/tmp/udon2godot_worlds/fixture}
 SCENE=res://unity_fixture/Fixture/Fixture.tscn
 mkdir -p "$(dirname "$OUT")"   # the import log sits next to the world folder
 # a world imported before the Unity sources or the importer changed is stale
-STALE=$(find tests/unity_fixture refs/unidot_importer/*.gd -newer "$OUT/unity_fixture/Fixture/Fixture.tscn" -type f 2>/dev/null | head -1)
+# (converter sources count too: field values are set on the converted scripts during the import,
+#  a script that did not compile then silently loses all of them)
+STALE=$(find tests/unity_fixture refs/unidot_importer/*.gd src data/api -newer "$OUT/unity_fixture/Fixture/Fixture.tscn" -type f 2>/dev/null | head -1)
 if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ -n "$STALE" ] || [ "${REIMPORT:-0}" = 1 ]; then
   [ -n "$STALE" ] && echo "re-importing: $STALE is newer than the imported scene"
   rm -rf "$OUT"
@@ -49,4 +51,5 @@ grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/scenario_vr.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario_vr.log")  (log: $OUT/scenario_vr.log)"
 [ $VCODE -ne 0 ] && CODE=$VCODE
 godot_guard_report "$OUT"/*.log "$OUT.import.log"
+godot_script_errors "$OUT/scenario.log" "$OUT/scenario_display.log" "$OUT/scenario_player.log" "$OUT/scenario_vr.log" || CODE=1
 exit $CODE

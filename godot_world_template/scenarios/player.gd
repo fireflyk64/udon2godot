@@ -2,7 +2,7 @@
 ## frees the mouse and clicks the UiCanvas through the player's camera, and reports tracking data.
 extends RefCounted
 
-func run(r) -> void:
+func run(r):
 	await r.wait(10)
 	var u: Node = r.u()
 	var udon: Node = r.udon()
@@ -84,3 +84,4 @@ func run(r) -> void:
 		await r.wait(5)
 		r.check(player.station == null and int(chair_script.get("exited")) == 2, "left again: exited=%d" % int(chair_script.get("exited")))
 	await r.shot("player")
+	return true

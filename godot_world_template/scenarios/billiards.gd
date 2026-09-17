@@ -2,7 +2,7 @@
 ## converted scripts drive the table (menu → network state → physics → ball movement).
 extends RefCounted
 
-func run(r) -> void:
+func run(r):
 	await r.wait(30)
 	var bm: Node = r.behaviour("BilliardsModule")
 	var menu: Node = r.behaviour("MenuManager")
@@ -60,3 +60,4 @@ func run(r) -> void:
 		r.u().ui_press(undo)
 		await r.wait(5)
 		r.check(true, "UI button press delivered without error")
+	return true

@@ -10,3 +10,19 @@ GODOT="scripts/godot.sh"
 godot_guard_report() {
   grep -h "^godot.sh:" "$@" 2>/dev/null | sed 's/^/!! /' || true
 }
+
+# A GDScript error inside a scenario (or the runner) aborts that function while the run goes on
+# and may still print "SCENARIO PASSED": count such lines so the caller can fail the run.
+#   godot_script_errors <log>...   → prints a note and returns 1 when any log has script errors
+godot_script_errors() {
+  local total=0 f n
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    n=$(grep -c '^SCRIPT ERROR' "$f" 2>/dev/null || true)
+    if [ "${n:-0}" -gt 0 ]; then
+      echo "!! $n GDScript error(s) in $f: $(grep -m1 '^SCRIPT ERROR' "$f" | cut -c1-160)"
+      total=$((total + n))
+    fi
+  done
+  [ "$total" -eq 0 ]
+}

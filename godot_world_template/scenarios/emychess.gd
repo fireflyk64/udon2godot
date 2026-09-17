@@ -10,7 +10,7 @@ func _move(r, piece: Node, x: int, y: int) -> void:
 	piece.PieceDropped(x, y)
 	await r.wait(8)
 
-func run(r) -> void:
+func run(r):
 	await r.wait(30)
 	var cm: Node = r.behaviour("ChessManager")
 	var board: Node = r.behaviour("Board")
@@ -89,3 +89,4 @@ func run(r) -> void:
 	cm._EndGame()
 	await r.wait(10)
 	r.check(cm.get("inProgress") == false, "game ended")
+	return true

@@ -7,7 +7,7 @@ extends RefCounted
 
 const CURSOR_PER_PIXEL: float = 0.0035  # DesktopManager: cursor += Mouse X (= pixels × 0.1) × 0.035
 
-func run(r) -> void:
+func run(r):
 	await r.wait(30)
 	var u: Node = r.u()
 	var udon: Node = r.udon()
@@ -106,3 +106,4 @@ func run(r) -> void:
 			moved += 1
 	r.check(moved >= 2, "balls moved after the shot: %d" % moved)
 	await r.shot("settled")
+	return true

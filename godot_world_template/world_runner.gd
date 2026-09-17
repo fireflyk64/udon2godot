@@ -109,7 +109,11 @@ func _run_scenario(path: String) -> bool:
 		return false
 	var scen = scr.new()
 	print("[scenario] " + path)
-	await scen.run(self)
+	# A script error inside the scenario makes run() return early with null and GDScript carries on:
+	# scenarios return true from their last line, anything else after clean checks is a failure.
+	var completed = await scen.run(self)
+	if completed != true and _failures.is_empty():
+		_failures.append("the scenario did not run to its end (script error, or an early return without a failed check)")
 	print("[scenario] %d checks, %d failure(s)" % [_checks, _failures.size()])
 	for f in _failures:
 		print("   FAIL " + f)
