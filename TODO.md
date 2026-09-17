@@ -374,6 +374,26 @@ types match each other, a base type accepts a derived one, an int parameter acce
       declaration turned typed fields into Variant (a declaration now overrides an earlier bare
       block; unit test). For this batch the diff is 6 lines, all intended.
 
+## Community prefab worlds: import and run
+
+The eight community repositories convert (see "Long term"); none has been imported as a scene and
+run yet. The ones that ship an example scene go through `scripts/import_world.sh` and get a
+scenario, like the pool table.
+
+- [ ] `scripts/setup_deps.sh --community` clones the repositories at pinned commits (they are not
+      needed for the core suites): UdonEssentials 85d0094, EmyChess 428aae7, UdonUtils 89502b1, and
+      the converter-only ones.
+- [ ] EmyChess `ExampleScene.unity`: import, doctor report clean of unknown scripts, scenario
+      `scenarios/emychess.gd`: the board sets up, a game starts, a legal move made through the
+      script API changes the board state, an illegal one is rejected; screenshot of the board.
+- [ ] UdonEssentials `UdonEssentials_ExampleScene.unity`: import, scenario: the console window
+      receives log lines, the player list shows the local player, the event dispatcher fires.
+- [ ] UdonUtils `RuntimeTestingExample.unity`: the package's own `TestController` runs its test
+      cases in the imported world; the scenario reports its pass / fail counts.
+- [ ] `scripts/test_world_community.sh` runs the three (skips what is not cloned); optional CI step.
+- [ ] Whatever the imports expose in the converter, importer or runtime is fixed at the source and
+      covered by a fixture check (not patched in the scenario).
+
 ## Next
 
 - VR on real OpenXR hardware (the player and per-hand pointers exist and pass with simulated
