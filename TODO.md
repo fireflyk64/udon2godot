@@ -394,8 +394,13 @@ scenario, like the pool table.
       `scenarios/emychess.gd` passes 20 checks: both sides register, the imported Start button
       starts the game, 32 pieces, 1. e4, an illegal pawn jump is rejected, 1... e5, 2. Nf3,
       2... d5 3. exd5 captures (31 pieces, white scores), a blocked bishop move is rejected, end.
-- [ ] UdonEssentials `UdonEssentials_ExampleScene.unity`: import, scenario: the console window
-      receives log lines, the player list shows the local player, the event dispatcher fires.
+- [x] UdonEssentials `UdonEssentials_ExampleScene.unity` (an UdonSharp 0.x package, see the next
+      section): `scenarios/udon_essentials.gd` passes 16 checks: the player list adds an entry
+      with the local player's name (instantiated from the UI prefab nested in the list), online
+      count, instance master, clocks tick; SimplePlayerSettings applies walk / run / jump on join;
+      Groups answers; the EventDispatcher prefab dispatches Update / LateUpdate / FixedUpdate to
+      a registered receiver and stops after removal. 84 fields on 5 proxy-less behaviours, 2
+      variable-table overrides of the scene.
 - [ ] UdonUtils `RuntimeTestingExample.unity`: the package's own `TestController` runs its test
       cases in the imported world; the scenario reports its pass / fail counts.
 - [~] `scripts/test_world_community.sh` runs them (skips what is not cloned, re-imports when the
@@ -453,7 +458,8 @@ The importer attached the scripts ("missing proxies: 5") and every field kept it
       Color, reference, reference array, float and string arrays, null). Also `Item.prefab`, a UI
       prefab with a RectTransform root used as an instantiation template (unidot typed prefab
       roots as Node3D and dropped such prefabs). Fixture 74 / 107 / 25 / 16.
-- [ ] UdonEssentials scenario: player list entry, player settings, groups, event dispatcher.
+- [x] UdonEssentials scenario: player list entry, player settings, groups, event dispatcher (16
+      checks, see "Community prefab worlds").
 
 ## Next
 

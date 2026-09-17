@@ -19,7 +19,7 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 |---|---|---|---|---|---|
 | [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break (9 checks), then played through window input (17 checks) |
 | [EmyChess](https://github.com/emymin/EmyChess) (example scene) | 13 | 2.2k | 0 | 13/13 | imported world: a game is played, 20/20 scenario checks (`scripts/test_world_community.sh`) |
-| [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | — | 0 | 6/6 | imported world, fields from the Udon variable table; scenario in progress |
+| [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | 1.9k | 0 | 6/6 | imported world, fields decoded from the Udon variable table: player list, player settings, groups, event dispatcher, 16/16 scenario checks |
 | [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table) | 21 | 7.1k | 0 | 21/21 | — |
 | [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | — |
 | `tests/coverage/*.cs` API coverage fixtures (17 files) | 19 | 2.8k | 0 | all | 924/924 checks |

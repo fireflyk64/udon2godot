@@ -751,7 +751,6 @@ impl<'p> Lowerer<'p> {
                                 let mut nested = pre;
                                 nested.extend(self.lower_if_chain(c2, then, els.as_deref()));
                                 els_out = Some(nested);
-                                cur = None;
                                 break;
                             }
                             branches.push((c2, self.lower_embedded(then)));

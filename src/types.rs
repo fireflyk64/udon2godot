@@ -213,7 +213,7 @@ impl Ty {
 
     /// Default value expression in GDScript for a declared type.
     pub fn is_value_struct(&self) -> bool {
-        matches!(self, Ty::Named(n) if matches!(n.as_str(), "Vector3" | "Vector2" | "Vector4" | "Quaternion" | "Color" | "Color32" | "Vector3Int" | "Vector2Int" | "Bounds" | "Rect" | "Ray" | "RaycastHit" | "Matrix4x4" | "Plane" | "Color" | "LayerMask" | "Keyframe" | "ContactPoint" | "VRCPlayerApi.TrackingData" | "TrackingData"))
+        matches!(self, Ty::Named(n) if matches!(n.as_str(), "Vector3" | "Vector2" | "Vector4" | "Quaternion" | "Color" | "Color32" | "Vector3Int" | "Vector2Int" | "Bounds" | "Rect" | "Ray" | "RaycastHit" | "Matrix4x4" | "Plane" | "LayerMask" | "Keyframe" | "ContactPoint" | "VRCPlayerApi.TrackingData" | "TrackingData"))
     }
 }
 

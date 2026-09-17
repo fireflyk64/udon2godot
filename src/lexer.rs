@@ -76,10 +76,6 @@ impl<'a> Lexer<'a> {
         self.src[self.pos..].chars().next()
     }
 
-    fn peek_char_at(&self, n: usize) -> Option<char> {
-        self.src[self.pos..].chars().nth(n)
-    }
-
     fn peek_byte(&self, n: usize) -> u8 {
         *self.bytes.get(self.pos + n).unwrap_or(&0)
     }
@@ -94,10 +90,6 @@ impl<'a> Lexer<'a> {
             self.col += 1;
         }
         Some(c)
-    }
-
-    fn starts_with(&self, s: &str) -> bool {
-        self.src[self.pos..].starts_with(s)
     }
 
     fn pp_active(&self) -> bool {

@@ -33,8 +33,15 @@ if [ $CONV -ne 0 ]; then echo "udon2godot failed; see $OUT/udon2godot_report.txt
 mkdir -p "$OUT/.godot"
 [ -f "$OUT/.godot/extension_list.cfg" ] || echo "res://addons/godot_sandbox/bin/godot-riscv.gdextension" > "$OUT/.godot/extension_list.cfg"
 "$GODOT" --headless --editor --path "$OUT" --quit > "$OUT/godot_first_import.log" 2>&1
-timeout "${IMPORT_TIMEOUT:-3600}" "$GODOT" --headless --editor --path "$OUT" -- --unidot-import "$SRC" --unidot-text-scenes --unidot-text-resources --unidot-log "$OUT/unidot_import.log" > "$OUT/unidot_stdout.log" 2>&1
-CODE=$?
+# The editor's threaded resource import crashes now and then (signal 11 while a font is
+# reimported, engine side): the unidot run is repeated, Godot's import cache makes it cheaper.
+for ATTEMPT in 1 2 3; do
+  timeout "${IMPORT_TIMEOUT:-3600}" "$GODOT" --headless --editor --path "$OUT" -- --unidot-import "$SRC" --unidot-text-scenes --unidot-text-resources --unidot-log "$OUT/unidot_import.log" > "$OUT/unidot_stdout.log" 2>&1
+  CODE=$?
+  if grep -q "^\[unidot headless\] import finished" "$OUT/unidot_stdout.log" || ! grep -q "Program crashed with signal" "$OUT/unidot_stdout.log"; then break; fi
+  echo "godot crashed during the import (attempt $ATTEMPT); retrying"
+  cp "$OUT/unidot_stdout.log" "$OUT/unidot_stdout.crash$ATTEMPT.log"
+done
 # the editor's exit code is not reliable; the driver prints a completion line
 if grep -q "^\[unidot headless\] import finished" "$OUT/unidot_stdout.log"; then CODE=0; else echo "unidot import did not finish (exit $CODE); see $OUT/unidot_stdout.log"; CODE=1; fi
 # Unity project settings (layers, gravity, fixed timestep, input axes) when available

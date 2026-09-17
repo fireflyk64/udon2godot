@@ -36,8 +36,8 @@ enum UserCallee {
 enum Resolved {
     Value(Lw),
     Type(String),
-    /// A method group on a target (target expr, method name)
-    Method(Option<Lw>, String),
+    /// A method group (method name)
+    Method(String),
     Unresolved,
 }
 
@@ -51,7 +51,7 @@ impl<'p> Lowerer<'p> {
             Expr::Ident(name, span) => match self.resolve_ident(name, *span) {
                 Resolved::Value(v) => v,
                 Resolved::Type(t) => Lw::new(GExpr::ident(&t), Ty::TypeName(t)),
-                Resolved::Method(_, n) => Lw::new(GExpr::ident(&crate::names::mangle(&n)), Ty::Method(n)),
+                Resolved::Method(n) => Lw::new(GExpr::ident(&crate::names::mangle(&n)), Ty::Method(n)),
                 Resolved::Unresolved => {
                     self.usage.unresolved.insert(name.clone());
                     self.warn(*span, format!("unresolved identifier `{}`", name));
@@ -312,7 +312,7 @@ impl<'p> Lowerer<'p> {
             return Resolved::Value(Lw::new(GExpr::ident(&format!("get_{}", p.gd_name)).call(vec![]), p.ty.clone()));
         }
         if !self.prog.find_methods(&self.class.name, name).is_empty() {
-            return Resolved::Method(None, name.to_string());
+            return Resolved::Method(name.to_string());
         }
         // inherited catalog members of the behaviour base (gameObject, transform, enabled, ...)
         if let Some(base) = self.prog.catalog_base_of_class(&self.class.name) {
@@ -323,7 +323,7 @@ impl<'p> Lowerer<'p> {
                 return Resolved::Value(self.apply_getter(&m, Some(&target), span));
             }
             if !self.prog.catalog.members(&base_name, name).is_empty() {
-                return Resolved::Method(Some(Lw::new(GExpr::ident("self"), Ty::Named(self.class.name.clone()))), name.to_string());
+                return Resolved::Method(name.to_string());
             }
         }
         // types
