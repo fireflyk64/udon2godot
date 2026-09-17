@@ -48,7 +48,10 @@ func run(r) -> void:
 			r.check(str(online.text).begins_with("1 /"), "players online: " + str(online.text))
 		if master != null:
 			r.check(str(master.text) == str(me.display_name), "instance master: " + str(master.text))
-		await r.wait(70)
+		# the list refreshes its clocks once per second of game time
+		var t0: int = Time.get_ticks_msec()
+		while Time.get_ticks_msec() - t0 < 2500:
+			await r.wait(10)
 		var in_world: Node = pl.get("TextTimeInWorld")
 		r.check(in_world != null and str(in_world.text).begins_with("00:00:0"), "time in world ticks as hh:mm:ss: " + str(in_world.text if in_world else null))
 	# --- simple player settings --------------------------------------------------------------

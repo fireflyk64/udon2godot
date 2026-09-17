@@ -12,6 +12,8 @@ public class Fixture : UdonSharpBehaviour
     public Transform target;
     // A UI prefab (its root is a RectTransform) used as a template: instantiated under the canvas
     // the way a player list adds its entries.
+    // VRCObjectPool whose pooled objects are its children (they are built after the component)
+    public VRC.SDK3.Components.VRCObjectPool pool;
     public GameObject itemTemplate;
     public Transform itemParent;
     // the inactive instance of the same prefab that sits in the canvas (a stripped GameObject of a
@@ -95,6 +97,12 @@ public class Fixture : UdonSharpBehaviour
         Check(NearV(transform.TransformPoint(Vector3.forward), new Vector3(2, 2, 3)), "TransformPoint " + transform.TransformPoint(Vector3.forward));
         Check(target != null, "target reference bound");
         Check(hiddenNumber == 42 && hiddenTarget == target, "[HideInInspector] public fields keep their serialized values: " + hiddenNumber);
+        GameObject first = pool != null ? pool.TryToSpawn() : null;
+        GameObject second = pool != null ? pool.TryToSpawn() : null;
+        GameObject third = pool != null ? pool.TryToSpawn() : null;
+        Check(first != null && second != null && third == null && first.name == "Pooled0" && second.name == "Pooled1" && first.activeSelf, "object pool spawns its two children in order, then is empty: " + (first == null ? "null" : first.name));
+        if (first != null) { pool.Return(first); }
+        Check(first != null && !first.activeSelf && pool.TryToSpawn() == first, "a returned object is inactive and spawns again");
         if (target != null)
         {
             Check(NearV(target.position, new Vector3(-2, 0.5f, 4)), "target position " + target.position);
