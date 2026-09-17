@@ -187,6 +187,10 @@ func _ui_checks(r, fx: Node) -> void:
 	var panel: Node = r.find("Panel")
 	var panel_child: Node = r.find("PanelChild")
 	r.check(panel is TextureRect and panel.texture != null and panel.self_modulate.is_equal_approx(Color(1, 0.5, 0)) and panel.modulate.is_equal_approx(Color.WHITE), "sprite-less Image draws a white texture tinted through self_modulate: " + str(panel.self_modulate if panel is TextureRect else null))
+	# The scroll viewport's Mask hides its own graphic (m_ShowMaskGraphic 0) and is listed before the
+	# Image on that object: the image's colour must not bring the graphic back
+	var mask_vp: Node = srect.get_node_or_null("Viewport") if srect != null else null  # (canvases have a SubViewport of that name too)
+	r.check(mask_vp is TextureRect and mask_vp.clip_contents and is_zero_approx(mask_vp.self_modulate.a), "mask with a hidden graphic stays invisible whatever the component order: " + str(mask_vp.self_modulate if mask_vp is TextureRect else null))
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)

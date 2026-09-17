@@ -53,7 +53,9 @@ func run(r) -> void:
 		while Time.get_ticks_msec() - t0 < 2500:
 			await r.wait(10)
 		var in_world: Node = pl.get("TextTimeInWorld")
-		r.check(in_world != null and str(in_world.text).begins_with("00:00:0"), "time in world ticks as hh:mm:ss: " + str(in_world.text if in_world else null))
+		var clock := RegEx.new()
+		clock.compile("^\\d\\d:\\d\\d:\\d\\d$")
+		r.check(in_world != null and clock.search(str(in_world.text)) != null and str(in_world.text) != "00:00:00", "time in world ticks as hh:mm:ss: " + str(in_world.text if in_world else null))
 	# --- simple player settings --------------------------------------------------------------
 	var sps: Node = r.behaviour("SimplePlayerSettings")
 	r.check(sps != null, "SimplePlayerSettings behaviour present")

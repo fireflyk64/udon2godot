@@ -39,8 +39,10 @@ world() {
   if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ]; then
     mkdir -p "$out/shots"
     timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --scenario "$scenario" --shot "$out/shots/$name.png" > "$out/scenario_display.log" 2>&1
+    local dcode=$?
     grep -E "^\[scenario\] [0-9]|FAIL |SCENARIO" "$out/scenario_display.log"
     echo "screenshots: $out/shots"
+    [ $dcode -ne 0 ] && code=$dcode
   fi
   godot_guard_report "$out"/*.log "$out.import.log"
   [ $code -ne 0 ] && FAILED+=("$name")

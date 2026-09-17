@@ -44,6 +44,10 @@ func run(r) -> void:
 	r.check(e8 != null and str(e8.get("type")) == "king" and e8.get_white() == false, "black king on e8: " + str(e8.get("type") if e8 else null))
 	if e2 == null:
 		return
+	# look at the board from white's side, above the table
+	var bp: Vector3 = r.u().get_position(board)
+	r._place_camera(r.u().to_gd_v(bp + Vector3(0.0, 0.75, -0.85)), r.u().to_gd_v(bp))
+	await r.wait(2)
 	await r.shot("start")
 	# 1. e4
 	var e2_pos: Vector3 = r.u().get_position(e2)

@@ -3303,8 +3303,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1521}
   - component: {fileID: 1522}
-  - component: {fileID: 1523}
   - component: {fileID: 1524}
+  - component: {fileID: 1523}
   m_Layer: 5
   m_Name: Viewport
   m_TagString: Untagged
