@@ -74,6 +74,21 @@ func _ui_checks(r, fx: Node) -> void:
 		u.ui_click_world(cv, expect[name])
 		await r.wait(3)
 		r.check(int(fx.get(counters[name])) == before + 1 and str(fx.get("lastPressed")) == name.trim_suffix("Btn"), "%s pressed through ui_click_world: %d → %d, last=%s" % [name, before, int(fx.get(counters[name])), str(fx.get("lastPressed"))])
+	# A canvas parented under a child of a prefab instance (EmyChess hangs its menus on nodes of FBX
+	# instances): the RectTransform is a child of a stripped Transform. Holder is at Unity (4, 0, 3),
+	# its child Screen 1 m above, the 0.4 x 0.2 m canvas sits on it with ScreenBtn in the middle.
+	var scv: Node = r.find("ScreenCanvas")
+	var sbtn: Node = r.find("ScreenBtn")
+	r.check(scv != null and scv.has_meta("udon_canvas") and sbtn is BaseButton, "canvas under a prefab-instance child is imported with its button: %s %s" % [str(scv), str(sbtn)])
+	if scv != null and scv.has_meta("udon_canvas") and sbtn is BaseButton:
+		var holder: Node = r.find("Holder")
+		r.check(holder != null and holder.is_ancestor_of(scv), "the canvas hangs under the prefab instance: " + str(scv.get_path()))
+		var spos: Vector3 = u.get_position(sbtn)
+		r.check(spos.is_equal_approx(Vector3(4, 1, 3)), "ScreenBtn world position %s (expected (4, 1, 3))" % str(spos))
+		var sbefore: int = int(fx.get("screenPressed"))
+		u.ui_click_world(scv, Vector3(4, 1, 3))
+		await r.wait(3)
+		r.check(int(fx.get("screenPressed")) == sbefore + 1, "ScreenBtn pressed through ui_click_world: %d → %d" % [sbefore, int(fx.get("screenPressed"))])
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)

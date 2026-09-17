@@ -51,6 +51,7 @@ public class Fixture : UdonSharpBehaviour
     public int toggled;
     public int inputEnded;
     public int overlayPressed;
+    public int screenPressed;
     public float sliderValue;
     public bool toggleOn;
     public string inputText = "";
@@ -181,6 +182,7 @@ public class Fixture : UdonSharpBehaviour
     public void OnToggle() { toggled++; toggleOn = toggle.isOn; }
     public void OnInput() { inputEnded++; inputText = input.text; }
     public void OnOverlay() { overlayPressed++; }
+    public void OnScreenBtn() { screenPressed++; }
 
     public override void InputUse(bool value, UdonInputEventArgs args)
     {

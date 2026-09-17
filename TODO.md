@@ -391,8 +391,14 @@ scenario, like the pool table.
 - [ ] UdonUtils `RuntimeTestingExample.unity`: the package's own `TestController` runs its test
       cases in the imported world; the scenario reports its pass / fail counts.
 - [ ] `scripts/test_world_community.sh` runs the three (skips what is not cloned); optional CI step.
-- [ ] Whatever the imports expose in the converter, importer or runtime is fixed at the source and
-      covered by a fixture check (not patched in the scenario).
+- [~] Whatever the imports expose in the converter, importer or runtime is fixed at the source and
+      covered by a fixture check (not patched in the scenario). So far: EmyChess lost its menus
+      (3 UI nodes, 27 unresolved references): a Canvas parented to a node of a model / prefab
+      instance is a RectTransform child of a *stripped* Transform, and unidot only collected
+      Transform children there (fork 3de6a94: 74 UI nodes, 13 events, 0 unresolved). The Unity
+      fixture now has a prefab (`Holder.prefab`), an instance of it and a canvas under the
+      instance's child (4 checks; fixture 54 / 87 / 25 / 16). The fixture scene and `Chair.cs`
+      shared a GUID; the scene has its own now.
 
 ## Next
 
