@@ -182,6 +182,11 @@ func _ui_checks(r, fx: Node) -> void:
 		u.dd_set_value(ddn, 0, false)
 		await r.wait(3)
 		r.check(str(cap.text) == ddn.get_item_text(0) and int(fx.get("dropdownChanged")) == dchanged + 1, "SetValueWithoutNotify updates the caption only")
+	# An Image without a sprite is a solid rectangle in Unity (so are the built-in UI sprites, which
+	# no package ships): it gets a white texture, and its colour tints only itself, not its children.
+	var panel: Node = r.find("Panel")
+	var panel_child: Node = r.find("PanelChild")
+	r.check(panel is TextureRect and panel.texture != null and panel.self_modulate.is_equal_approx(Color(1, 0.5, 0)) and panel.modulate.is_equal_approx(Color.WHITE), "sprite-less Image draws a white texture tinted through self_modulate: " + str(panel.self_modulate if panel is TextureRect else null))
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)
@@ -204,6 +209,11 @@ func _ui_checks(r, fx: Node) -> void:
 		var want: Color = colors[name]
 		var ok: bool = absf(c.r - want.r) < 0.3 and absf(c.g - want.g) < 0.3 and absf(c.b - want.b) < 0.3
 		r.check(ok, "%s renders its colour at the projected pivot %s: %s (want %s)" % [name, str(wp), str(c), str(want)])
+	if panel is Control and panel_child is Control:
+		var edge: Color = await r.pixel(r.project(r.control_world_at(panel, Vector2(0.1, 0.5))))
+		var mid: Color = await r.pixel(r.project(r.control_world_at(panel_child, Vector2(0.5, 0.5))))
+		r.check(absf(edge.r - 1.0) < 0.3 and absf(edge.g - 0.5) < 0.3 and edge.b < 0.3, "the panel renders orange: " + str(edge))
+		r.check(mid.r > 0.7 and mid.g > 0.7 and mid.b > 0.7, "its white child is not tinted by the panel's colour: " + str(mid))
 	# clicks through the window: the pointer must raycast the canvas and push the event into it
 	for name in counters:
 		var before: int = int(fx.get(counters[name]))
