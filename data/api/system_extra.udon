@@ -715,3 +715,169 @@ type StringBuilder
 
 type Random extern=UnityEngineRandom
   NextBytes(byte[]): void => U.random_bytes($1)
+
+# --- primitive leftovers: decimal arithmetic (a float here), char surrogates and categories, string
+# interning / normalization / IndexOfAny / CopyTo / ctors, Parse/TryParse of sbyte, ushort and
+# ulong, double infinities, `new object()` ---------------------------------------------------------
+
+type NumberStyles kind=enum extern=SystemGlobalizationNumberStyles
+  enum None = 0
+  enum AllowLeadingWhite = 1
+  enum AllowTrailingWhite = 2
+  enum AllowLeadingSign = 4
+  enum AllowTrailingSign = 8
+  enum AllowParentheses = 16
+  enum AllowDecimalPoint = 32
+  enum AllowThousands = 64
+  enum AllowExponent = 128
+  enum AllowCurrencySymbol = 256
+  enum AllowHexSpecifier = 512
+  enum Integer = 7
+  enum HexNumber = 515
+  enum Number = 111
+  enum Float = 167
+  enum Currency = 383
+  enum Any = 511
+
+type UnicodeCategory kind=enum extern=SystemGlobalizationUnicodeCategory
+  enum UppercaseLetter = 0
+  enum LowercaseLetter = 1
+  enum TitlecaseLetter = 2
+  enum ModifierLetter = 3
+  enum OtherLetter = 4
+  enum NonSpacingMark = 5
+  enum SpacingCombiningMark = 6
+  enum EnclosingMark = 7
+  enum DecimalDigitNumber = 8
+  enum LetterNumber = 9
+  enum OtherNumber = 10
+  enum SpaceSeparator = 11
+  enum LineSeparator = 12
+  enum ParagraphSeparator = 13
+  enum Control = 14
+  enum Format = 15
+  enum Surrogate = 16
+  enum PrivateUse = 17
+  enum ConnectorPunctuation = 18
+  enum DashPunctuation = 19
+  enum OpenPunctuation = 20
+  enum ClosePunctuation = 21
+  enum InitialQuotePunctuation = 22
+  enum FinalQuotePunctuation = 23
+  enum OtherPunctuation = 24
+  enum MathSymbol = 25
+  enum CurrencySymbol = 26
+  enum ModifierSymbol = 27
+  enum OtherSymbol = 28
+  enum OtherNotAssigned = 29
+
+type decimal
+  ctor(int) => float($1)
+  ctor(uint) => float($1)
+  ctor(long) => float($1)
+  ctor(ulong) => float($1)
+  ctor(float) => float($1)
+  ctor(double) => float($1)
+  ctor(int[]) => U.decimal_from_bits($1)
+  ctor(int, int, int, bool, byte) => U.decimal_from_parts($1, $2, $3, $4, $5)
+  static Zero: decimal => 0.0
+  static One: decimal => 1.0
+  static MinusOne: decimal => -1.0
+  static MaxValue: decimal => 79228162514264337593543950335.0
+  static MinValue: decimal => -79228162514264337593543950335.0
+  static Add(decimal, decimal): decimal => ($1 + $2)
+  static Subtract(decimal, decimal): decimal => ($1 - $2)
+  static Multiply(decimal, decimal): decimal => ($1 * $2)
+  static Divide(decimal, decimal): decimal => ($1 / $2)
+  static Remainder(decimal, decimal): decimal => fmod($1, $2)
+  static Negate(decimal): decimal => (-$1)
+  static Ceiling(decimal): decimal => ceilf($1)
+  static Floor(decimal): decimal => floorf($1)
+  static Truncate(decimal): decimal => U.decimal_round($1, 0, 2)
+  static Round(decimal): decimal => U.decimal_round($1, 0, 0)
+  static Round(decimal, int): decimal => U.decimal_round($1, $2, 0)
+  static Round(decimal, MidpointRounding): decimal => U.decimal_round($1, 0, $2)
+  static Round(decimal, int, MidpointRounding): decimal => U.decimal_round($1, $2, $3)
+  static Compare(decimal, decimal): int => U.compare($1, $2)
+  static ToByte(decimal): byte => (U.f2i($1) & 255)
+  static ToSByte(decimal): sbyte => U.wrap_i8(U.f2i($1))
+  static ToInt16(decimal): short => U.wrap_i16(U.f2i($1))
+  static ToUInt16(decimal): ushort => (U.f2i($1) & 65535)
+  static ToInt32(decimal): int => U.f2i($1)
+  static ToUInt32(decimal): uint => (U.f2i($1) & 4294967295)
+  static ToInt64(decimal): long => U.f2i($1)
+  static ToUInt64(decimal): ulong => U.f2i($1)
+  static ToSingle(decimal): float => $1
+  static ToDouble(decimal): double => $1
+  static ToOACurrency(decimal): long => U.f2i(roundf($1 * 10000.0))
+  static FromOACurrency(long): decimal => (float($1) / 10000.0)
+  static GetBits(decimal): int[] => U.decimal_bits($1)
+  static Parse(string): decimal => $1.to_float()
+  static Parse(string, NumberStyles): decimal => $1.replace(",", "").to_float()
+  static Parse(string, IFormatProvider): decimal => $1.to_float()
+  static Parse(string, NumberStyles, IFormatProvider): decimal => $1.replace(",", "").to_float()
+  static TryParse(string, out decimal): bool => $2 = $1.to_float() ;; $1.strip_edges().is_valid_float()
+  static TryParse(string, NumberStyles, IFormatProvider, out decimal): bool => $4 = $1.replace(",", "").to_float() ;; $1.replace(",", "").strip_edges().is_valid_float()
+
+type double
+  static IsPositiveInfinity(double): bool => ($1 == INF)
+  static IsNegativeInfinity(double): bool => ($1 == -INF)
+
+type sbyte
+  static Parse(string): sbyte => U.wrap_i8($1.to_int())
+  static Parse(string, NumberStyles): sbyte => U.wrap_i8(U.parse_int_styles($1, $2))
+  static Parse(string, IFormatProvider): sbyte => U.wrap_i8($1.to_int())
+  static Parse(string, NumberStyles, IFormatProvider): sbyte => U.wrap_i8(U.parse_int_styles($1, $2))
+  static TryParse(string, out sbyte): bool => $2 = U.wrap_i8($1.to_int()) ;; $1.strip_edges().is_valid_int()
+  static TryParse(string, NumberStyles, IFormatProvider, out sbyte): bool => $4 = U.wrap_i8(U.parse_int_styles($1, $2)) ;; U.is_valid_int_styles($1, $2)
+
+type ushort
+  static Parse(string): ushort => ($1.to_int() & 65535)
+  static Parse(string, NumberStyles): ushort => (U.parse_int_styles($1, $2) & 65535)
+  static Parse(string, IFormatProvider): ushort => ($1.to_int() & 65535)
+  static Parse(string, NumberStyles, IFormatProvider): ushort => (U.parse_int_styles($1, $2) & 65535)
+  static TryParse(string, out ushort): bool => $2 = ($1.to_int() & 65535) ;; $1.strip_edges().is_valid_int()
+  static TryParse(string, NumberStyles, IFormatProvider, out ushort): bool => $4 = (U.parse_int_styles($1, $2) & 65535) ;; U.is_valid_int_styles($1, $2)
+
+type ulong
+  static Parse(string): ulong => $1.to_int()
+  static Parse(string, NumberStyles): ulong => U.parse_int_styles($1, $2)
+  static Parse(string, IFormatProvider): ulong => $1.to_int()
+  static Parse(string, NumberStyles, IFormatProvider): ulong => U.parse_int_styles($1, $2)
+  static TryParse(string, out ulong): bool => $2 = $1.to_int() ;; $1.strip_edges().is_valid_int()
+  static TryParse(string, NumberStyles, IFormatProvider, out ulong): bool => $4 = U.parse_int_styles($1, $2) ;; U.is_valid_int_styles($1, $2)
+
+type char
+  static IsHighSurrogate(char): bool => U.char_in_range($1, 55296, 56319)
+  static IsHighSurrogate(string, int): bool => U.char_in_range($1.substr($2, 1), 55296, 56319)
+  static IsLowSurrogate(char): bool => U.char_in_range($1, 56320, 57343)
+  static IsLowSurrogate(string, int): bool => U.char_in_range($1.substr($2, 1), 56320, 57343)
+  static IsSurrogatePair(char, char): bool => (U.char_in_range($1, 55296, 56319) and U.char_in_range($2, 56320, 57343))
+  static IsSurrogatePair(string, int): bool => (U.char_in_range($1.substr($2, 1), 55296, 56319) and U.char_in_range($1.substr($2 + 1, 1), 56320, 57343))
+  static GetUnicodeCategory(char): UnicodeCategory => U.char_category($1)
+  static GetUnicodeCategory(string, int): UnicodeCategory => U.char_category($1.substr($2, 1))
+
+type string
+  ctor(char, int) => $1.repeat($2)
+  ctor(char[]) => U.str_from_chars($1, 0, -1)
+  ctor(char[], int, int) => U.str_from_chars($1, $2, $3)
+  static Copy(string): string => $1
+  static Intern(string): string => $1
+  static IsInterned(string): string => $1
+  IsNormalized(): bool => true
+  IsNormalized(NormalizationForm): bool => true
+  Normalize(): string => $0
+  Normalize(NormalizationForm): string => $0
+  static CompareOrdinal(string, string): int => U.str_compare_ordinal($1, $2)
+  static CompareOrdinal(string, int, string, int, int): int => U.str_compare_ordinal($1.substr($2, $5), $3.substr($4, $5))
+  CopyTo(int, char[], int, int): void => U.str_copy_to($0, $1, $2, $3, $4)
+  GetEnumerator(): CharEnumerator => U.to_char_array($0)
+  IndexOfAny(char[]): int => U.str_index_of_any($0, $1, 0, -1)
+  IndexOfAny(char[], int): int => U.str_index_of_any($0, $1, $2, -1)
+  IndexOfAny(char[], int, int): int => U.str_index_of_any($0, $1, $2, $3)
+  LastIndexOfAny(char[]): int => U.str_last_index_of_any($0, $1, -1, -1)
+  LastIndexOfAny(char[], int): int => U.str_last_index_of_any($0, $1, $2, -1)
+  LastIndexOfAny(char[], int, int): int => U.str_last_index_of_any($0, $1, $2, $3)
+
+type object
+  ctor() => U.new_object()

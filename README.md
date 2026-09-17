@@ -35,10 +35,11 @@ Across the three corpora the converter maps 20,445 Unity/VRChat API uses with 21
 C# helper classes emitted as Node scripts, dynamic access on unknown types, two cross-class static
 calls that `--class-name` turns into direct calls).
 
-Catalog coverage of the 21,941 Udon externs that apply to scripts: **98.8 %** mapped
-(83.2 % by hand-written mappings, the rest by generated stubs, see below); the remaining 260
-are `Random` (mapped as `UnityEngine.Random` through `U.random_*`) and operator/boilerplate
-entries.
+Catalog coverage of the 21,941 Udon externs that apply to scripts: **100 %** mapped by the
+hand-written and generator-written catalogs (`--catalog-coverage` reports 0 unmapped). The generic
+stub file `generated.udon` is empty; 87 entries inside `unity_ui.udon`, `unity_particles.udon` and
+`unity_extra.udon` are still marked `!stub` (editor-style factory helpers and particle module
+internals with no engine counterpart) and are reported as "stubbed" when a script uses them.
 
 ## Building and using
 

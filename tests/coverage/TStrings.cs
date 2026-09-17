@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using UdonSharp;
@@ -104,6 +105,44 @@ namespace Coverage
             sb.Append("hello");
             sb[0] = 'J';
             Check(sb[0] == 'J' && sb[4] == 'o' && sb.ToString() == "Jello", "StringBuilder indexer get/set: " + sb.ToString());
+
+            // primitive leftovers: decimal, char categories, string extras, small integer parsing
+            decimal d1 = new decimal(10.5);
+            decimal d2 = new decimal(4);
+            Check(decimal.Add(d1, d2) == new decimal(14.5) && decimal.Subtract(d1, d2) == new decimal(6.5) && decimal.Multiply(d1, d2) == new decimal(42), "decimal Add/Subtract/Multiply");
+            Check(decimal.Divide(d1, d2) == new decimal(2.625) && decimal.Remainder(d1, d2) == new decimal(2.5) && decimal.Negate(d1) == new decimal(-10.5), "decimal Divide/Remainder/Negate");
+            Check(decimal.Floor(d1) == new decimal(10) && decimal.Ceiling(d1) == new decimal(11) && decimal.Truncate(decimal.Negate(d1)) == new decimal(-10), "decimal Floor/Ceiling/Truncate");
+            Check(decimal.Round(new decimal(2.5)) == new decimal(2) && decimal.Round(new decimal(3.5)) == new decimal(4) && decimal.Round(new decimal(2.5), MidpointRounding.AwayFromZero) == new decimal(3), "decimal Round to even / away from zero");
+            Check(decimal.Round(new decimal(1.2345), 2) == new decimal(1.23), "decimal Round digits");
+            Check(decimal.Compare(d1, d2) == 1 && decimal.Compare(d2, d1) == -1 && decimal.ToInt32(d1) == 10 && decimal.ToDouble(d2) == 4.0, "decimal Compare/ToInt32/ToDouble");
+            Check(decimal.Parse("12.5") == new decimal(12.5) && decimal.Add(decimal.One, decimal.MinusOne) == decimal.Zero, "decimal Parse and constants");
+            decimal dp;
+            bool dok = decimal.TryParse("7.25", out dp);
+            decimal dgot = dp;
+            bool dbad = decimal.TryParse("x", out dp);
+            Check(dok && dgot == new decimal(7.25) && !dbad, "decimal TryParse");
+            int[] bits = decimal.GetBits(new decimal(-12.5));
+            Check(bits.Length == 4 && bits[0] == 125 && ((bits[3] >> 16) & 255) == 1 && bits[3] < 0 && new decimal(bits) == new decimal(-12.5), "decimal GetBits / ctor(bits): " + bits[0] + " " + bits[3]);
+            Check(!char.IsHighSurrogate('a') && !char.IsLowSurrogate('a') && !char.IsSurrogatePair('a', 'b'), "char surrogate tests");
+            Check(char.GetUnicodeCategory('A') == UnicodeCategory.UppercaseLetter && char.GetUnicodeCategory('a') == UnicodeCategory.LowercaseLetter && char.GetUnicodeCategory('7') == UnicodeCategory.DecimalDigitNumber && char.GetUnicodeCategory(' ') == UnicodeCategory.SpaceSeparator, "char.GetUnicodeCategory");
+            Check(new string('x', 3) == "xxx" && new string(new char[] { 'a', 'b', 'c' }) == "abc" && new string(new char[] { 'a', 'b', 'c', 'd' }, 1, 2) == "bc", "string ctors");
+            Check("hello world".IndexOfAny(new char[] { 'w', 'o' }) == 4 && "hello world".IndexOfAny(new char[] { 'o' }, 5) == 7 && "hello".IndexOfAny(new char[] { 'z' }) == -1, "IndexOfAny");
+            Check("hello world".LastIndexOfAny(new char[] { 'o', 'h' }) == 7 && "hello world".LastIndexOfAny(new char[] { 'o' }, 6) == 4, "LastIndexOfAny");
+            Check(string.CompareOrdinal("a", "b") < 0 && string.CompareOrdinal("b", "a") > 0 && string.CompareOrdinal("abc", "abc") == 0 && string.CompareOrdinal("xxab", 2, "yyab", 2, 2) == 0, "CompareOrdinal");
+            char[] dest = new char[5];
+            "hello".CopyTo(1, dest, 0, 3);
+            Check(dest[0] == 'e' && dest[2] == 'l', "string.CopyTo");
+            Check(string.Copy("abc") == "abc" && string.Intern("q") == "q" && "abc".IsNormalized() && "abc".Normalize() == "abc", "Copy/Intern/Normalize");
+            Check(sbyte.Parse("-5") == -5 && ushort.Parse("65535") == 65535 && ulong.Parse("1234") == 1234, "sbyte/ushort/ulong Parse");
+            ushort us;
+            bool uok = ushort.TryParse("42", out us);
+            ushort ugot = us;
+            bool ubad = ushort.TryParse("x", out us);
+            Check(uok && ugot == 42 && !ubad, "ushort.TryParse");
+            Check(double.IsPositiveInfinity(double.PositiveInfinity) && double.IsNegativeInfinity(double.NegativeInfinity) && !double.IsPositiveInfinity(1.0), "double infinities");
+            object o1 = new object();
+            object o2 = new object();
+            Check(o1 != null && !o1.Equals(o2) && o1.Equals(o1), "new object() identities");
 
             // Regex
             Regex re = new Regex(@"(\w+)@(\w+)\.com");

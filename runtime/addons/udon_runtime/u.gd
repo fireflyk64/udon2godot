@@ -4297,6 +4297,149 @@ func pad_right(s: String, width: int, pad: String) -> String:
 		s = s + pad
 	return s
 
+# --- primitive leftovers: decimal (a float), char ranges and categories, string helpers -----------
+
+## `new object()`: a unique reference (dictionaries and arrays compare by value).
+func new_object() -> RefCounted:
+	return RefCounted.new()
+
+## int.Parse with NumberStyles: AllowHexSpecifier (512) reads hexadecimal, AllowThousands (64)
+## skips group separators.
+func parse_int_styles(s: String, styles: int) -> int:
+	var t: String = s.strip_edges()
+	if styles & 512:
+		return t.trim_prefix("0x").trim_prefix("0X").hex_to_int()
+	if styles & 64:
+		t = t.replace(",", "")
+	return t.to_int()
+
+func is_valid_int_styles(s: String, styles: int) -> bool:
+	var t: String = s.strip_edges()
+	if styles & 512:
+		return t.trim_prefix("0x").trim_prefix("0X").is_valid_hex_number(false)
+	if styles & 64:
+		t = t.replace(",", "")
+	return t.is_valid_int()
+
+func char_in_range(c: String, lo: int, hi: int) -> bool:
+	if c.is_empty():
+		return false
+	var u: int = c.unicode_at(0)
+	return u >= lo and u <= hi
+
+## System.Globalization.UnicodeCategory of a character (the categories scripts test for).
+func char_category(c: String) -> int:
+	if c.is_empty():
+		return 29
+	var u: int = c.unicode_at(0)
+	if u < 32 or (u >= 127 and u < 160):
+		return 14  # Control
+	if c == " " or u == 160 or u == 0x3000:
+		return 11  # SpaceSeparator
+	if u >= 0xD800 and u <= 0xDFFF:
+		return 16  # Surrogate
+	if u >= 0xE000 and u <= 0xF8FF:
+		return 17  # PrivateUse
+	if c >= "0" and c <= "9":
+		return 8  # DecimalDigitNumber
+	if c.to_upper() != c.to_lower():
+		return 0 if c == c.to_upper() else 1  # Uppercase / Lowercase letter
+	if c == "_":
+		return 18  # ConnectorPunctuation
+	if c == "-":
+		return 19  # DashPunctuation
+	if c in "([{":
+		return 20  # OpenPunctuation
+	if c in ")]}":
+		return 21  # ClosePunctuation
+	if c in "+<=>|~":
+		return 25  # MathSymbol
+	if c in "$":
+		return 26  # CurrencySymbol
+	if c in "^`":
+		return 27  # ModifierSymbol
+	if u < 128:
+		return 24  # OtherPunctuation
+	return 4  # OtherLetter
+
+## string.CompareOrdinal: difference of the first differing UTF-16-ish code units (code points here).
+func str_compare_ordinal(a: String, b: String) -> int:
+	var n: int = mini(a.length(), b.length())
+	for i in range(n):
+		var d: int = a.unicode_at(i) - b.unicode_at(i)
+		if d != 0:
+			return d
+	return a.length() - b.length()
+
+func str_index_of_any(s: String, chars: Array, start: int, count: int) -> int:
+	var end: int = s.length() if count < 0 else mini(start + count, s.length())
+	for i in range(maxi(start, 0), end):
+		if s[i] in chars:
+			return i
+	return -1
+
+## Searches backwards from `start` (the end when negative) over `count` characters.
+func str_last_index_of_any(s: String, chars: Array, start: int, count: int) -> int:
+	var from: int = s.length() - 1 if start < 0 else mini(start, s.length() - 1)
+	var stop: int = -1 if count < 0 else maxi(from - count, -1)
+	var i: int = from
+	while i > stop:
+		if s[i] in chars:
+			return i
+		i -= 1
+	return -1
+
+func str_copy_to(s: String, src_index: int, dest: Array, dest_index: int, count: int) -> void:
+	for i in range(count):
+		if src_index + i < s.length() and dest_index + i < dest.size():
+			dest[dest_index + i] = s[src_index + i]
+
+func str_from_chars(chars: Array, start: int, count: int) -> String:
+	var end: int = chars.size() if count < 0 else mini(start + count, chars.size())
+	var out: String = ""
+	for i in range(maxi(start, 0), end):
+		out += str(chars[i])
+	return out
+
+## decimal.Round / Truncate: MidpointRounding 0 ToEven, 1 AwayFromZero, 2 ToZero, 3 floor, 4 ceiling.
+func decimal_round(v: float, digits: int, mode: int) -> float:
+	var m: float = pow(10.0, digits)
+	var x: float = v * m
+	match mode:
+		1:
+			x = signf(x) * floorf(absf(x) + 0.5)
+		2:
+			x = floorf(x) if x >= 0.0 else ceilf(x)
+		3:
+			x = floorf(x)
+		4:
+			x = ceilf(x)
+		_:
+			x = round_even(x)
+	return x / m
+
+## decimal.GetBits: {lo, mid, hi, flags} with the scale in flags bits 16-23 and the sign in bit 31
+## (exact for values a double holds exactly; up to 15 decimals).
+func decimal_bits(v: float) -> Array:
+	var scale: int = 0
+	var a: float = absf(v)
+	while scale < 15 and not is_equal_approx(a * pow(10.0, scale), roundf(a * pow(10.0, scale))):
+		scale += 1
+	var mant: int = int(roundf(a * pow(10.0, scale)))
+	var flags: int = (scale << 16) | ((1 << 31) if v < 0.0 else 0)
+	return [wrap_i32(mant & 0xFFFFFFFF), wrap_i32((mant >> 32) & 0xFFFFFFFF), 0, wrap_i32(flags)]
+
+func decimal_from_parts(lo: int, mid: int, hi: int, negative: bool, scale: int) -> float:
+	var mant: float = float(lo & 0xFFFFFFFF) + float(mid & 0xFFFFFFFF) * 4294967296.0 + float(hi & 0xFFFFFFFF) * 18446744073709551616.0
+	var v: float = mant / pow(10.0, scale)
+	return -v if negative else v
+
+func decimal_from_bits(bits: Array) -> float:
+	if bits.size() < 4:
+		return 0.0
+	var flags: int = int(bits[3])
+	return decimal_from_parts(int(bits[0]), int(bits[1]), int(bits[2]), (flags & (1 << 31)) != 0, (flags >> 16) & 255)
+
 func to_char_array(s: String) -> Array:
 	var out: Array = []
 	for ch in s:

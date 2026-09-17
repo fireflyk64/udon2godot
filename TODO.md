@@ -180,9 +180,17 @@ reflection, platform). Re-run `tools/gen_catalog.py` after each item so the gene
       leftovers, Gradient colour/alpha keys as real Godot gradients, TextAsset, HumanPose(+Handler),
       small structs and UnityEvent constructors; `destroyCancellationToken` on every component.
       Coverage: TVRC 73, TMedia 91, TSystem 39 checks.
-- [ ] What is left in `generated.udon` (72 entries, 36 instance members): VRCCameraDollyPathPoint's
-      Component boilerplate (it is a dictionary here), StringBuilder `Chars` indexer externs, two
-      `List<T>`-taking Mesh methods (generics are not Udon), static-only twins.
+- [x] `generated.udon` is empty and `--catalog-coverage` reports 21,941 / 21,941 (2026-09-16):
+      StringBuilder's `Chars` externs are its indexer (`[IndexerName]`; `set this[int]` is a new
+      catalog form, lowered for `sb[i] = c`), Mesh.GetBindposes/GetBoneWeights(List) clear the list
+      like the array properties, VRCCameraDollyPathPoint (a dictionary here) answers the Component
+      surface from the dictionary. The 56 primitive externs the generator skipped are mapped for
+      real: decimal arithmetic, rounding modes, GetBits and constructors, char surrogates and
+      UnicodeCategory, string ctors / IndexOfAny / LastIndexOfAny / CompareOrdinal / CopyTo /
+      Intern / Normalize, Parse/TryParse of sbyte/ushort/ulong with NumberStyles, double
+      infinities, `new object()`; TStrings covers them (868 coverage checks). Still marked `!stub`
+      by hand: 87 entries in unity_ui / unity_particles / unity_extra (factory helpers, particle
+      module internals).
 
 ## Interactive play: pointer, player, test apparatus
 
