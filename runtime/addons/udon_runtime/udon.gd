@@ -387,6 +387,34 @@ func register_component(node: Node, kind: String, config: Dictionary = {}) -> vo
 func station(node: Node):
 	return provider.station(node)
 
+## VRCPlayerApi.UseAttachedStation(): seat `player` in the station attached to the behaviour that
+## calls it (the station on its node, else the nearest one below or above it).
+func use_attached_station(player, behaviour: Node) -> void:
+	var host: Node = _attached_station_node(behaviour)
+	if host == null or player == null:
+		return
+	var st = station(host)
+	if st == null or st.occupant != null:
+		return
+	st.use_station(player)
+	if player.node != null and player.node.has_method("sit_in"):
+		player.node.sit_in(st)
+
+func _attached_station_node(behaviour: Node) -> Node:
+	if behaviour == null:
+		return null
+	if has_component(behaviour, "station"):
+		return behaviour
+	for c in behaviour.find_children("*", "", true, false):
+		if has_component(c, "station"):
+			return c
+	var p: Node = behaviour.get_parent()
+	while p != null:
+		if has_component(p, "station"):
+			return p
+		p = p.get_parent()
+	return null
+
 func object_sync(node: Node):
 	return provider.object_sync(node)
 

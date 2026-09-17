@@ -122,7 +122,7 @@ type VRCPlayerApi kind=class gd=Object extern=VRCSDKBaseVRCPlayerApi
   Respawn(): void => $0.respawn(0)
   Respawn(int): void => $0.respawn($1)
   Immobilize(bool): void => $0.immobilize($1)
-  UseAttachedStation(): void => $0.use_attached_station()
+  UseAttachedStation(): void => Udon.use_attached_station($0, self)
   UseLegacyLocomotion(): void => pass
   EnablePickups(bool): void => $0.enable_pickups($1)
   GetPickupInHand(PickupHand): VRC_Pickup => $0.get_pickup_in_hand($1)

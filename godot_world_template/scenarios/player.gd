@@ -11,6 +11,9 @@ func run(r) -> void:
 	if player == null:
 		return
 	r.check(udon.local_player().node == player, "Udon.local_player().node is the desktop player")
+	var sp: Node = r.find("Spawn")
+	r.check(sp is Node3D and Vector2(player.spawn_transform.origin.x, player.spawn_transform.origin.z).distance_to(Vector2(sp.global_position.x, sp.global_position.z)) < 0.01, "spawned at the scene descriptor's spawn: %s vs %s" % [str(player.spawn_transform.origin), str(sp.global_position if sp is Node3D else null)])
+	r.check(is_equal_approx(player.respawn_height, -25.0), "respawn height from the descriptor: %.1f" % player.respawn_height)
 	r.check(r.root.get_viewport().get_camera_3d() == player.camera, "player camera is current")
 	await r.wait(20)  # settle on the floor
 	var p0: Vector3 = player.global_position
@@ -72,4 +75,12 @@ func run(r) -> void:
 		var exit_node: Node3D = chair.get_node_or_null("ChairExit")
 		r.check(player.station == null and int(chair_script.get("exited")) == 1, "Space leaves the station: exited=%d" % int(chair_script.get("exited")))
 		r.check(exit_node != null and Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(exit_node.global_position.x, exit_node.global_position.z)) < 0.1, "body at the exit location: %s vs %s" % [str(player.global_position), str(exit_node.global_position if exit_node else null)])
+		# VRCPlayerApi.UseAttachedStation from the chair's own script seats the player again
+		await r.place_player(cpos + Vector3(0, -0.75, -1.6))
+		chair_script.SitMe()
+		await r.wait(5)
+		r.check(player.station != null and int(chair_script.get("entered")) == 2 and player.global_position.distance_to(cpos) < 0.05, "UseAttachedStation seated the player: entered=%d" % int(chair_script.get("entered")))
+		await r.key(KEY_SPACE, 2)
+		await r.wait(5)
+		r.check(player.station == null and int(chair_script.get("exited")) == 2, "left again: exited=%d" % int(chair_script.get("exited")))
 	await r.shot("player")

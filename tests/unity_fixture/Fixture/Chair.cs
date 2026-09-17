@@ -21,4 +21,10 @@ public class Chair : UdonSharpBehaviour
     {
         exited++;
     }
+
+    /// Seats the local player from script (VRCPlayerApi.UseAttachedStation).
+    public void SitMe()
+    {
+        Networking.LocalPlayer.UseAttachedStation();
+    }
 }

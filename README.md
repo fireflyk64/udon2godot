@@ -168,9 +168,10 @@ canvas units, so menus that scripts move onto table anchor spots land where Unit
 `godot_world_template/scenarios/fixture.gd` (with `player.gd`) and `billiards_play.gd` verify this
 through real window input: the fixture clicks colour-coded buttons at known Unity coordinates and
 samples the rendered colours at their projected pivots, the billiards scenario opens the lobby,
-starts 8-ball, picks up the cue, aims and shoots through the pointer and the keyboard only. Imported
-worlds pin Godot Physics (`physics/3d/physics_engine`): Godot 4.7's default, Jolt, lets bodies fall
-through the scaled box colliders unidot produces for scaled Unity colliders.
+starts 8-ball, picks up the cue, aims and shoots through the pointer and the keyboard only. Both
+suites pass on Jolt (Godot 4.7's default physics engine) and on Godot Physics; stations
+(`VRCStation`, `UseAttachedStation`) and the scene descriptor's spawn and respawn height are covered
+by the fixture's Chair and VRCWorld objects.
 
 Unity project settings (layer names, gravity, fixed timestep, layer collision matrix, input axes)
 are converted by `scripts/unity_project_settings.py` when a `ProjectSettings` folder exists; asset

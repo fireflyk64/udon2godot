@@ -19,9 +19,6 @@ enabled=PackedStringArray("res://addons/godot_sandbox/plugin.cfg", "res://addons
 [physics]
 
 3d/default_gravity=9.81
-; imported worlds carry scaled colliders (a unit box under a (10, 1, 10) node): Godot Physics
-; handles them as tested; Jolt (Godot 4.7's default) let a CharacterBody3D fall through such a floor
-3d/physics_engine="GodotPhysics3D"
 
 [rendering]
 

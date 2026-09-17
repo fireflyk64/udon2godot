@@ -270,16 +270,23 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       location (OnStationExited); `Chair.cs` + the Chair box in the fixture, 21 checks. Fixed on the
       way in the importer: forward references inside component settings (a station's exit location,
       a pickup's ExactGrip) were misfiled into `udon_refs` instead of the component config, and
-      references to children not built yet were dropped. Open: VR events, `UseAttachedStation`.
+      references to children not built yet were dropped. `VRCPlayerApi.UseAttachedStation()`
+      seats the player in the station of the calling behaviour (`Udon.use_attached_station(player,
+      self)`: its node, else the nearest station below or above it). The fixture has a
+      VRC_SceneDescriptor whose spawn is a child object (array references to nodes built later
+      resolve through the pending list): the player spawns there and respawns below
+      `RespawnHeightY` with OnPlayerRespawn. Open: VR events.
 - [x] Godot 4.7.2 and the latest unidot_importer (2026-09-15): `origin/main` (the 4.7 parse fixes and
       the ImageMagick check) merged into the fork branch `udon-integration` without conflicts;
       `scripts/*.sh`, `scripts/setup_deps.sh`, the project features and the README moved to 4.7.2.
       verify, coverage, the fixture (headless, display, player) and the billiards import + scenario
-      all pass on 4.7.2. One behavioural change: 4.7 defaults to Jolt Physics, which let the
-      CharacterBody3D fall through the fixture's floor (a unit BoxShape3D under a node scaled
-      (10, 1, 10), the shape unidot produces for scaled Unity colliders); imported worlds pin
-      `physics/3d/physics_engine = GodotPhysics3D` in `godot_world_template/project.godot`. Jolt
-      support (baking the scale into shapes at import) stays under Long term.
+      all pass on 4.7.2. 4.7 defaults to Jolt Physics: the desktop player first fell through the
+      fixture's floor there and worlds were pinned to Godot Physics for a day. The cause was not the
+      scaled collider (a unit BoxShape3D under a (10, 1, 10) node works in Jolt) but the spawn snap:
+      Jolt registers a new body at once, so the downward ray hit the player's own capsule. The spawn
+      is now computed before the body is added, jumps are buffered for 0.15 s and the floor snaps
+      (Jolt reports floor contact a step later); the pin is gone and the fixture (50 / 74 / 25
+      checks) and billiards (9 + 17) pass on Jolt as well as on Godot Physics.
 - [x] Billiards played interactively: `scenarios/billiards_play.gd` (16 checks) drives the game only
       through window input: the START canvas button through the pointer, Mode8Ball and Play (the
       opener is seated automatically, JoinOrange stays hidden), the orange cue grip picked up through

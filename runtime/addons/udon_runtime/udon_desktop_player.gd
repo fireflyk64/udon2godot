@@ -21,9 +21,15 @@ var _hud: CanvasLayer = null
 var _prompt: Label = null
 var _pitch: float = 0.0
 var _move_axis: Vector2 = Vector2.ZERO
-var _jump_queued: bool = false
+## Seconds a jump request stays pending: floor contact can flicker for a frame (Jolt reports it a
+## step later than Godot Physics when the body stops), and a one-frame request would be lost.
+const JUMP_BUFFER: float = 0.15
+var _jump_queued: float = 0.0
 ## Station adapter (udon_station.gd) the player sits in, or null.
 var station = null
+## Where the player respawns and below which height (VRC_SceneDescriptor.RespawnHeightY).
+var spawn_transform: Transform3D = Transform3D(Basis(), Vector3(0, 1, 0))
+var respawn_height: float = -100.0
 
 
 func _ready() -> void:
@@ -47,6 +53,7 @@ func _ready() -> void:
 	camera.rotation.y = PI  # Godot cameras look down -Z; Unity's player looks along +Z
 	head.add_child(camera)
 	camera.make_current()
+	floor_snap_length = 0.1
 	var udon: Node = get_node("/root/Udon")
 	var p = udon.local_player()
 	if p != null:
@@ -118,7 +125,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if station != null:
 					leave_station()
 				else:
-					_jump_queued = true
+					_jump_queued = JUMP_BUFFER
 			udon.input_event("InputJump", event.pressed)
 
 
@@ -154,7 +161,7 @@ func _physics_process(delta: float) -> void:
 			station = null
 		else:
 			_follow_station()
-			_jump_queued = false
+			_jump_queued = 0.0
 			return
 	var loco: Dictionary = p._locomotion if p != null else {"walk_speed": 2.0, "run_speed": 4.0, "strafe_speed": 2.0, "jump_impulse": 3.0, "gravity_strength": 1.0}
 	var axis := Vector2.ZERO
@@ -170,9 +177,10 @@ func _physics_process(delta: float) -> void:
 	var gravity: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * float(loco.get("gravity_strength", 1.0))
 	if not is_on_floor():
 		velocity.y -= gravity * delta
-	elif _jump_queued and (p == null or not p.is_immobilized()):
+	elif _jump_queued > 0.0 and (p == null or not p.is_immobilized()):
 		velocity.y = float(loco.get("jump_impulse", 3.0))
-	_jump_queued = false
+		_jump_queued = 0.0
+	_jump_queued = maxf(_jump_queued - delta, 0.0)
 	move_and_slide()
 	_respawn_if_fallen()
 	if not axis.is_equal_approx(_move_axis):
@@ -195,13 +203,11 @@ func look_at_point(p: Vector3) -> void:
 
 ## Respawn when fallen out of the world (VRChat's respawn height).
 func _respawn_if_fallen() -> void:
-	if global_position.y < -100.0:
-		var runner = get_tree()
-		if runner != null and runner.has_method("_spawn_transform"):
-			global_transform = runner._spawn_transform()
-		else:
-			global_position = Vector3(0, 1, 0)
+	if global_position.y < respawn_height:
+		global_transform = spawn_transform
 		velocity = Vector3.ZERO
+		var udon: Node = get_node("/root/Udon")
+		udon.broadcast_event("OnPlayerRespawn", [udon.local_player()])
 
 
 ## VRCPlayerApi.GetTrackingData: head = the camera, hands beside it, origin/avatar root = the body.

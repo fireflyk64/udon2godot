@@ -393,8 +393,16 @@ func _spawn_desktop_player() -> void:
 	var body: CharacterBody3D = load("res://addons/udon_runtime/udon_desktop_player.gd").new()
 	body.name = "DesktopPlayer"
 	body.capture_mouse = DisplayServer.get_name() != "headless" and not _args.has("scenario")
+	# the ground snap raycasts before the body exists in the physics space (Jolt registers a new
+	# body at once and the ray would hit its own capsule)
+	var t: Transform3D = _spawn_transform()
 	root.add_child(body)
-	body.global_transform = _spawn_transform()
+	body.global_transform = t
+	body.spawn_transform = t
+	for n in _scene.find_children("*", "Node3D", true, false):
+		if n.has_meta("udon_scene_descriptor"):
+			body.respawn_height = float(n.get_meta("udon_scene_descriptor").get("respawn_height", body.respawn_height))
+			break
 	_player = body
 	print("[world_runner] desktop player at " + str(body.global_position))
 func _frame_node(path: String) -> void:
