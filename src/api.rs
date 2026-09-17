@@ -250,7 +250,15 @@ impl Catalog {
                     let ti = Self::parse_type_header(rest, file, lineno)?;
                     current = Some(ti.name.clone());
                     if let Some(existing) = self.types.get_mut(&ti.name) {
-                        // Allow re-opening a type to add members.
+                        // Allow re-opening a type to add members. When a bare `type X` block was
+                        // loaded before the full declaration (file order), the declaration's
+                        // attributes still apply.
+                        let declares = rest.contains("kind=") || rest.contains("gd=");
+                        let was_bare = existing.extern_name.is_none() && existing.base.is_none();
+                        if declares && was_bare {
+                            existing.kind = ti.kind.clone();
+                            existing.gd = ti.gd.clone();
+                        }
                         if existing.base.is_none() {
                             existing.base = ti.base;
                         }
@@ -627,11 +635,29 @@ impl Catalog {
     /// Returns the member and a score (lower is better); `None` if no candidate has the right arity.
     pub fn resolve_method<'a>(&'a self, candidates: &[&'a MemberInfo], arg_types: &[Ty]) -> Option<&'a MemberInfo> {
         let mut best: Option<(&MemberInfo, u32)> = None;
-        for m in candidates {
-            let score = match score_params(&m.params, arg_types) {
+        'cands: for m in candidates {
+            let mut score = match score_params(&m.params, arg_types) {
                 Some(s) => s,
                 None => continue,
             };
+            // `score_params` prices every class-to-class conversion the same. With both types in
+            // the catalog the relation is known: a derived argument fits its base closely
+            // (`CultureInfo` for an `IFormatProvider`), an enum never stands in for a class or
+            // another enum (`Parse(string, NumberStyles)` does not take a CultureInfo).
+            for (p, a) in m.params.iter().zip(arg_types) {
+                let (Ty::Named(pn), Ty::Named(an)) = (&p.ty, a) else { continue };
+                let (Some(pt), Some(at)) = (self.get(pn), self.get(an)) else { continue };
+                if pt.name == at.name {
+                    continue;
+                }
+                if self.is_a(&at.name, &pt.name) {
+                    score = score.saturating_sub(3);
+                } else if pt.is_enum() || at.is_enum() {
+                    continue 'cands;
+                } else {
+                    score += 4;
+                }
+            }
             match best {
                 Some((_, bs)) if bs <= score => {}
                 _ => best = Some((m, score)),
@@ -726,6 +752,26 @@ pub fn conversion_cost(from: &Ty, to: &Ty) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bare `type X` block in a file that loads before X's declaration must not fix X's kind
+    /// and Godot type to the defaults (it turned `ParticleSystem` fields into Variant once).
+    #[test]
+    fn reopened_types_keep_their_declaration() {
+        let c = Catalog::load_embedded().unwrap();
+        for (name, gd) in [("ParticleSystem", "GPUParticles3D"), ("Graphic", "Control"), ("Physics", "Variant")] {
+            let t = c.get(name).unwrap();
+            if name != "Physics" {
+                assert_eq!(t.gd, gd, "{}", name);
+            }
+            assert!(t.extern_name.is_some(), "{} lost its extern name", name);
+        }
+        let src = "type A\n  Foo(): void => pass\ntype A : B kind=component gd=Node3D extern=XA\ntype B kind=component gd=Node extern=XB\n";
+        let c = Catalog::from_sources(&[("t.udon", src)]).unwrap();
+        let a = c.get("A").unwrap();
+        assert_eq!(a.gd, "Node3D");
+        assert_eq!(a.kind, TypeKind::Component);
+        assert_eq!(a.members.len(), 1);
+    }
 
     #[test]
     fn parse_small_catalog() {

@@ -3623,3 +3623,481 @@ type MaterialGlobalIlluminationFlags kind=enum extern=UnityEngineMaterialGlobalI
   enum BakedEmissive = 2
   enum AnyEmissive = 3
   enum EmissiveIsBlack = 4
+
+# ---------------------------------------------------------------------------------------------
+# Overloads found by `udon2godot --coverage-overloads` (the name was mapped, these argument
+# lists were not, so calls fell back to an overload with another meaning).
+# ---------------------------------------------------------------------------------------------
+type Physics
+  static Raycast(Ray, float, int, QueryTriggerInteraction): bool => not U.raycast($1.origin, $1.direction, $2, $3, $4).is_empty()
+  static RaycastAll(Ray): RaycastHit[] => U.raycast_all($1.origin, $1.direction, INF, -1, 0)
+  static RaycastAll(Ray, float): RaycastHit[] => U.raycast_all($1.origin, $1.direction, $2, -1, 0)
+  static RaycastAll(Ray, float, int, QueryTriggerInteraction): RaycastHit[] => U.raycast_all($1.origin, $1.direction, $2, $3, $4)
+  static RaycastNonAlloc(Ray, RaycastHit[]): int => U.raycast_non_alloc($1.origin, $1.direction, $2, INF, -1, 0)
+  static RaycastNonAlloc(Ray, RaycastHit[], float): int => U.raycast_non_alloc($1.origin, $1.direction, $2, $3, -1, 0)
+  static RaycastNonAlloc(Ray, RaycastHit[], float, int, QueryTriggerInteraction): int => U.raycast_non_alloc($1.origin, $1.direction, $2, $3, $4, $5)
+  static RaycastNonAlloc(Vector3, Vector3, RaycastHit[]): int => U.raycast_non_alloc($1, $2, $3, INF, -1, 0)
+  static RaycastNonAlloc(Vector3, Vector3, RaycastHit[], float): int => U.raycast_non_alloc($1, $2, $3, $4, -1, 0)
+  static RaycastNonAlloc(Vector3, Vector3, RaycastHit[], float, int, QueryTriggerInteraction): int => U.raycast_non_alloc($1, $2, $3, $4, $5, $6)
+  static Linecast(Vector3, Vector3, int, QueryTriggerInteraction): bool => not U.raycast($1, $2 - $1, ($2 - $1).length(), $3, $4).is_empty()
+  static SphereCast(Ray, float): bool => not U.sphere_cast($1.origin, $2, $1.direction, INF, -1, 0).is_empty()
+  static SphereCast(Ray, float, float): bool => not U.sphere_cast($1.origin, $2, $1.direction, $3, -1, 0).is_empty()
+  static SphereCast(Ray, float, float, int, QueryTriggerInteraction): bool => not U.sphere_cast($1.origin, $2, $1.direction, $3, $4, $5).is_empty()
+  static SphereCast(Ray, float, out RaycastHit): bool => $3 = U.sphere_cast($1.origin, $2, $1.direction, INF, -1, 0) ;; not $3.is_empty()
+  static SphereCast(Ray, float, out RaycastHit, float): bool => $3 = U.sphere_cast($1.origin, $2, $1.direction, $4, -1, 0) ;; not $3.is_empty()
+  static SphereCast(Ray, float, out RaycastHit, float, int, QueryTriggerInteraction): bool => $3 = U.sphere_cast($1.origin, $2, $1.direction, $4, $5, $6) ;; not $3.is_empty()
+  static SphereCastAll(Vector3, float, Vector3): RaycastHit[] => U.sphere_cast_all($1, $2, $3, INF, -1, 0)
+  static SphereCastAll(Ray, float): RaycastHit[] => U.sphere_cast_all($1.origin, $2, $1.direction, INF, -1, 0)
+  static SphereCastAll(Ray, float, float): RaycastHit[] => U.sphere_cast_all($1.origin, $2, $1.direction, $3, -1, 0)
+  static SphereCastAll(Ray, float, float, int): RaycastHit[] => U.sphere_cast_all($1.origin, $2, $1.direction, $3, $4, 0)
+  static SphereCastAll(Ray, float, float, int, QueryTriggerInteraction): RaycastHit[] => U.sphere_cast_all($1.origin, $2, $1.direction, $3, $4, $5)
+  static SphereCastNonAlloc(Vector3, float, Vector3, RaycastHit[]): int => U.sphere_cast_non_alloc($1, $2, $3, $4, INF, -1, 0)
+  static SphereCastNonAlloc(Vector3, float, Vector3, RaycastHit[], float): int => U.sphere_cast_non_alloc($1, $2, $3, $4, $5, -1, 0)
+  static SphereCastNonAlloc(Ray, float, RaycastHit[]): int => U.sphere_cast_non_alloc($1.origin, $2, $1.direction, $3, INF, -1, 0)
+  static SphereCastNonAlloc(Ray, float, RaycastHit[], float): int => U.sphere_cast_non_alloc($1.origin, $2, $1.direction, $3, $4, -1, 0)
+  static SphereCastNonAlloc(Ray, float, RaycastHit[], float, int): int => U.sphere_cast_non_alloc($1.origin, $2, $1.direction, $3, $4, $5, 0)
+  static SphereCastNonAlloc(Ray, float, RaycastHit[], float, int, QueryTriggerInteraction): int => U.sphere_cast_non_alloc($1.origin, $2, $1.direction, $3, $4, $5, $6)
+  static CheckBox(Vector3, Vector3): bool => not U.overlap_box($1, $2, Quaternion(), -1, 0).is_empty()
+  static CheckBox(Vector3, Vector3, Quaternion): bool => not U.overlap_box($1, $2, $3, -1, 0).is_empty()
+  static CheckBox(Vector3, Vector3, Quaternion, int, QueryTriggerInteraction): bool => not U.overlap_box($1, $2, $3, $4, $5).is_empty()
+  static CheckCapsule(Vector3, Vector3, float): bool => not U.overlap_capsule($1, $2, $3, -1, 0).is_empty()
+  static CheckCapsule(Vector3, Vector3, float, int, QueryTriggerInteraction): bool => not U.overlap_capsule($1, $2, $3, $4, $5).is_empty()
+
+type Rigidbody
+  AddRelativeForce(float, float, float): void => U.rb_add_force($0, U.transform_direction($0, Vector3($1, $2, $3)), 0)
+  AddRelativeForce(float, float, float, ForceMode): void => U.rb_add_force($0, U.transform_direction($0, Vector3($1, $2, $3)), $4)
+  AddRelativeTorque(float, float, float): void => U.rb_add_torque($0, U.transform_direction($0, Vector3($1, $2, $3)), 0)
+  AddRelativeTorque(float, float, float, ForceMode): void => U.rb_add_torque($0, U.transform_direction($0, Vector3($1, $2, $3)), $4)
+  AddTorque(float, float, float, ForceMode): void => U.rb_add_torque($0, Vector3($1, $2, $3), $4)
+  SweepTest(Vector3, out RaycastHit, float, QueryTriggerInteraction): bool => $2 = U.rb_sweep_test($0, $1, $3) ;; not $2.is_empty()
+
+type Transform
+  TransformVector(float, float, float): Vector3 => U.transform_vector($0, Vector3($1, $2, $3))
+  InverseTransformVector(float, float, float): Vector3 => U.inverse_transform_vector($0, Vector3($1, $2, $3))
+  Translate(float, float, float, Transform): void => U.translate_relative($0, Vector3($1, $2, $3), $4)
+
+type Component
+  GetComponentInParent(Type, bool): Component => U.get_component_in_parent($0, $1, $2)
+
+type GameObject
+  GetComponentInParent(Type, bool): Component => U.get_component_in_parent($0, $1, $2)
+  GetComponentsInParent(Type): Component[] => U.get_components_in_parent($0, $1, false)
+  GetComponentsInParent(Type, bool): Component[] => U.get_components_in_parent($0, $1, $2)
+
+type Object
+  static DestroyImmediate(Object, bool): void => Udon.destroy($1)
+
+type Debug
+  static Assert(bool, object, Object): void => assert($1, str($2))
+  static Assert(bool, string, Object): void => assert($1, $2)
+  static LogException(Exception, Object): void => push_error(str($1))
+  static LogFormat(Object, string, params object[]): void => print(U.format($2, $params))
+  static LogFormat(LogType, LogOption, Object, string, params object[]): void => U.log_typed($1, U.format($4, $params))
+  static LogWarningFormat(Object, string, params object[]): void => push_warning(U.format($2, $params))
+  static LogErrorFormat(Object, string, params object[]): void => push_error(U.format($2, $params))
+
+type Mathf
+  static SmoothDampAngle(float, float, ref float, float, float): float => var $tmp = U.smooth_damp_angle($1, $2, $3, $4, $5, U.delta_time()) ;; $3 = $tmp[1] ;; $tmp[0]
+
+type Vector2
+  static SmoothDamp(Vector2, Vector2, ref Vector2, float, float): Vector2 => var $tmp = U.vec2_smooth_damp($1, $2, $3, $4, $5, U.delta_time()) ;; $3 = $tmp[1] ;; $tmp[0]
+  static SmoothDamp(Vector2, Vector2, ref Vector2, float, float, float): Vector2 => var $tmp = U.vec2_smooth_damp($1, $2, $3, $4, $5, $6) ;; $3 = $tmp[1] ;; $tmp[0]
+  ToString(string, IFormatProvider): string => U.vec2_str($0, $1)
+  Equals(object): bool => $0 == $1
+
+type Vector3
+  static OrthoNormalize(ref Vector3, ref Vector3, ref Vector3): void => var $tmp = U.ortho_normalize3($1, $2, $3) ;; $1 = $tmp[0] ;; $2 = $tmp[1] ;; $3 = $tmp[2]
+  ToString(string, IFormatProvider): string => U.vec3_str($0, $1)
+
+type Vector3Int
+  ctor(int, int) => Vector3i($1, $2, 0)
+
+type Vector4
+  ctor(float, float) => Vector4($1, $2, 0.0, 0.0)
+
+type Quaternion
+  ToString(string): string => U.components_str("", [$0.x, $0.y, $0.z, $0.w], $1)
+  ToString(string, IFormatProvider): string => U.components_str("", [$0.x, $0.y, $0.z, $0.w], $1)
+  Equals(object): bool => $0 == $1
+
+type Color
+  ToString(string): string => U.components_str("RGBA", [$0.r, $0.g, $0.b, $0.a], $1)
+  ToString(string, IFormatProvider): string => U.components_str("RGBA", [$0.r, $0.g, $0.b, $0.a], $1)
+  Equals(object): bool => $0 == $1
+
+type Bounds
+  Expand(Vector3): void => $0 = AABB($0.position - $1 / 2.0, $0.size + $1)
+  ToString(string): string => "Center: " + U.vec3_str($0.get_center(), $1) + ", Extents: " + U.vec3_str($0.size / 2.0, $1)
+  ToString(string, IFormatProvider): string => "Center: " + U.vec3_str($0.get_center(), $1) + ", Extents: " + U.vec3_str($0.size / 2.0, $1)
+
+type Ray
+  ToString(string): string => "Origin: " + U.vec3_str($0.origin, $1) + ", Dir: " + U.vec3_str($0.direction, $1)
+  ToString(string, IFormatProvider): string => "Origin: " + U.vec3_str($0.origin, $1) + ", Dir: " + U.vec3_str($0.direction, $1)
+
+type Rect
+  ctor(Rect) => Rect2($1.position, $1.size)
+  Contains(Vector3, bool): bool => U.rect_contains($0, Vector2($1.x, $1.y), $2)
+  Overlaps(Rect, bool): bool => U.rect_overlaps($0, $1, $2)
+
+type Random
+  static ColorHSV(float, float, float, float, float, float, float, float): Color => Color.from_hsv(randf_range($1, $2), randf_range($3, $4), randf_range($5, $6), randf_range($7, $8))
+
+type Gizmos
+  static DrawRay(Ray): void => U.debug_draw_line($1.origin, $1.origin + $1.direction, Color.WHITE, 0.0)
+
+type Guid
+  Equals(object): bool => $0 == $1
+
+type DataToken
+  CompareTo(object): int => U.compare($0, $1)
+  ctor(DataError, string) => {"error": $1, "message": $2}
+
+type DataDictionary
+  Equals(object): bool => $0 == $1
+
+type Material
+  GetInt(int): int => U.mat_get($0, $1, 0)
+  GetInteger(int): int => U.mat_get($0, $1, 0)
+  SetInteger(int, int): void => U.mat_set($0, $1, $2)
+  GetVector(int): Vector4 => U.mat_get($0, $1, Vector4.ZERO)
+  GetTexture(int): Texture => U.mat_get($0, $1, null)
+  GetTextureOffset(int): Vector2 => U.mat_get($0, U.mat_prop_name($1) + "_Offset", Vector2.ZERO)
+  GetTextureScale(int): Vector2 => U.mat_get($0, U.mat_prop_name($1) + "_Scale", Vector2.ONE)
+  SetTextureOffset(int, Vector2): void => U.mat_set($0, U.mat_prop_name($1) + "_Offset", $2)
+  SetTextureScale(int, Vector2): void => U.mat_set($0, U.mat_prop_name($1) + "_Scale", $2)
+  GetMatrix(int): Matrix4x4 => U.mat_get($0, $1, Transform3D())
+  SetMatrix(int, Matrix4x4): void => U.mat_set($0, $1, $2)
+  GetColorArray(int): Color[] => U.mat_get($0, $1, [])
+  GetFloatArray(int): float[] => U.mat_get($0, $1, [])
+  GetVectorArray(int): Vector4[] => U.mat_get($0, $1, [])
+  GetMatrixArray(int): Matrix4x4[] => U.mat_get($0, $1, [])
+  SetColorArray(int, Color[]): void => U.mat_set($0, $1, $2)
+  SetFloatArray(int, float[]): void => U.mat_set($0, $1, $2)
+  SetVectorArray(int, Vector4[]): void => U.mat_set($0, $1, $2)
+  SetMatrixArray(int, Matrix4x4[]): void => U.mat_set($0, $1, $2)
+  SetTexture(string, RenderTexture, RenderTextureSubElement): void => U.mat_set($0, $1, $2)
+  SetTexture(int, RenderTexture, RenderTextureSubElement): void => U.mat_set($0, $1, $2)
+  HasFloat(int): bool => U.mat_has($0, $1)
+  HasInt(int): bool => U.mat_has($0, $1)
+  HasColor(int): bool => U.mat_has($0, $1)
+  HasVector(int): bool => U.mat_has($0, $1)
+  HasTexture(int): bool => U.mat_has($0, $1)
+  HasMatrix(int): bool => U.mat_has($0, $1)
+  HasBuffer(int): bool => false
+
+type MaterialPropertyBlock
+  GetColor(int): Color => $0.get($1, Color.WHITE)
+  GetFloat(int): float => $0.get($1, 0.0)
+  GetInt(int): int => $0.get($1, 0)
+  GetVector(int): Vector4 => $0.get($1, Vector4.ZERO)
+  GetTexture(int): Texture => $0.get($1, null)
+  SetInt(int, int): void => $0[$1] = $2
+  SetInteger(int, int): void => $0[$1] = $2
+  SetMatrix(int, Matrix4x4): void => $0[$1] = $2
+  SetTexture(int, Texture): void => $0[$1] = $2
+  SetTexture(string, RenderTexture, RenderTextureSubElement): void => $0[$1] = $2
+  SetTexture(int, RenderTexture, RenderTextureSubElement): void => $0[$1] = $2
+  SetFloatArray(int, float[]): void => $0[$1] = $2
+  SetVectorArray(int, Vector4[]): void => $0[$1] = $2
+
+type Renderer
+  GetPropertyBlock(MaterialPropertyBlock, int): void => U.renderer_get_property_block($0, $1)
+
+# Mesh data ranges and update flags: a range writes the slice, the flags only tune Unity's
+# internal recalculation and are ignored.
+type Mesh
+  GetTriangles(int, bool): int[] => U.mesh_triangles($0, $1)
+  GetIndices(int, bool): int[] => U.mesh_triangles($0, $1)
+  RecalculateBounds(MeshUpdateFlags): void => pass
+  RecalculateNormals(MeshUpdateFlags): void => pass
+  RecalculateTangents(MeshUpdateFlags): void => pass
+  SetVertices(Vector3[], int, int): void => U.mesh_set_arrays($0, "vertices", $1.slice($2, $2 + $3))
+  SetVertices(Vector3[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "vertices", $1.slice($2, $2 + $3))
+  SetNormals(Vector3[], int, int): void => U.mesh_set_arrays($0, "normals", $1.slice($2, $2 + $3))
+  SetNormals(Vector3[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "normals", $1.slice($2, $2 + $3))
+  SetTangents(Vector4[], int, int): void => U.mesh_set_arrays($0, "tangents", $1.slice($2, $2 + $3))
+  SetTangents(Vector4[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "tangents", $1.slice($2, $2 + $3))
+  SetColors(Color[], int, int): void => U.mesh_set_arrays($0, "colors", $1.slice($2, $2 + $3))
+  SetColors(Color[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "colors", $1.slice($2, $2 + $3))
+  SetColors(Color32[], int, int): void => U.mesh_set_arrays($0, "colors", $1.slice($2, $2 + $3))
+  SetColors(Color32[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "colors", $1.slice($2, $2 + $3))
+  SetUVs(int, Vector2[], int, int): void => U.mesh_set_arrays($0, "uv" if $1 == 0 else "uv2", $2.slice($3, $3 + $4))
+  SetUVs(int, Vector2[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "uv" if $1 == 0 else "uv2", $2.slice($3, $3 + $4))
+  SetUVs(int, Vector3[], int, int): void => U.mesh_set_arrays($0, "uv" if $1 == 0 else "uv2", $2.slice($3, $3 + $4))
+  SetUVs(int, Vector3[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "uv" if $1 == 0 else "uv2", $2.slice($3, $3 + $4))
+  SetUVs(int, Vector4[], int, int): void => U.mesh_set_arrays($0, "uv" if $1 == 0 else "uv2", $2.slice($3, $3 + $4))
+  SetUVs(int, Vector4[], int, int, MeshUpdateFlags): void => U.mesh_set_arrays($0, "uv" if $1 == 0 else "uv2", $2.slice($3, $3 + $4))
+  SetTriangles(int[], int, bool): void => U.mesh_set_arrays($0, "triangles", $1)
+  SetTriangles(int[], int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1, $4))
+  SetTriangles(int[], int, int, int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1.slice($2, $2 + $3), $6))
+  SetTriangles(ushort[], int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1, $4))
+  SetTriangles(ushort[], int, int, int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1.slice($2, $2 + $3), $6))
+  SetIndices(int[], MeshTopology, int): void => U.mesh_set_arrays($0, "triangles", $1)
+  SetIndices(int[], MeshTopology, int, bool): void => U.mesh_set_arrays($0, "triangles", $1)
+  SetIndices(int[], MeshTopology, int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1, $5))
+  SetIndices(int[], int, int, MeshTopology, int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1.slice($2, $2 + $3), $7))
+  SetIndices(ushort[], MeshTopology, int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1, $5))
+  SetIndices(ushort[], int, int, MeshTopology, int, bool, int): void => U.mesh_set_arrays($0, "triangles", U.arr_offset($1.slice($2, $2 + $3), $7))
+
+# Trailing-argument variants (depth ranges, mip levels, update flags, stereo eye): mapped like
+# the sibling overload without them; the extra arguments have no counterpart in Godot.
+
+type DateTimeOffset
+  ToString(IFormatProvider): string => U.datetime_format($0, "")
+
+type TimeZoneInfo
+  static ConvertTime(DateTime, TimeZoneInfo, TimeZoneInfo): DateTime => $1
+  static ConvertTimeToUtc(DateTime, TimeZoneInfo): DateTime => $1
+
+type TMP_MeshInfo
+  ctor(Mesh, int, bool) => {}
+  ctor(Mesh, int) => {}
+
+type TMP_TextInfo
+  ctor(TMP_Text) => {}
+
+type Animator
+  MatchTarget(Vector3, Quaternion, AvatarTarget, MatchTargetWeightMask, float, float, bool): void => pass
+
+type Collider2D
+  Cast(Vector2, RaycastHit2D[], float, bool): int => U.rb2d_cast($0, $1, $2, $3)
+  Raycast(Vector2, RaycastHit2D[], float, int, float, float): int => U.collider2d_raycast($0, $1, $2, $3)
+  Raycast(Vector2, RaycastHit2D[], float, int, float): int => U.collider2d_raycast($0, $1, $2, $3)
+  Raycast(Vector2, RaycastHit2D[], float, int): int => U.collider2d_raycast($0, $1, $2, $3)
+
+type Cubemap
+  GetPixel(CubemapFace, int, int, int): Color => U.cubemap_get_pixel($0, $1, $2, $3)
+  SetPixel(CubemapFace, int, int, Color, int): void => U.cubemap_set_pixel($0, $1, $2, $3, $4)
+
+type ParticleSystem
+  TriggerSubEmitter(int, ref Particle): void => U.ps_trigger_sub_emitter($0, $1)
+
+type Physics2D
+  static BoxCast(Vector2, Vector2, float, Vector2, float, int, float, float): RaycastHit2D => U.shapecast2d("box", $1, 0.0, $2, $3, $4, $5, $6)
+  static BoxCast(Vector2, Vector2, float, Vector2, float, int, float): RaycastHit2D => U.shapecast2d("box", $1, 0.0, $2, $3, $4, $5, $6)
+  static BoxCastAll(Vector2, Vector2, float, Vector2, float, int, float, float): RaycastHit2D[] => U.shapecast2d_all("box", $1, 0.0, $2, $3, $4, $5, $6)
+  static BoxCastAll(Vector2, Vector2, float, Vector2, float, int, float): RaycastHit2D[] => U.shapecast2d_all("box", $1, 0.0, $2, $3, $4, $5, $6)
+  static BoxCastNonAlloc(Vector2, Vector2, float, Vector2, RaycastHit2D[], float, int, float, float): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $6, $7, $5)
+  static BoxCastNonAlloc(Vector2, Vector2, float, Vector2, RaycastHit2D[], float, int, float): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $6, $7, $5)
+  static CircleCast(Vector2, float, Vector2, float, int, float, float): RaycastHit2D => U.shapecast2d("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, $5)
+  static CircleCast(Vector2, float, Vector2, float, int, float): RaycastHit2D => U.shapecast2d("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, $5)
+  static CircleCastAll(Vector2, float, Vector2, float, int, float, float): RaycastHit2D[] => U.shapecast2d_all("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, $5)
+  static CircleCastAll(Vector2, float, Vector2, float, int, float): RaycastHit2D[] => U.shapecast2d_all("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, $5)
+  static CircleCastNonAlloc(Vector2, float, Vector2, RaycastHit2D[], float, int, float, float): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, $5, $6, $4)
+  static CircleCastNonAlloc(Vector2, float, Vector2, RaycastHit2D[], float, int, float): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, $5, $6, $4)
+  static Linecast(Vector2, Vector2, int, float, float): RaycastHit2D => U.raycast2d($1, $2 - $1, ($2 - $1).length(), $3)
+  static Linecast(Vector2, Vector2, int, float): RaycastHit2D => U.raycast2d($1, $2 - $1, ($2 - $1).length(), $3)
+  static LinecastAll(Vector2, Vector2, int, float, float): RaycastHit2D[] => U.raycast2d_all($1, $2 - $1, ($2 - $1).length(), $3)
+  static LinecastAll(Vector2, Vector2, int, float): RaycastHit2D[] => U.raycast2d_all($1, $2 - $1, ($2 - $1).length(), $3)
+  static OverlapArea(Vector2, Vector2, int, float, float): Collider2D => U.overlap2d_first("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
+  static OverlapArea(Vector2, Vector2, int, float): Collider2D => U.overlap2d_first("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
+  static OverlapAreaAll(Vector2, Vector2, int, float, float): Collider2D[] => U.overlap2d("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
+  static OverlapAreaAll(Vector2, Vector2, int, float): Collider2D[] => U.overlap2d("box", ($1 + $2) / 2.0, 0.0, ($2 - $1).abs(), 0.0, $3)
+  static OverlapBox(Vector2, Vector2, float, int, float, float): Collider2D => U.overlap2d_first("box", $1, 0.0, $2, $3, $4)
+  static OverlapBox(Vector2, Vector2, float, int, float): Collider2D => U.overlap2d_first("box", $1, 0.0, $2, $3, $4)
+  static OverlapBoxAll(Vector2, Vector2, float, int, float, float): Collider2D[] => U.overlap2d("box", $1, 0.0, $2, $3, $4)
+  static OverlapBoxAll(Vector2, Vector2, float, int, float): Collider2D[] => U.overlap2d("box", $1, 0.0, $2, $3, $4)
+  static OverlapBoxNonAlloc(Vector2, Vector2, float, Collider2D[], int, float, float): int => U.overlap2d_into("box", $1, 0.0, $2, $3, $5, $4)
+  static OverlapBoxNonAlloc(Vector2, Vector2, float, Collider2D[], int, float): int => U.overlap2d_into("box", $1, 0.0, $2, $3, $5, $4)
+  static OverlapCircle(Vector2, float, int, float, float): Collider2D => U.overlap2d_first("circle", $1, $2, Vector2.ZERO, 0.0, $3)
+  static OverlapCircle(Vector2, float, int, float): Collider2D => U.overlap2d_first("circle", $1, $2, Vector2.ZERO, 0.0, $3)
+  static OverlapCircleAll(Vector2, float, int, float, float): Collider2D[] => U.overlap2d("circle", $1, $2, Vector2.ZERO, 0.0, $3)
+  static OverlapCircleAll(Vector2, float, int, float): Collider2D[] => U.overlap2d("circle", $1, $2, Vector2.ZERO, 0.0, $3)
+  static OverlapCircleNonAlloc(Vector2, float, Collider2D[], int, float, float): int => U.overlap2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $4, $3)
+  static OverlapCircleNonAlloc(Vector2, float, Collider2D[], int, float): int => U.overlap2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $4, $3)
+  static OverlapPoint(Vector2, int, float, float): Collider2D => U.overlap2d_first("point", $1, 0.0, Vector2.ZERO, 0.0, $2)
+  static OverlapPoint(Vector2, int, float): Collider2D => U.overlap2d_first("point", $1, 0.0, Vector2.ZERO, 0.0, $2)
+  static OverlapPointAll(Vector2, int, float, float): Collider2D[] => U.overlap2d("point", $1, 0.0, Vector2.ZERO, 0.0, $2)
+  static OverlapPointAll(Vector2, int, float): Collider2D[] => U.overlap2d("point", $1, 0.0, Vector2.ZERO, 0.0, $2)
+  static OverlapPointNonAlloc(Vector2, Collider2D[], int, float, float): int => U.overlap2d_into("point", $1, 0.0, Vector2.ZERO, 0.0, $3, $2)
+  static OverlapPointNonAlloc(Vector2, Collider2D[], int, float): int => U.overlap2d_into("point", $1, 0.0, Vector2.ZERO, 0.0, $3, $2)
+  static Raycast(Vector2, Vector2, float, int, float): RaycastHit2D => U.raycast2d($1, $2, $3, $4)
+  static RaycastAll(Vector2, Vector2, float, int, float, float): RaycastHit2D[] => U.raycast2d_all($1, $2, $3, $4)
+  static RaycastAll(Vector2, Vector2, float, int, float): RaycastHit2D[] => U.raycast2d_all($1, $2, $3, $4)
+  static RaycastNonAlloc(Vector2, Vector2, RaycastHit2D[], float, int, float, float): int => U.raycast2d_all_into($1, $2, $4, $5, $3)
+  static RaycastNonAlloc(Vector2, Vector2, RaycastHit2D[], float, int, float): int => U.raycast2d_all_into($1, $2, $4, $5, $3)
+
+type RenderTextureDescriptor
+  ctor(int, int, RenderTextureFormat, int, int, RenderTextureReadWrite) => {"width": $1, "height": $2}
+  ctor(int, int, RenderTextureFormat, int, int) => {"width": $1, "height": $2}
+
+type Texture2D
+  Apply(bool, bool): void => U.texture_apply($0)
+  GetPixel(int, int, int): Color => U.texture_get_pixel($0, $1, $2)
+  GetPixelBilinear(float, float, int): Color => U.texture_get_pixel($0, int($1 * $0.get_width()), int($2 * $0.get_height()))
+  GetPixels(int, int, int, int, int): Color[] => U.texture_get_pixels_rect($0, $1, $2, $3, $4)
+  GetPixels(int): Color[] => U.texture_get_pixels($0)
+  ReadPixels(Rect, int, int, bool): void => pass
+  Reinitialize(int, int, TextureFormat, bool): bool => U.texture_resize($0, $1, $2)
+  SetPixel(int, int, Color, int): void => U.texture_set_pixel($0, $1, $2, $3)
+  SetPixels(int, int, int, int, Color[], int): void => U.texture_set_pixels_rect($0, $1, $2, $3, $4, $5)
+  SetPixels(Color[], int): void => U.texture_set_pixels($0, $1)
+  SetPixels32(Color32[], int): void => U.texture_set_pixels($0, $1)
+  ctor(int, int, TextureFormat, bool, bool, bool) => U.new_texture($1, $2)
+  ctor(int, int, TextureFormat, int, bool, bool, bool, string) => U.new_texture($1, $2)
+  ctor(int, int, TextureFormat, int, bool, bool) => U.new_texture($1, $2)
+  ctor(int, int, TextureFormat, int, bool) => U.new_texture($1, $2)
+
+type Texture3D
+  Apply(bool, bool): void => pass
+  GetPixelBilinear(float, float, float, int): Color => U.texture3d_get_pixel($0, int($1 * $0.get_width()), int($2 * $0.get_height()), int($3 * $0.get_depth()))
+  ctor(int, int, int, TextureFormat, bool, bool) => U.new_texture3d($1, $2, $3)
+
+type Graphic
+  CrossFadeColor(Color, float, bool, bool, bool): void => U.ui_set_color($0, $1)
+
+type VertexHelper
+  ctor(Mesh) => {"verts": 0, "indices": 0}
+
+type Store
+  static ListPurchases(IUdonEventReceiver, VRCPlayerApi): void => Udon.economy("list_purchases", [$1])
+
+type VRCCameraDollyPathPoint
+  GetComponentInChildren(Type, bool): Component => null
+  GetComponentInParent(Type, bool): Component => null
+  GetComponentsInChildren(Type, bool): Component[] => []
+  GetComponentsInParent(Type, bool): Component[] => []
+
+type VRCAsyncGPUReadbackRequest
+  TryGetData(byte[], int): bool => U.gpu_readback_copy($0, $1)
+  TryGetData(float[], int): bool => U.gpu_readback_copy_floats($0, $1)
+  TryGetData(Color32[], int): bool => U.gpu_readback_copy_colors($0, $1)
+  TryGetData(Color[], int): bool => U.gpu_readback_copy_colors($0, $1)
+
+type VRCCustomAction
+  Execute(int): void => U.send_custom_event($0, "Execute")
+  Execute(VRCUrl): void => U.send_custom_event($0, "Execute")
+
+type VRCDroneApi
+  TeleportTo(Vector3, Quaternion, bool): void => $0.call("teleport_to", $1, $2)
+
+type VRCGraphics
+  static Blit(Texture, RenderTexture, int, int): void => pass
+  static Blit(Texture, RenderTexture, Material, int): void => pass
+  static Blit(Texture, RenderTexture, Vector2, Vector2, int, int): void => pass
+  static DrawMeshInstanced(Mesh, int, Material, Matrix4x4[], int, MaterialPropertyBlock, ShadowCastingMode, bool, int, Camera, LightProbeUsage, LightProbeProxyVolume): void => pass
+  static DrawMeshInstanced(Mesh, int, Material, Matrix4x4[], int, MaterialPropertyBlock, ShadowCastingMode, bool, int, Camera, LightProbeUsage): void => pass
+  static DrawMeshInstanced(Mesh, int, Material, Matrix4x4[], int, MaterialPropertyBlock, ShadowCastingMode, bool, int, Camera): void => pass
+  static DrawMeshInstanced(Mesh, int, Material, Matrix4x4[], int, MaterialPropertyBlock, ShadowCastingMode, bool, int): void => pass
+  static DrawMeshInstanced(Mesh, int, Material, Matrix4x4[], int, MaterialPropertyBlock, ShadowCastingMode, bool): void => pass
+  static DrawMeshInstanced(Mesh, int, Material, Matrix4x4[], int, MaterialPropertyBlock, ShadowCastingMode): void => pass
+
+type VRCRenderTexture
+  static GetTemporary(int, int, int, RenderTextureFormat, RenderTextureReadWrite, int, RenderTextureMemoryless, VRTextureUsage, bool): RenderTexture => U.new_render_texture($1, $2)
+
+# ContactFilter2D variants: the filter's layer mask is applied, depth and normal-angle ranges are not.
+type Collider2D
+  Cast(Vector2, ContactFilter2D, RaycastHit2D[]): int => U.rb2d_cast($0, $1, $3, INF)
+  Cast(Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.rb2d_cast($0, $1, $3, $4)
+  Cast(Vector2, ContactFilter2D, RaycastHit2D[], float, bool): int => U.rb2d_cast($0, $1, $3, $4)
+  GetContacts(ContactFilter2D, Collider2D[]): int => U.rb2d_contacts($0, $2)
+  GetContacts(ContactFilter2D, ContactPoint2D[]): int => U.collider2d_contact_points($0, $2)
+  IsTouching(ContactFilter2D): bool => U.collider2d_touching_any($0)
+  IsTouching(Collider2D, ContactFilter2D): bool => U.collider2d_touching($0, $1)
+  Raycast(Vector2, ContactFilter2D, RaycastHit2D[]): int => U.collider2d_raycast($0, $1, $3, INF)
+  Raycast(Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.collider2d_raycast($0, $1, $3, $4)
+
+type Rigidbody2D
+  Cast(Vector2, ContactFilter2D, RaycastHit2D[]): int => U.rb2d_cast($0, $1, $3, INF)
+  Cast(Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.rb2d_cast($0, $1, $3, $4)
+  GetContacts(ContactPoint2D[]): int => U.collider2d_contact_points($0, $1)
+  GetContacts(ContactFilter2D, Collider2D[]): int => U.rb2d_contacts($0, $2)
+  GetContacts(ContactFilter2D, ContactPoint2D[]): int => U.collider2d_contact_points($0, $2)
+  IsTouching(ContactFilter2D): bool => not $0.get_colliding_bodies().is_empty()
+  IsTouching(Collider2D, ContactFilter2D): bool => $0.get_colliding_bodies().has($1)
+  MoveRotation(Quaternion): void => U.rb2d_move_rotation($0, rad_to_deg($1.get_euler().z))
+
+type ContactFilter2D
+  SetLayerMask(LayerMask): void => $0.layerMask = $1 ;; $0.useLayerMask = true
+
+type Physics2D
+  static BoxCast(Vector2, Vector2, float, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, INF, U.filter2d_mask($5), $6)
+  static BoxCast(Vector2, Vector2, float, Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $7, U.filter2d_mask($5), $6)
+  static BoxCastAll(Vector2, Vector2, float, Vector2): RaycastHit2D[] => U.shapecast2d_all("box", $1, 0.0, $2, $3, $4, INF, -1)
+  static BoxCastAll(Vector2, Vector2, float, Vector2, float): RaycastHit2D[] => U.shapecast2d_all("box", $1, 0.0, $2, $3, $4, $5, -1)
+  static BoxCastNonAlloc(Vector2, Vector2, float, Vector2, RaycastHit2D[]): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, INF, -1, $5)
+  static BoxCastNonAlloc(Vector2, Vector2, float, Vector2, RaycastHit2D[], float): int => U.shapecast2d_into("box", $1, 0.0, $2, $3, $4, $6, -1, $5)
+  static CircleCast(Vector2, float, Vector2, ContactFilter2D, RaycastHit2D[]): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, INF, U.filter2d_mask($4), $5)
+  static CircleCast(Vector2, float, Vector2, ContactFilter2D, RaycastHit2D[], float): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, $6, U.filter2d_mask($4), $5)
+  static CircleCastAll(Vector2, float, Vector2): RaycastHit2D[] => U.shapecast2d_all("circle", $1, $2, Vector2.ZERO, 0.0, $3, INF, -1)
+  static CircleCastAll(Vector2, float, Vector2, float): RaycastHit2D[] => U.shapecast2d_all("circle", $1, $2, Vector2.ZERO, 0.0, $3, $4, -1)
+  static CircleCastNonAlloc(Vector2, float, Vector2, RaycastHit2D[]): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, INF, -1, $4)
+  static CircleCastNonAlloc(Vector2, float, Vector2, RaycastHit2D[], float): int => U.shapecast2d_into("circle", $1, $2, Vector2.ZERO, 0.0, $3, $5, -1, $4)
+  static OverlapBox(Vector2, Vector2, float, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("box", $1, 0.0, $2, $3, U.filter2d_mask($4), $5)
+  static OverlapCircle(Vector2, float, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("circle", $1, $2, Vector2.ZERO, 0.0, U.filter2d_mask($3), $4)
+  static OverlapPoint(Vector2, ContactFilter2D, Collider2D[]): int => U.overlap2d_into("point", $1, 0.0, Vector2.ZERO, 0.0, U.filter2d_mask($2), $3)
+  static GetContacts(Collider2D, ContactPoint2D[]): int => U.collider2d_contact_points($1, $2)
+  static GetContacts(Rigidbody2D, ContactPoint2D[]): int => U.collider2d_contact_points($1, $2)
+  static GetContacts(Collider2D, ContactFilter2D, Collider2D[]): int => U.rb2d_contacts($1, $3)
+  static GetContacts(Collider2D, ContactFilter2D, ContactPoint2D[]): int => U.collider2d_contact_points($1, $3)
+  static GetContacts(Rigidbody2D, ContactFilter2D, Collider2D[]): int => U.rb2d_contacts($1, $3)
+  static GetContacts(Rigidbody2D, ContactFilter2D, ContactPoint2D[]): int => U.collider2d_contact_points($1, $3)
+  static GetContacts(Collider2D, Collider2D, ContactFilter2D, ContactPoint2D[]): int => U.collider2d_contact_points($1, $4)
+  static IsTouching(Collider2D, ContactFilter2D): bool => U.collider2d_touching_any($1)
+  static IsTouching(Collider2D, Collider2D, ContactFilter2D): bool => U.collider2d_touching($1, $2)
+
+type Texture2D
+  SetPixels32(int, int, int, int, Color32[]): void => U.texture_set_pixels_rect($0, $1, $2, $3, $4, $5)
+  SetPixels32(int, int, int, int, Color32[], int): void => U.texture_set_pixels_rect($0, $1, $2, $3, $4, $5)
+
+type DateTimeOffset
+  Equals(object): bool => $0 == $1
+  ctor(int, int, int, int, int, int, TimeSpan) => U.datetime_from_parts($1, $2, $3, $4, $5, $6)
+  ctor(int, int, int, int, int, int, int, TimeSpan) => U.datetime_from_parts($1, $2, $3, $4, $5, $6)
+  ctor(int, int, int, int, int, int, int, Calendar, TimeSpan) => U.datetime_from_parts($1, $2, $3, $4, $5, $6)
+
+type TimeZoneInfo
+  static ConvertTime(DateTimeOffset, TimeZoneInfo): DateTimeOffset => $1
+  GetUtcOffset(DateTimeOffset): TimeSpan => U.timespan_from_seconds(0.0)
+  IsDaylightSavingTime(DateTimeOffset): bool => false
+
+type Guid
+  ctor(int, short, short, byte, byte, byte, byte, byte, byte, byte, byte) => U.guid_from_parts($1, $2, $3, [$4, $5, $6, $7, $8, $9, $10, $11])
+  ctor(uint, ushort, ushort, byte, byte, byte, byte, byte, byte, byte, byte) => U.guid_from_parts($1, $2, $3, [$4, $5, $6, $7, $8, $9, $10, $11])
+
+type Matrix4x4
+  static Frustum(FrustumPlanes): Matrix4x4 => Transform3D()
+
+type CanvasRenderer
+  SetMaterial(Material, Texture): void => $0.material = $1
+
+type NavMesh
+  static FindClosestEdge(Vector3, out NavMeshHit, NavMeshQueryFilter): bool => $2 = U.nav_sample($1, 5.0) ;; $2.get("hit", false)
+
+type TMP_MeshInfo
+  SortGeometry(VertexSortingOrder): void => pass
+
+type BaseMeshEffect
+  ModifyMesh(VertexHelper): void => pass
+
+type Store
+  static GetPlayersWhoOwnProduct(IProduct): VRCPlayerApi[] => Udon.economy("owners", [$1, []])
+  static OpenListing(string): void => Udon.economy("open_listing", [$1])
+
+type VRCTMPDropdownExtension
+  static AddOptions(TMP_Dropdown, TMP_Dropdown.OptionData[]): void => U.dd_add_options($1, Array($2))
+
+type VRCAsyncGPUReadback
+  static Request(Texture, int, int, int, int, int, int, int, IUdonEventReceiver): VRCAsyncGPUReadbackRequest => U.gpu_readback($1, $2, $9)
+
+type VRCGraphics
+  static Blit(Texture, Material, int, int): void => pass
+
+type VRCCameraDollyPathPoint
+  GetComponent(): T => null
+  GetComponent(string): Component => null
+  GetComponentInChildren(): T => null
+  GetComponentInChildren(bool): T => null
+  GetComponentInParent(): T => null
+  GetComponentInParent(bool): T => null
+  GetComponents(): T[] => []
+  GetComponentsInChildren(): T[] => []
+  GetComponentsInChildren(bool): T[] => []
+  GetComponentsInParent(): T[] => []
+  GetComponentsInParent(bool): T[] => []
+
+type Camera
+  static CalculateProjectionMatrixFromPhysicalProperties(out Matrix4x4, float, Vector2, Vector2, float, float, CameraGateFitParameters): void => $1 = Transform3D()
+
+type VRCRenderTexture
+  static GetTemporary(RenderTextureDescriptor): RenderTexture => U.new_render_texture(int($1.get("width", 256)), int($1.get("height", 256)))

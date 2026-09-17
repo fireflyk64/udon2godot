@@ -157,7 +157,7 @@ fn main() {
 
     if args.coverage_overloads {
         print_overload_gaps(&catalog, &externs);
-        if args.inputs.is_empty() {
+        if args.inputs.is_empty() && !args.coverage && args.coverage_missing.is_none() {
             return;
         }
     }
@@ -541,10 +541,17 @@ fn print_overload_gaps(catalog: &Catalog, externs: &ExternTable) {
         if numeric.contains(&p.as_str()) && numeric.contains(&a.as_str()) {
             return true;
         }
+        // templates see enum values as ints
+        if p == "int" && catalog.get(a).map_or(false, |t| t.is_enum()) {
+            return true;
+        }
         // a base type in the catalog accepts the derived extern type
         catalog.is_a(a.trim_end_matches("[]"), p.trim_end_matches("[]")) && a.ends_with("[]") == p.ends_with("[]")
     };
     let mut gaps = 0usize;
+    let mut unreachable = 0usize;
+    // an inherited member is reported once, on the catalog type that declares it
+    let mut reported: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for ext in externs.type_names() {
         let Some(n) = by_extern.get(ext) else { continue };
         let mut names: Vec<&str> = externs.methods_of(ext);
@@ -557,7 +564,17 @@ fn print_overload_gaps(catalog: &Catalog, externs: &ExternTable) {
             if members.is_empty() {
                 continue;
             }
+            let owner = members.last().map(|mm| mm.owner.clone()).unwrap_or_else(|| n.clone());
             for sig in externs.overloads(ext, m) {
+                // U# cannot create a List<T>, so overloads that take one cannot be called
+                if sig.arg_types.iter().any(|a| a.contains("GenericList") || a == "ListT") {
+                    unreachable += 1;
+                    continue;
+                }
+                // System.Object members of a static class
+                if sig.arg_types.is_empty() && matches!(m, "ToString" | "GetHashCode" | "GetType") {
+                    continue;
+                }
                 let args: Vec<Option<String>> = sig.arg_types.iter().map(|a| translate(a)).collect();
                 let fits = members.iter().any(|mm| {
                     if mm.has_params_array() {
@@ -566,14 +583,32 @@ fn print_overload_gaps(catalog: &Catalog, externs: &ExternTable) {
                     }
                     mm.params.len() == args.len() && mm.params.iter().zip(&args).all(|(p, a)| accepts(&p.ty, a))
                 });
-                if !fits {
+                if !fits && reported.insert(format!("{}.{}({})", owner, m, sig.arg_types.join(", "))) {
                     gaps += 1;
-                    println!("{}.{}({})", n, m, sig.arg_types.join(", "));
+                    println!("{}.{}({})", owner, m, sig.arg_types.join(", "));
+                    // A sibling whose parameters are a prefix of this overload: the extra
+                    // trailing arguments are usually refinements (depth range, update flags).
+                    let sibling = members
+                        .iter()
+                        .filter(|mm| !mm.has_params_array() && mm.params.len() < args.len() && mm.params.iter().zip(&args).all(|(p, a)| accepts(&p.ty, a)))
+                        .max_by_key(|mm| mm.params.len());
+                    if let Some(sib) = sibling {
+                        let tys: Vec<String> = sig
+                            .arg_types
+                            .iter()
+                            .map(|a| {
+                                let t = translate(a).unwrap_or_else(|| a.clone());
+                                if a.ends_with("Ref") { format!("out {}", t) } else { t }
+                            })
+                            .collect();
+                        let ret = if m == "ctor" { String::new() } else { format!(": {}", sib.ret.name()) };
+                        println!("    PROPOSE type {} ::  {}{}({}){} => {}", owner, if sib.is_static { "static " } else { "" }, m, tys.join(", "), ret, sib.get.clone().unwrap_or_default());
+                    }
                 }
             }
         }
     }
-    println!("overload gaps: {}", gaps);
+    println!("overload gaps: {} ({} List<T> overloads skipped: not callable from U#)", gaps, unreachable);
 }
 
 fn print_coverage(catalog: &Catalog, externs: &ExternTable, verbose: bool) -> Vec<(String, String)> {

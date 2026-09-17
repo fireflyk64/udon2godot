@@ -97,6 +97,17 @@ namespace Coverage
             Check(Physics.Linecast(new Vector3(10, 5, 10), new Vector3(10, -5, 10)), "Linecast through floor");
             RaycastHit sh;
             Check(Physics.SphereCast(new Vector3(10, 5, 10), 0.5f, Vector3.down, out sh, 100f) && sh.distance > 4f && sh.distance < 5.1f, "SphereCast: " + sh.distance);
+            // overloads that take a Ray (they used to fall back to a Vector3 overload by arity)
+            Ray down = new Ray(new Vector3(10, 5, 10), Vector3.down);
+            RaycastHit rsh;
+            Check(Physics.SphereCast(down, 0.5f, out rsh) && rsh.distance > 4f && rsh.distance < 5.1f, "SphereCast(Ray, radius, out hit): " + rsh.distance);
+            Check(Physics.SphereCast(down, 0.5f, 100f) && !Physics.SphereCast(down, 0.5f, 2f), "SphereCast(Ray, radius, distance)");
+            Check(Physics.RaycastAll(down).Length >= 1 && Physics.RaycastAll(down, 2f).Length == 0, "RaycastAll(Ray[, distance])");
+            RaycastHit[] rbuf = new RaycastHit[4];
+            Check(Physics.RaycastNonAlloc(down, rbuf) >= 1 && Physics.RaycastNonAlloc(new Vector3(10, 5, 10), Vector3.down, rbuf, 2f) == 0, "RaycastNonAlloc(Ray, buffer) / (origin, dir, buffer, distance)");
+            Check(Physics.SphereCastAll(down, 0.5f).Length >= 1 && Physics.SphereCastNonAlloc(down, 0.5f, rbuf, 100f) >= 1, "SphereCastAll / NonAlloc from a Ray");
+            Check(Physics.CheckBox(new Vector3(10, 0, 10), new Vector3(0.5f, 0.5f, 0.5f)) && !Physics.CheckBox(new Vector3(10, 50, 10), new Vector3(0.5f, 0.5f, 0.5f), Quaternion.identity), "CheckBox(center, half[, rotation])");
+            Check(Physics.CheckCapsule(new Vector3(10, -0.2f, 10), new Vector3(10, 0.2f, 10), 0.25f) && !Physics.CheckCapsule(new Vector3(10, 50, 10), new Vector3(10, 51, 10), 0.25f), "CheckCapsule(start, end, radius)");
             RaycastHit bh;
             Check(Physics.BoxCast(new Vector3(10, 5, 10), new Vector3(0.5f, 0.5f, 0.5f), Vector3.down, out bh, Quaternion.identity, 100f) && bh.distance > 4f && bh.distance < 5.1f, "BoxCast: " + bh.distance);
             Check(Physics.BoxCast(new Vector3(10, 5, 10), new Vector3(0.5f, 0.5f, 0.5f), Vector3.down), "BoxCast(bool)");

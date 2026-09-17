@@ -772,6 +772,15 @@ func ortho_normalize(a: Vector3, b: Vector3) -> Array:
 	var bn: Vector3 = (b - an * b.dot(an)).normalized()
 	return [an, bn]
 
+## Vector3.OrthoNormalize(ref normal, ref tangent, ref binormal)
+func ortho_normalize3(a: Vector3, b: Vector3, c: Vector3) -> Array:
+	var an: Vector3 = a.normalized()
+	var bn: Vector3 = (b - an * b.dot(an)).normalized()
+	var cn: Vector3 = (c - an * c.dot(an) - bn * c.dot(bn)).normalized()
+	if cn == Vector3.ZERO:
+		cn = an.cross(bn)
+	return [an, bn, cn]
+
 func matrix_column(t: Transform3D, i: int) -> Vector4:
 	match i:
 		0:
@@ -3385,6 +3394,10 @@ func mat_get(m: Material, key, default):
 				return m.get_meta("udon_" + _shader_param_name(k), default)
 	return default
 
+## Property name behind a name or a Shader.PropertyToID id.
+func mat_prop_name(key) -> String:
+	return _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
+
 func mat_has(m: Material, key) -> bool:
 	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
@@ -4086,6 +4099,38 @@ func _sci(f: float, d: int, upper: bool) -> String:
 func vec3_str(v: Vector3, fmt: String = "F2") -> String:
 	return "(%s, %s, %s)" % [format_num(v.x, fmt), format_num(v.y, fmt), format_num(v.z, fmt)]
 
+## `Color.ToString("F2")`, `Quaternion.ToString("F3")`: "PREFIX(a, b, c, d)"
+func components_str(prefix: String, comps: Array, fmt: String) -> String:
+	var parts: Array = []
+	for c in comps:
+		parts.append(format_num(c, fmt))
+	return prefix + "(" + ", ".join(parts) + ")"
+
+## Rect.Contains(point, allowInverse) / Overlaps(other, allowInverse): negative sizes are
+## normalised first when `allow_inverse` is set.
+func rect_contains(r: Rect2, p: Vector2, allow_inverse: bool) -> bool:
+	if allow_inverse:
+		return r.abs().has_point(p)
+	# Unity compares against xMin..xMax as they are: an inverted rect contains nothing
+	# (Rect2.has_point logs an engine error for negative sizes)
+	return p.x >= r.position.x and p.x < r.end.x and p.y >= r.position.y and p.y < r.end.y
+
+func rect_overlaps(r: Rect2, o: Rect2, allow_inverse: bool) -> bool:
+	if allow_inverse:
+		return r.abs().intersects(o.abs())
+	return o.end.x > r.position.x and o.position.x < r.end.x and o.end.y > r.position.y and o.position.y < r.end.y
+
+## Debug.LogFormat(LogType, LogOption, context, format, args): Error 0, Assert 1, Warning 2,
+## Log 3, Exception 4.
+func log_typed(log_type: int, text: String) -> void:
+	match log_type:
+		0, 1, 4:
+			push_error(text)
+		2:
+			push_warning(text)
+		_:
+			print(text)
+
 func vec2_str(v: Vector2, fmt: String = "F2") -> String:
 	return "(%s, %s)" % [format_num(v.x, fmt), format_num(v.y, fmt)]
 
@@ -4357,7 +4402,9 @@ func new_object() -> RefCounted:
 func parse_int_styles(s: String, styles: int) -> int:
 	var t: String = s.strip_edges()
 	if styles & 512:
-		return t.trim_prefix("0x").trim_prefix("0X").hex_to_int()
+		t = t.trim_prefix("0x").trim_prefix("0X")
+		# hex_to_int logs an engine error on other characters (TryParse probes with bad input)
+		return t.hex_to_int() if t.is_valid_hex_number(false) else 0
 	if styles & 64:
 		t = t.replace(",", "")
 	return t.to_int()
@@ -4369,6 +4416,28 @@ func is_valid_int_styles(s: String, styles: int) -> bool:
 	if styles & 64:
 		t = t.replace(",", "")
 	return t.is_valid_int()
+
+## float.Parse(s, NumberStyles): AllowThousands (64) drops group separators, AllowCurrencySymbol
+## (256) a leading currency sign; hex styles do not apply to floats.
+func parse_float_styles(s: String, styles: int) -> float:
+	var t: String = s.strip_edges()
+	if styles & 64:
+		t = t.replace(",", "")
+	if styles & 256:
+		t = t.trim_prefix("$")
+	if styles & 16 and t.begins_with("(") and t.ends_with(")"):
+		t = "-" + t.substr(1, t.length() - 2)
+	return t.to_float()
+
+func is_valid_float_styles(s: String, styles: int) -> bool:
+	var t: String = s.strip_edges()
+	if styles & 64:
+		t = t.replace(",", "")
+	if styles & 256:
+		t = t.trim_prefix("$")
+	if styles & 16 and t.begins_with("(") and t.ends_with(")"):
+		t = "-" + t.substr(1, t.length() - 2)
+	return t.is_valid_float()
 
 func char_in_range(c: String, lo: int, hi: int) -> bool:
 	if c.is_empty():
@@ -5061,6 +5130,19 @@ func regex_split(r: RegEx, subject: String, count: int = 0) -> Array:
 	out.append(subject.substr(last))
 	return out
 
+## Regex.Split(input, count, startat): splitting starts at `startat`, the text before it stays
+## in the first piece.
+func regex_split_from(r: RegEx, subject: String, count: int, startat: int) -> Array:
+	var out: Array = []
+	var last: int = 0
+	for m in r.search_all(subject, startat):
+		if count > 0 and out.size() >= count - 1:
+			break
+		out.append(subject.substr(last, m.get_start() - last))
+		last = m.get_end()
+	out.append(subject.substr(last))
+	return out
+
 func regex_group_name(r: RegEx, i: int) -> String:
 	# Named groups are numbered in order of appearance; approximate with the names list.
 	var names: PackedStringArray = r.get_names()
@@ -5106,6 +5188,22 @@ func encoding_get_bytes(enc: String, s: String) -> Array:
 			return Array(s.to_utf32_buffer())
 		_:
 			return Array(s.to_utf8_buffer())
+
+## Encoding.GetBytes(chars, ..., bytes, byteIndex): writes into `dest`, returns the byte count.
+func encoding_copy_bytes(enc: String, text: String, dest: Array, dest_index: int) -> int:
+	var b: Array = encoding_get_bytes(enc, text)
+	for i in range(b.size()):
+		if dest_index + i < dest.size():
+			dest[dest_index + i] = b[i]
+	return b.size()
+
+## Encoding.GetChars(bytes, ..., chars, charIndex): writes into `dest`, returns the char count.
+func encoding_copy_chars(enc: String, bytes: Array, dest: Array, dest_index: int) -> int:
+	var t: String = encoding_get_string(enc, bytes)
+	for i in range(t.length()):
+		if dest_index + i < dest.size():
+			dest[dest_index + i] = t[i]
+	return t.length()
 
 func encoding_get_string(enc: String, bytes: Array) -> String:
 	var b := PackedByteArray(bytes)
@@ -5194,6 +5292,63 @@ func array_last_index_of(a: Array, v, start: int) -> int:
 			return i
 		i -= 1
 	return -1
+
+## Array.LastIndexOf(array, value, start, count): backwards from `start` over `count` elements.
+func array_last_index_of_range(a: Array, v, start: int, count: int) -> int:
+	var i: int = mini(start, a.size() - 1)
+	var lo: int = maxi(start - count + 1, 0)
+	while i >= lo:
+		if a[i] == v:
+			return i
+		i -= 1
+	return -1
+
+## Array.BinarySearch: the index of `v`, or the bitwise complement of where it would be inserted.
+func array_binary_search(a: Array, v, index: int = 0, length: int = -1) -> int:
+	var hi: int = a.size() if length < 0 else mini(index + length, a.size())
+	var lo: int = index
+	while lo < hi:
+		var mid: int = (lo + hi) >> 1
+		if a[mid] == v:
+			return mid
+		if a[mid] < v:
+			lo = mid + 1
+		else:
+			hi = mid
+	return ~lo
+
+## Array.Sort(keys, items, index, length): both arrays reordered by the keys of the range.
+func array_sort_keys_items_range(keys: Array, items: Array, index: int, length: int) -> void:
+	var k: Array = keys.slice(index, index + length)
+	var it: Array = items.slice(index, index + length) if items != null else []
+	var idx: Array = range(k.size())
+	idx.sort_custom(func(x, y): return k[x] < k[y])
+	for n in range(idx.size()):
+		keys[index + n] = k[idx[n]]
+		if items != null and index + n < items.size():
+			items[index + n] = it[idx[n]]
+
+## Element of a (jagged) multi-dimensional array addressed by an index list.
+func array_get_nd(a: Array, indices: Array):
+	var cur = a
+	for i in indices:
+		cur = cur[i]
+	return cur
+
+func array_set_nd(a: Array, indices: Array, v) -> void:
+	var cur = a
+	for n in range(indices.size() - 1):
+		cur = cur[indices[n]]
+	cur[indices[indices.size() - 1]] = v
+
+## Index array with `base` added to every element (Mesh.SetTriangles(..., baseVertex)).
+func arr_offset(a: Array, base: int) -> Array:
+	if base == 0:
+		return a
+	var out: Array = []
+	for v in a:
+		out.append(v + base)
+	return out
 
 func array_sort_keys_items(keys: Array, items: Array) -> void:
 	var idx: Array = range(keys.size())

@@ -340,28 +340,39 @@ Catalog coverage (100 %) is counted per member *name*. UdonEssentials' player li
 `byte.Parse(hex, NumberStyles.HexNumber)` fell back to the one-argument `byte.Parse` and parsed
 hex as decimal. `udon2godot --coverage-overloads` lists every extern whose name is mapped while no
 mapping accepts those arguments (count and catalog types; unknown types match anything, numeric
-types match each other, a base type accepts a derived one): 1344 on 2026-09-16 (675 by argument
-count alone).
+types match each other, a base type accepts a derived one, an int parameter accepts an enum):
+1344 on 2026-09-16 (675 by argument count alone), 0 on 2026-09-17.
 
 - [x] Audit tool: `--coverage-overloads`, comparing argument types, with the extern signature split
       fixed for `VRC_Pickup` / `TMP_Dropdown` style names (`VRCSDKBaseVRC_PickupPickupHand` is one
       argument).
-- [ ] System types: integer and float `Parse` / `TryParse` with `NumberStyles` / `IFormatProvider`,
-      `ToString(format, provider)`, `string` (`IndexOf(char, int, int)`, `LastIndexOf(char, int)`,
-      `Compare` ranges, `StringComparison` forms, `ToCharArray(int, int)`), `char.IsX(string, int)`,
-      `Convert.ToX(object, provider)`, `Array` ranges, `StringBuilder.Insert`, `DateTime`,
-      `Encoding`, `Regex`.
-- [ ] Unity 3D types in common use: `Physics.CheckBox` / `CheckCapsule` / `SphereCast(Ray, ...)` /
-      `RaycastNonAlloc(Ray, ...)`, `Rigidbody.AddRelativeForce(x, y, z)` family,
-      `Transform.TransformVector(x, y, z)`, `Vector2.SmoothDamp`, `Vector3.OrthoNormalize` (3 refs),
-      `Mathf.SmoothDampAngle` (5 args), `Rect`, `Random.ColorHSV` (8 args), `ToString(format)` of
-      vectors / colours, `Material` / `Mesh` / `Texture2D` list and range overloads.
-- [ ] `List<T>`-taking overloads (`GetComponents(Type, List<Component>)`, `Material.GetColorArray(int,
-      List<Color>)`): Udon cannot construct a `List<T>`, decide between mapping to arrays or marking
-      unsupported.
-- [ ] 2D physics (167 of the gaps): `Physics2D` casts and overlaps, `Collider2D` family, `Rigidbody2D`.
-- [ ] Coverage fixture checks for the overloads that change results (hex parse, string ranges, casts
-      from a Ray), and `scripts/ci.sh` fails when the gap count grows.
+- [x] System types: integer and float `Parse` / `TryParse` with `NumberStyles` / `IFormatProvider`,
+      `ToString(format, provider)`, `string` ranges and `StringComparison` forms (the two older
+      `IndexOf` / `StartsWith` mappings ignored the comparison), `string.Format(provider, ...)`,
+      `char.IsX(string, int)`, `Convert.ToX(object|string, provider)` and `(string, base)`, `Array`
+      ranges (`BinarySearch` now returns the complement for a missing value), `StringBuilder`,
+      `DateTime`, `Encoding`, `Regex`.
+- [x] Unity 3D types: every `Physics` cast / check overload that takes a `Ray` or omits trailing
+      arguments, `Rigidbody.AddRelativeForce(x, y, z)` family, `Transform.TransformVector(x, y, z)`,
+      `GetComponentInParent(Type, bool)`, `Vector2.SmoothDamp`, `Vector3.OrthoNormalize` (3 refs),
+      `Mathf.SmoothDampAngle` (5 args), `Rect` (inverse rects), `Bounds.Expand(Vector3)`,
+      `ToString(format)` of colours / quaternions / bounds / rays, `Debug.Log*Format(context, ...)`,
+      `Material` / `MaterialPropertyBlock` by property id, `Mesh` ranges and update flags,
+      `Texture2D` mip arguments.
+- [x] `List<T>`-taking overloads (975): skipped by the audit, U# cannot create a `List<T>`.
+- [x] 2D physics: depth-range variants map like the sibling without them (Godot 2D has no depth),
+      `ContactFilter2D` variants apply the filter's layer mask.
+- [x] Overload resolution uses catalog relations: a derived argument fits its base closely
+      (`CultureInfo` is an `IFormatProvider`), an enum never stands in for a class or another enum.
+      Found by the new fixture: `int.Parse("42", CultureInfo.InvariantCulture)` picked the
+      `NumberStyles` overload.
+- [x] Fixture `TOverloads.cs` (28 checks) + 7 ray / check overloads in `TPhysics.cs`; coverage is
+      920 checks. `scripts/ci.sh` fails when either audit reports a gap (0 / 0 now).
+- [x] `scripts/diff_converter_output.sh`: converts every reference repo with the last committed
+      converter and with the working tree and prints the generated lines that differ. It caught
+      what no suite did: a bare `type ParticleSystem` block in a file that loads before the
+      declaration turned typed fields into Variant (a declaration now overrides an earlier bare
+      block; unit test). For this batch the diff is 6 lines, all intended.
 
 ## Next
 

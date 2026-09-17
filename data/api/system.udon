@@ -29,13 +29,13 @@ type string kind=class gd=String extern=SystemString
   IndexOf(char): int => $0.find($1)
   IndexOf(string, int): int => $0.find($1, $2)
   IndexOf(char, int): int => $0.find($1, $2)
-  IndexOf(string, StringComparison): int => $0.find($1)
+  IndexOf(string, StringComparison): int => U.str_index_of($0, $1, 0, -1, $2)
   LastIndexOf(string): int => $0.rfind($1)
   LastIndexOf(char): int => $0.rfind($1)
   Contains(string): bool => $0.contains($1)
   Contains(char): bool => $0.contains($1)
   StartsWith(string): bool => $0.begins_with($1)
-  StartsWith(string, StringComparison): bool => $0.begins_with($1)
+  StartsWith(string, StringComparison): bool => U.str_starts_with($0, $1, $2)
   EndsWith(string): bool => $0.ends_with($1)
   Replace(string, string): string => $0.replace($1, $2)
   Replace(char, char): string => $0.replace($1, $2)
@@ -334,7 +334,7 @@ type decimal kind=struct gd=float extern=SystemDecimal
 
 type IFormatProvider kind=class gd=Variant extern=SystemIFormatProvider
 
-type CultureInfo kind=class gd=Dictionary extern=SystemGlobalizationCultureInfo
+type CultureInfo : IFormatProvider kind=class gd=Dictionary extern=SystemGlobalizationCultureInfo
   static InvariantCulture: CultureInfo => {"name": ""}
   static CurrentCulture: CultureInfo => {"name": ""}
 
@@ -431,7 +431,7 @@ type Array kind=class gd=Array extern=SystemArray
   static Fill(Array, object): void => $1.fill($2)
   static Exists(Array, object): bool => !unsupported Array.Exists requires a delegate, which Udon does not support
   static Find(Array, object): object => !unsupported Array.Find requires a delegate, which Udon does not support
-  static BinarySearch(Array, object): int => $1.bsearch($2)
+  static BinarySearch(Array, object): int => U.array_binary_search($1, $2)
   static Empty(): Array => []
 
 type Enum kind=class gd=int extern=SystemEnum
