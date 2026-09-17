@@ -286,7 +286,21 @@ func _mask_of(button: int) -> int:
 func _unhandled_input(event: InputEvent) -> void:
 	if not enabled or source != "mouse":
 		return
-	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
+		# the wheel scrolls the canvas under the pointer (ScrollRect, sliders)
+		if _ray_from_mouse():
+			_update_hit()
+		if hit.get("kind") == "canvas":
+			var vp: SubViewport = _viewport_of(hit["canvas"])
+			if vp != null:
+				var w := InputEventMouseButton.new()
+				w.position = hit["px"]
+				w.global_position = hit["px"]
+				w.button_index = event.button_index
+				w.pressed = event.pressed
+				w.factor = event.factor
+				vp.push_input(w, true)
+	elif event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 		if _ray_from_mouse():
 			_update_hit()
 		if event.pressed:

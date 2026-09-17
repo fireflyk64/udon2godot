@@ -134,6 +134,39 @@ func _ui_checks(r, fx: Node) -> void:
 		await r.wait(3)
 		r.check(inp.text == "hi 42", "typed text landed in the field: '%s'" % inp.text)
 		r.check(int(fx.get("inputEnded")) >= 1 and str(fx.get("inputText")) == "hi 42", "onEndEdit reached the script: '%s' (%d)" % [str(fx.get("inputText")), int(fx.get("inputEnded"))])
+	# scroll rect: Item2 starts below the visible part; the wheel scrolls it into view, then it is clicked
+	var sc: Node = r.find("Scroll")
+	var item2: Node = r.find("Item2")
+	r.check(sc is ScrollContainer and item2 is BaseButton, "ScrollRect imported as ScrollContainer with its items: " + str(sc))
+	if sc is ScrollContainer and item2 is BaseButton:
+		await r.wait(3)
+		r.check(sc.get_v_scroll_bar().max_value - sc.get_v_scroll_bar().page > 200.0, "content is taller than the viewport: range %.0f" % (sc.get_v_scroll_bar().max_value - sc.get_v_scroll_bar().page))
+		r.check(not sc.get_global_rect().encloses(Rect2(item2.get_global_transform() * Vector2.ZERO, Vector2.ONE)), "Item2 starts outside the visible part")
+		await r.mouse_move(r.project(r.control_world(sc)))
+		await r.wheel(-12)
+		await r.wait(5)
+		r.check(sc.scroll_vertical > 150, "wheel scrolled the rect through the pointer: scroll_vertical=%d" % sc.scroll_vertical)
+		r.check(int(fx.get("scrollEvents")) >= 1 and float(fx.get("scrollY")) < 0.5, "ScrollRect.onValueChanged reached the script: %d event(s), normalized y %.2f" % [int(fx.get("scrollEvents")), float(fx.get("scrollY"))])
+		await r.click(r.project(r.control_world(item2)))
+		await r.wait(3)
+		r.check(int(fx.get("itemPressed")) == 2, "Item2 clicked after scrolling: itemPressed=%d" % int(fx.get("itemPressed")))
+		await r.shot("scrolled")
+	# dropdown: a click opens the popup inside the canvas viewport, a second click picks "Blue"
+	var dd: Node = r.find("Dropdown")
+	r.check(dd is OptionButton and dd.item_count == 3 and dd.selected == 0, "Dropdown imported as OptionButton with 3 options: " + str(dd))
+	if dd is OptionButton:
+		await r.click(r.project(r.control_world(dd)))
+		await r.wait(5)
+		var pop: PopupMenu = dd.get_popup()
+		r.check(pop.visible, "dropdown popup opened by the pointer")
+		await r.shot("dropdown")
+		if pop.visible:
+			var cvn: Node = u._ui_world_canvas(dd)
+			var row: float = float(pop.size.y) / 3.0
+			var ppx: Vector2 = Vector2(pop.position) + Vector2(pop.size.x * 0.5, row * 2.5)
+			await r.click(r.project(u.to_gd_v(u.ui_viewport_to_world(cvn, ppx))))
+			await r.wait(5)
+		r.check(dd.selected == 2 and int(fx.get("dropdownChanged")) == 1 and int(fx.get("dropdownValue")) == 2, "picked the third option through the pointer: selected=%d, script saw %d" % [dd.selected, int(fx.get("dropdownValue"))])
 	# screen-space overlay canvas: Godot's own GUI handles the click at the control's window rect
 	var ob: Node = r.find("OverlayBtn")
 	r.check(ob is BaseButton and ob.is_visible_in_tree(), "overlay button imported: " + str(ob))

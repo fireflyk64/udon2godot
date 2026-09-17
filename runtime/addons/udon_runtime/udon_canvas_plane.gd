@@ -61,11 +61,19 @@ static func draws(c: Control) -> bool:
 ## scaled container lands where Unity draws it.
 static func content_bounds(c: Control, to_root: Transform2D, out: Array) -> void:
 	var xf: Transform2D = to_root * c.get_transform()
+	var own: Rect2 = xf * Rect2(Vector2.ZERO, c.size)
 	if draws(c):
-		out.append(xf * Rect2(Vector2.ZERO, c.size))
+		out.append(own)
+	# a Mask / RectMask2D / ScrollRect clips what it holds: hidden scroll content must not grow the plane
+	var inner: Array = [] if (c.clip_contents or c is ScrollContainer) else out
 	for ch in c.get_children():
 		if ch is Control:
-			content_bounds(ch, xf, out)
+			content_bounds(ch, xf, inner)
+	if inner != out:
+		for r in inner:
+			var clipped: Rect2 = (r as Rect2).intersection(own)
+			if clipped.size.x > 0.0 and clipped.size.y > 0.0:
+				out.append(clipped)
 
 
 ## Pixel density that keeps `size` units within the viewport limit.

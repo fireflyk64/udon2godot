@@ -269,7 +269,15 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       Enter (onEndEdit), and a screen-space canvas button (Godot's own GUI; its full-window root
       must ignore the mouse or it swallows every click meant for the world). Clicks driven by a
       scenario draw a red ring on the HUD for two seconds so screenshots show where they landed.
-      Open: Dropdown/ScrollRect coverage.
+      Dropdown and ScrollRect are covered too (83 display checks): the Dropdown (OptionButton) opens
+      its popup inside the canvas viewport and the third option is picked through the pointer
+      (onValueChanged, `dropdown.value`); the ScrollRect becomes a ScrollContainer with
+      `udon_scroll_rect.gd` (Unity's stretched Viewport child expands and takes the content's size
+      as its minimum, `scrolled` = ScrollRect.onValueChanged with the normalized position), the
+      pointer forwards the mouse wheel, a hidden item is scrolled into view and clicked, and masks
+      and scroll rects clip what they hold when the canvas plane is fitted. Open: Unity's own
+      Scrollbar objects are not linked to the container, a Dropdown's caption Label child is drawn
+      on top of the OptionButton's own text.
 - [x] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
       `scripts/play_world.sh`), `scenarios/player.gd` on the fixture (walk, strafe, jump, tracking
       data, Esc frees the mouse, clicks through the player camera). Stations: the pointer offers

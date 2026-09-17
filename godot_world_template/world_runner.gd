@@ -239,6 +239,20 @@ func mouse_button(pressed: bool, button: MouseButton = MOUSE_BUTTON_LEFT) -> voi
 	Input.parse_input_event(e)
 	await process_frame
 
+## Turn the mouse wheel `notches` times at the current cursor position (negative = down).
+func wheel(notches: int) -> void:
+	var button: MouseButton = MOUSE_BUTTON_WHEEL_UP if notches > 0 else MOUSE_BUTTON_WHEEL_DOWN
+	for i in range(absi(notches)):
+		for pressed in [true, false]:
+			var e := InputEventMouseButton.new()
+			e.position = _mouse_px
+			e.global_position = _mouse_px
+			e.button_index = button
+			e.pressed = pressed
+			e.factor = 1.0
+			Input.parse_input_event(e)
+			await process_frame
+
 ## World point (Godot space) at the centre of a control on a world canvas.
 func control_world(ctl: Control) -> Vector3:
 	var uu: Node = u()

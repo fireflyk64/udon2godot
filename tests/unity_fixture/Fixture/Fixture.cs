@@ -35,6 +35,13 @@ public class Fixture : UdonSharpBehaviour
     public Slider slider;
     public Toggle toggle;
     public InputField input;
+    public Dropdown dropdown;
+    public ScrollRect scroll;
+    public int dropdownChanged;
+    public int dropdownValue;
+    public int itemPressed = -1;
+    public int scrollEvents;
+    public float scrollY = 1f;
     public int sliderChanged;
     public int toggled;
     public int inputEnded;
@@ -134,6 +141,8 @@ public class Fixture : UdonSharpBehaviour
         Check(slider != null && Near(slider.value, 0.25f) && Near(slider.maxValue, 1f), "imported Slider value " + (slider == null ? "null" : slider.value.ToString()));
         Check(toggle != null && !toggle.isOn, "imported Toggle off");
         Check(input != null && input.text == "", "imported InputField empty");
+        Check(dropdown != null && dropdown.options.Count == 3 && dropdown.value == 0 && dropdown.options[1].text == "Green", "imported Dropdown options");
+        Check(scroll != null && Near(scroll.normalizedPosition.y, 1f), "imported ScrollRect at the top: " + (scroll == null ? -1f : scroll.normalizedPosition.y));
         ParticleSystem fx = GetComponentInChildren<ParticleSystem>();
         Check(fx != null, "particle system imported under Marker");
         if (fx != null)
@@ -167,4 +176,9 @@ public class Fixture : UdonSharpBehaviour
     public void OnToggle() { toggled++; toggleOn = toggle.isOn; }
     public void OnInput() { inputEnded++; inputText = input.text; }
     public void OnOverlay() { overlayPressed++; }
+    public void OnDropdown() { dropdownChanged++; dropdownValue = dropdown.value; }
+    public void OnScroll() { scrollEvents++; scrollY = scroll.normalizedPosition.y; }
+    public void OnItem0() { itemPressed = 0; }
+    public void OnItem1() { itemPressed = 1; }
+    public void OnItem2() { itemPressed = 2; }
 }
