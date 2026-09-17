@@ -44,6 +44,10 @@ func run(r) -> void:
 					if n is Label and str(n.text) == str(me.display_name):
 						shown = str(n.text)
 			r.check(shown != "", "the entry shows the player's display name (%s)" % str(me.display_name))
+			if items.size() > 0:
+				# the list is a VerticalLayoutGroup: the entry must get the list's width
+				await r.wait(3)
+				r.check(items[0].size.x > 100.0 and items[0].size.y > 10.0 and absf(items[0].size.x - list.size.x) < list.size.x * 0.2, "the entry is laid out across the list: %s in %s" % [str(items[0].size), str(list.size)])
 		if online != null:
 			r.check(str(online.text).begins_with("1 /"), "players online: " + str(online.text))
 		if master != null:
@@ -97,4 +101,8 @@ func run(r) -> void:
 		var frozen: int = probe.updates
 		await r.wait(10)
 		r.check(probe.updates == frozen and probe.late_updates > 30, "a removed delegate stops, the others go on: update %d, late %d" % [probe.updates, probe.late_updates])
+	if pl != null and pl.get("TextPlayersOnline") is Control and r.has_method("face_control"):
+		await r.face_control(pl.get("TextPlayersOnline"), 1.2)
+		await r.wait(5)
+		await r.shot("playerlist")
 	await r.shot("essentials")

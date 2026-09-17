@@ -9,5 +9,7 @@
   ["targets", "UnityEngine.Transform[]", [{"ref": 1}, {"ref": 0}]],
   ["weights", "System.Single[]", [0.5, 2]],
   ["names", "System.String[]", ["a", "b"]],
-  ["missing", "UnityEngine.Transform", null]
+  ["missing", "UnityEngine.Transform", null],
+  ["link", "VRC.SDKBase.VRCUrl", "https://example.com/legacy"],
+  ["links", "VRC.SDKBase.VRCUrl[]", ["https://example.com/a", "https://example.com/b"]]
 ]

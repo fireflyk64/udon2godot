@@ -44,10 +44,18 @@ func run(r) -> void:
 	r.check(e8 != null and str(e8.get("type")) == "king" and e8.get_white() == false, "black king on e8: " + str(e8.get("type") if e8 else null))
 	if e2 == null:
 		return
-	# look at the board from white's side, above the table
-	var bp: Vector3 = r.u().get_position(board)
-	r._place_camera(r.u().to_gd_v(bp + Vector3(0.0, 0.75, -0.85)), r.u().to_gd_v(bp))
-	await r.wait(2)
+	# look at the board from white's side: the corners a1 and h8 give its centre and size
+	var a1: Node = board.GetPiece(0, 0)
+	var h8: Node = board.GetPiece(7, 7)
+	var d1: Node = board.GetPiece(3, 0)
+	var d8: Node = board.GetPiece(3, 7)
+	if a1 != null and h8 != null and d1 != null and d8 != null:
+		var uu: Node = r.u()
+		var centre: Vector3 = (uu.get_position(a1) + uu.get_position(h8)) * 0.5
+		var span: float = uu.get_position(a1).distance_to(uu.get_position(h8))
+		var to_white: Vector3 = (uu.get_position(d1) - uu.get_position(d8)).normalized()
+		r._place_camera(uu.to_gd_v(centre + to_white * span * 0.75 + Vector3.UP * span * 0.7), uu.to_gd_v(centre))
+		await r.wait(2)
 	await r.shot("start")
 	# 1. e4
 	var e2_pos: Vector3 = r.u().get_position(e2)

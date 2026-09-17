@@ -91,6 +91,10 @@ class Writer:
             for x in v:
                 self.out += b"\x20" + struct.pack("<f", x)
             self.end_node()
+        elif ctype == "VRC.SDKBase.VRCUrl":
+            self.ref_node(name, qualified(ctype))
+            self.value("url", "System.String", v)
+            self.end_node()
         elif ctype == "System.Boolean":
             self.tag(0x2B, 0x2C, name); self.out.append(1 if v else 0)
         elif ctype == "System.Single":

@@ -128,6 +128,7 @@ func _ui_checks(r, fx: Node) -> void:
 		r.check(legacy.get("target") == r.find("Target") and legacy.get("missing") == null, "variable table reference by index: " + str(legacy.get("target")))
 		var lt = legacy.get("targets")
 		r.check(lt is Array and lt.size() == 2 and lt[0] == r.find("Floor") and lt[1] == r.find("Target"), "variable table reference array: " + str(lt))
+		r.check(str(legacy.get("link")) == "https://example.com/legacy" and legacy.get("links") is Array and legacy.get("links") == ["https://example.com/a", "https://example.com/b"], "variable table VRCUrl and VRCUrl[]: %s %s" % [str(legacy.get("link")), str(legacy.get("links"))])
 		var lw = legacy.get("weights")
 		var ln = legacy.get("names")
 		r.check(lw is Array and lw.size() == 2 and is_equal_approx(float(lw[0]), 0.5) and is_equal_approx(float(lw[1]), 2.0) and ln is Array and ln == ["a", "b"], "variable table arrays: %s %s" % [str(lw), str(ln)])

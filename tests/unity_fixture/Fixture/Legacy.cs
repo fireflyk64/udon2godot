@@ -16,4 +16,6 @@ public class Legacy : UdonSharpBehaviour
     public float[] weights;
     public string[] names;
     public Transform missing;
+    public VRC.SDKBase.VRCUrl link;
+    public VRC.SDKBase.VRCUrl[] links;
 }

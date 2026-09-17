@@ -453,7 +453,8 @@ stretch over a parent that Unity sizes through the layout) and the list showed n
       positions and sizes checked (fixture 95 / 130). Found on the way: `transform.childCount` /
       `GetChild` did not count UI children (every Control was taken for a component of its
       parent), so `content.childCount` was 0 and `row.GetChild(4)` null.
-- [ ] UdonEssentials scenario checks the entry's rectangle; screenshot of the list.
+- [x] UdonEssentials scenario checks the entry's rectangle (17 checks); the screenshot shows the
+      list with "1 / 1", the master's name and the local player's row.
 - [x] `DateTime.ToString` / `TimeSpan.ToString` custom formats: a tokenizer for `yyyy yy MMMM MMM
       MM M dddd ddd dd d HH H hh h mm m ss s f.. tt t`, quoted and escaped literals, the standard
       one-letter formats, day of week; `hh\:mm\:ss` for time spans (coverage 928).

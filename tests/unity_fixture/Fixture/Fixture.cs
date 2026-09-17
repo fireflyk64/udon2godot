@@ -10,6 +10,9 @@ using VRC.Udon.Common;
 public class Fixture : UdonSharpBehaviour
 {
     public Transform target;
+    // VRCUrl is a value in the scene file (`link: {url: ...}`), not an object reference
+    public VRC.SDKBase.VRCUrl link;
+    public VRC.SDKBase.VRCUrl[] links;
     // A UI prefab (its root is a RectTransform) used as a template: instantiated under the canvas
     // the way a player list adds its entries.
     // VRCObjectPool whose pooled objects are its children (they are built after the component)
@@ -99,6 +102,7 @@ public class Fixture : UdonSharpBehaviour
         Check(NearV(transform.TransformPoint(Vector3.forward), new Vector3(2, 2, 3)), "TransformPoint " + transform.TransformPoint(Vector3.forward));
         Check(target != null, "target reference bound");
         Check(hiddenNumber == 42 && hiddenTarget == target, "[HideInInspector] public fields keep their serialized values: " + hiddenNumber);
+        Check(link != null && link.Get() == "https://example.com/page" && links != null && links.Length == 2 && links[1].Get() == "https://example.com/two", "VRCUrl and VRCUrl[] fields keep their urls: " + (link == null ? "null" : link.Get()));
         GameObject first = pool != null ? pool.TryToSpawn() : null;
         GameObject second = pool != null ? pool.TryToSpawn() : null;
         GameObject third = pool != null ? pool.TryToSpawn() : null;

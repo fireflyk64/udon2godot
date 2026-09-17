@@ -392,6 +392,9 @@ fn type_json(prog: &Program, ty: &Ty) -> String {
                     udon2godot::api::TypeKind::Class => {
                         if t.name == "GameObject" {
                             "gameobject"
+                        } else if t.gd == "String" {
+                            // VRCUrl: a value in the scene file (`url: {url: ...}`), not a reference
+                            "struct"
                         } else if is_asset_type(&t.name, &t.gd) {
                             "resource"
                         } else {
