@@ -18,7 +18,7 @@ else
   rm -rf "$OUT/addons/udon_runtime"; cp -r runtime/addons/udon_runtime "$OUT/addons/"
   cp godot_project/addons/godot_sandbox/bin/*.so "$OUT/addons/godot_sandbox/bin/" 2>/dev/null || true   # a rebuilt sandbox library
   cp godot_world_template/world_runner.gd "$OUT/"; cp godot_world_template/scenarios/*.gd "$OUT/scenarios/"
-  cargo build --release -q && target/release/udon2godot -q --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted tests/unity_fixture/Fixture/Fixture.cs
+  cargo build --release -q && target/release/udon2godot -q --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted $(find tests/unity_fixture -name "*.cs")
 fi
 python3 scripts/world_doctor.py "$OUT" | sed -n '/Scene import/,/Custom shaders/p' | head -12
 timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --debug-scripts --dump-refs --scenario res://scenarios/fixture.gd > "$OUT/scenario.log" 2>&1

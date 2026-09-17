@@ -89,6 +89,13 @@ func _ui_checks(r, fx: Node) -> void:
 		u.ui_click_world(scv, Vector3(4, 1, 3))
 		await r.wait(3)
 		r.check(int(fx.get("screenPressed")) == sbefore + 1, "ScreenBtn pressed through ui_click_world: %d → %d" % [sbefore, int(fx.get("screenPressed"))])
+	# Instance overrides of a scripted component inside the prefab: unidot passes them as a virtual
+	# object without m_Script, the plugin finds the class through the node the prefab built.
+	var hs: Node = r.behaviour("HolderScreen")
+	r.check(hs != null and hs.name == "Screen", "scripted child of the prefab instance: " + str(hs))
+	if hs != null:
+		r.check(int(hs.get("number")) == 7 and str(hs.get("label")) == "prefab", "value override on the instance (7), untouched field keeps the prefab's: %s %s" % [str(hs.get("number")), str(hs.get("label"))])
+		r.check(hs.get("target") == r.find("Target"), "reference override points at an object of the scene: " + str(hs.get("target")))
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)
