@@ -69,9 +69,17 @@ Status legend: [x] done and verified, [~] implemented but needs more coverage, [
 - [x] RenderTexture: `UdonRenderTexture` resources (from `.renderTexture` assets or `new RenderTexture`)
       get a SubViewport on first use (`U.rt_viewport`); `Camera.targetTexture` renders through a proxy
       camera inside it; materials receive the viewport texture.
-- [ ] Switch from the hand coded parser to a more standard Rust idiom. Deferred: the hand-written parser
-      handles all corpora with zero errors; a differential test against tree-sitter-c-sharp would be the
-      cheaper way to find parse gaps.
+- [x] Parser confidence without a rewrite: `tools/parser_diff.py` is a differential test against
+      tree-sitter-c-sharp. `udon2godot --ast-summary` exports what the hand-written parser produced
+      (types, members, parameter counts, per-member counts of statement and expression kinds) and
+      the same summary is computed from tree-sitter's tree after applying the lexer's `#if`
+      evaluation to the text. 164 files (tests + the three corpora) are structurally identical. It
+      found one real bug: `#define` inside an inactive `#if` branch took effect (`#if UNITY_ANDROID`
+      + `#define HT_QUEST` dropped the desktop-only guideline code of the pool table). Where the
+      two disagreed otherwise, the hand-written parser follows the C# spec and tree-sitter does not
+      (`f(a * b)` read as a pointer declaration, `(name) & x` read as a cast). `scripts/ci.sh` runs
+      it when the Python packages are installed. The rewrite to a parser-generator idiom stays
+      deferred: there is no known parse gap left to justify it.
 - [~] VRC SDK component nodes: VRC_Pickup (by GUID) and, by field signature, VRCStation, VRCObjectSync,
       VRCObjectPool, VRC_MirrorReflection, VRC_SceneDescriptor, VRC_AvatarPedestal, VRC_PortalMarker,
       video players are marked with `udon_<kind>` groups + metadata read by the adapters; more GUIDs can
@@ -291,7 +299,20 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       self)`: its node, else the nearest station below or above it). The fixture has a
       VRC_SceneDescriptor whose spawn is a child object (array references to nodes built later
       resolve through the pending list): the player spawns there and respawns below
-      `RespawnHeightY` with OnPlayerRespawn. Open: VR events.
+      `RespawnHeightY` with OnPlayerRespawn.
+- [~] VR input: `udon_vr_player.gd` (`world_runner.gd --vr`) is an XROrigin3D with the headset camera
+      and two XRController3D nodes on the aim pose; each hand owns a pointer (`Udon.pointer("left" /
+      "right")`, fed by `set_ray`) so the trigger presses world canvases, calls Interact and seats
+      the player in stations, the grip grabs and carries pickups (trigger = use while held), the
+      left stick walks along the head's yaw, the right stick snap-turns, A/X leaves a station.
+      `IsUserInVR()` is true, tracking data comes from the headset and controllers, and InputUse /
+      InputGrab / InputDrop / InputJump / InputMove* carry the hand (`UdonInputEventArgs.handType`;
+      InputUse now fires on every use press, as in VRChat). `--vr-sim` runs the same player with
+      plain nodes as controllers: `scenarios/vr.gd` (16 checks, part of the fixture test) aims each
+      hand at a canvas button and pulls the trigger, checks the hand type the script receives,
+      tracking data, stick locomotion, snap turn, and sitting and leaving a station. Not done: a run
+      on real OpenXR hardware, Lasso snapping as an alternative picker, hand-held UI laser visuals
+      beyond a thin ray.
 - [x] Godot 4.7.2 and the latest unidot_importer (2026-09-15): `origin/main` (the 4.7 parse fixes and
       the ImageMagick check) merged into the fork branch `udon-integration` without conflicts;
       `scripts/*.sh`, `scripts/setup_deps.sh`, the project features and the README moved to 4.7.2.

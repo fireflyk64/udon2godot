@@ -12,6 +12,8 @@
 ##             --spawn (put a simple player body at the scene descriptor spawn / origin)
 ##             --play (desktop player: WASD, mouse look, click to use; runs until the window closes
 ##                     unless --frames is given; scripts/play_world.sh wraps this)
+##             --vr (OpenXR player: controller rays, trigger / grip / sticks) or --vr-sim (the same
+##                     player with simulated controllers, for scenarios)
 ##             --scenario res://scenarios/x.gd  (drive the world; see godot_world_template/scenarios)
 extends SceneTree
 
@@ -69,6 +71,8 @@ func _init() -> void:
 		_spawn_player()
 	if _args.has("play"):
 		_spawn_desktop_player()
+	elif _args.has("vr") or _args.has("vr-sim"):
+		_spawn_vr_player(_args.has("vr-sim"))
 	if DisplayServer.get_name() != "headless" or _args.has("pointer"):
 		root.get_node("Udon").pointer()
 	if _args.has("play") and not _has_visible_light():
@@ -287,12 +291,14 @@ func place_player(pos: Vector3) -> void:
 		return
 	var space: PhysicsDirectSpaceState3D = root.get_viewport().world_3d.direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 2.0, 0), pos - Vector3(0, 50.0, 0))
-	q.exclude = [_player.get_rid()]
+	if _player is CollisionObject3D:
+		q.exclude = [_player.get_rid()]
 	var hit: Dictionary = space.intersect_ray(q)
 	if not hit.is_empty():
 		pos.y = hit["position"].y + 0.05
 	_player.global_position = pos
-	_player.velocity = Vector3.ZERO
+	if "velocity" in _player:
+		_player.velocity = Vector3.ZERO
 	await process_frame
 
 func click(px: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
@@ -402,6 +408,21 @@ func _spawn_transform() -> Transform3D:
 	if not hit.is_empty():
 		t.origin.y = hit["position"].y + 0.05
 	return t
+
+func _spawn_vr_player(simulated: bool) -> void:
+	var rig: Node3D = load("res://addons/udon_runtime/udon_vr_player.gd").new()
+	rig.name = "VRPlayer"
+	rig.simulate = simulated
+	var t: Transform3D = _spawn_transform()
+	root.add_child(rig)
+	rig.global_transform = t
+	rig.spawn_transform = t
+	for n in _scene.find_children("*", "Node3D", true, false):
+		if n.has_meta("udon_scene_descriptor"):
+			rig.respawn_height = float(n.get_meta("udon_scene_descriptor").get("respawn_height", rig.respawn_height))
+			break
+	_player = rig
+	print("[world_runner] VR player (%s) at %s" % ["simulated controllers" if simulated else "OpenXR", str(rig.global_position)])
 
 func _spawn_desktop_player() -> void:
 	var body: CharacterBody3D = load("res://addons/udon_runtime/udon_desktop_player.gd").new()

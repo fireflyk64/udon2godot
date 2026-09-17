@@ -38,5 +38,11 @@ if [ -n "${DISPLAY:-}" ]; then
   echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario_player.log")  (log: $OUT/scenario_player.log)"
   [ $PCODE -ne 0 ] && CODE=$PCODE
 fi
+echo "== VR player with simulated controllers (rays, trigger, stick, station)"
+timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --vr-sim --scenario res://scenarios/vr.gd > "$OUT/scenario_vr.log" 2>&1
+VCODE=$?
+grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/scenario_vr.log"
+echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario_vr.log")  (log: $OUT/scenario_vr.log)"
+[ $VCODE -ne 0 ] && CODE=$VCODE
 godot_guard_report "$OUT"/*.log "$OUT.import.log"
 exit $CODE

@@ -101,15 +101,22 @@ func input_event(event_name: String, value, hand_type: int = 0) -> void:
 		if b.has_method(event_name):
 			b.callv(event_name, [value, args])
 
-## The pointer (mouse / controller ray → world canvases, Interact, pickups), created on first use.
-var _pointer: Node = null
+## Pointers (mouse / controller ray → world canvases, Interact, pickups), created on first use:
+## "main" follows the mouse; a VR player asks for "left" and "right" and feeds them controller rays.
+var _pointers: Dictionary = {}
 
-func pointer() -> Node:
-	if _pointer == null or not is_instance_valid(_pointer):
-		_pointer = load("res://addons/udon_runtime/udon_pointer.gd").new()
-		_pointer.name = "UdonPointer"
-		add_child(_pointer)
-	return _pointer
+func pointer(which: String = "main") -> Node:
+	var p: Node = _pointers.get(which)
+	if p == null or not is_instance_valid(p):
+		p = load("res://addons/udon_runtime/udon_pointer.gd").new()
+		p.name = "UdonPointer" if which == "main" else "UdonPointer_" + which
+		if which != "main":
+			p.source = "custom"
+			p.grab_with_press = false
+			p.hand = 1 if which == "left" else 2
+		_pointers[which] = p
+		add_child(p)
+	return p
 
 # --- simulated input for tests and bots (forwarded to the provider) ---------------------------
 func simulate_key(keycode: int, pressed: bool) -> void:

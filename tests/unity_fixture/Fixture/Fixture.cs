@@ -2,6 +2,7 @@ using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
+using VRC.Udon.Common;
 
 /// End-to-end fixture: imported by scripts/import_world.sh (unidot + udon_integration) and checked
 /// by scenarios/fixture.gd. Verifies transforms in UNIDOT coordinate mode, serialized references,
@@ -42,6 +43,10 @@ public class Fixture : UdonSharpBehaviour
     public int itemPressed = -1;
     public int scrollEvents;
     public float scrollY = 1f;
+    // VRChat input events (desktop pointer and VR controllers)
+    public int useEvents;
+    public int lastUseHand = -1;
+    public float moveV;
     public int sliderChanged;
     public int toggled;
     public int inputEnded;
@@ -176,6 +181,20 @@ public class Fixture : UdonSharpBehaviour
     public void OnToggle() { toggled++; toggleOn = toggle.isOn; }
     public void OnInput() { inputEnded++; inputText = input.text; }
     public void OnOverlay() { overlayPressed++; }
+
+    public override void InputUse(bool value, UdonInputEventArgs args)
+    {
+        if (value)
+        {
+            useEvents++;
+            lastUseHand = (int)args.handType;
+        }
+    }
+
+    public override void InputMoveVertical(float value, UdonInputEventArgs args)
+    {
+        moveV = value;
+    }
     public void OnDropdown() { dropdownChanged++; dropdownValue = dropdown.value; }
     public void OnScroll() { scrollEvents++; scrollY = scroll.normalizedPosition.y; }
     public void OnItem0() { itemPressed = 0; }

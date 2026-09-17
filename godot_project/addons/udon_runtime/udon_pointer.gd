@@ -21,6 +21,11 @@ signal hover_changed(target: Node, text: String)
 @export var collision_mask: int = 0x7FFFFFFF
 ## Distance in front of the ray origin at which a held pickup is carried.
 @export var hold_distance: float = 0.8
+## VRC_Pickup.PickupHand of this pointer (1 left, 2 right); the mouse counts as the right hand.
+var hand: int = 2
+## Mouse: a press on a pickup grabs it. Controllers grab with the grip (`grab` / `drop`) and keep
+## the trigger (`press`) for use, Interact and UI.
+var grab_with_press: bool = true
 ## Ray source: "mouse" (camera through the mouse position, view centre while captured) or
 ## "custom" (`set_ray`).
 var source: String = "mouse"
@@ -229,6 +234,9 @@ func _push_button(cv: Node, px: Vector2, button: int, pressed: bool, double_clic
 ## Button press/release from the mouse (`_unhandled_input`), a controller or a test.
 func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 	_mask |= _mask_of(button)
+	if button == MOUSE_BUTTON_LEFT:
+		# VRChat raises InputUse on every use press, whatever is under the pointer
+		get_node("/root/Udon").input_event("InputUse", true, _hand_type())
 	if hit.get("kind") == "canvas":
 		_focus_canvas = hit["canvas"]
 		_push_button(hit["canvas"], hit["px"], button, true, double_click)
@@ -240,8 +248,7 @@ func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 	if button == MOUSE_BUTTON_LEFT:
 		if held != null:
 			held.use_down()
-			udon.input_event("InputUse", true)
-		elif hit.get("kind") == "pickup":
+		elif hit.get("kind") == "pickup" and grab_with_press:
 			_grab(hit["target"])
 		elif hit.get("kind") == "station":
 			var st = udon.station(hit["target"])
@@ -251,25 +258,34 @@ func press(button: int = MOUSE_BUTTON_LEFT, double_click: bool = false) -> void:
 				if pl.node != null and pl.node.has_method("sit_in"):
 					pl.node.sit_in(st)
 		elif hit.get("kind") == "interact":
-			udon.input_event("InputUse", true)
 			hit["target"].Interact()
-		else:
-			udon.input_event("InputUse", true)
 	elif button == MOUSE_BUTTON_RIGHT and held != null:
 		drop()
 
 
 func release(button: int = MOUSE_BUTTON_LEFT) -> void:
 	_mask &= ~_mask_of(button)
+	if button == MOUSE_BUTTON_LEFT:
+		get_node("/root/Udon").input_event("InputUse", false, _hand_type())
 	if hit.get("kind") == "canvas":
 		_push_button(hit["canvas"], hit["px"], button, false)
 		pointer_released.emit(hit["canvas"], hit["point"], button)
 		return
 	pointer_released.emit(null, hit.get("point", ray_origin), button)
-	if button == MOUSE_BUTTON_LEFT:
-		if held != null:
-			held.use_up()
-		get_node("/root/Udon").input_event("InputUse", false)
+	if button == MOUSE_BUTTON_LEFT and held != null:
+		held.use_up()
+
+
+## Udon's HandType of this pointer: 0 right, 1 left.
+func _hand_type() -> int:
+	return 1 if hand == 1 else 0
+
+
+## Controller grip: grab the pickup under the ray (returns whether something was grabbed).
+func grab() -> bool:
+	if held == null and hit.get("kind") == "pickup":
+		_grab(hit["target"])
+	return held != null
 
 
 func _mask_of(button: int) -> int:
@@ -340,8 +356,8 @@ func _grab(node: Node) -> void:
 	if node is RigidBody3D:
 		_frozen = node.freeze
 		node.freeze = true
-	pk.pick_up(udon.local_player(), 2)
-	udon.input_event("InputGrab", true)
+	pk.pick_up(udon.local_player(), hand)
+	udon.input_event("InputGrab", true, _hand_type())
 
 
 func drop() -> void:
@@ -351,7 +367,7 @@ func drop() -> void:
 	if _held_node is RigidBody3D and _frozen != null:
 		_held_node.freeze = _frozen
 	held.drop(udon.local_player())
-	udon.input_event("InputDrop", true)
+	udon.input_event("InputDrop", true, _hand_type())
 	held = null
 	_held_node = null
 	_frozen = null

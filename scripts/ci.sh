@@ -12,6 +12,14 @@ WORLDS=${1:-/tmp/udon2godot_worlds}
 FAILED=()
 run() { local name=$1; shift; echo; echo "===== $name"; "$@" || FAILED+=("$name"); }
 run verify scripts/verify.sh
+# differential parser test against tree-sitter-c-sharp (optional: pip install tree-sitter tree-sitter-c-sharp;
+# PARSER_DIFF_PYTHON picks the interpreter that has them)
+PDP="${PARSER_DIFF_PYTHON:-python3}"
+if "$PDP" -c "import tree_sitter_c_sharp" 2>/dev/null; then
+  run parser-diff "$PDP" tools/parser_diff.py tests $(ls -d refs/MS-VRCSA-Billiards refs/vrcbce refs/SaccFlightAndVehicles 2>/dev/null)
+else
+  echo; echo "===== parser-diff skipped (tree-sitter-c-sharp is not installed for $PDP)"
+fi
 run coverage scripts/coverage_test.sh
 run net scripts/net_test.sh
 run fixture env REIMPORT=1 scripts/test_unity_fixture.sh "$WORLDS/fixture"

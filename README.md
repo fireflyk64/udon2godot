@@ -107,6 +107,7 @@ scripts/play_world.sh /tmp/worlds/billiards                         # play it: W
 scripts/test_world_billiards.sh /tmp/worlds/billiards               # lobby → join → 8-ball → break, with screenshots; then played through window input
 scripts/test_unity_fixture.sh /tmp/worlds/fixture                   # hand-written Unity scene: transforms, refs, raycasts, onClick
 scripts/ci.sh                                                       # all suites, one Godot at a time
+tools/parser_diff.py tests refs/vrcbce                              # hand-written C# parser vs tree-sitter-c-sharp (pip install tree-sitter tree-sitter-c-sharp)
 ```
 
 The pipeline:
@@ -171,6 +172,10 @@ within its proximity, and a hit on a `VRC_Pickup` grabs it (left click use, righ
 World canvases are sized from the union of their drawing controls with the RectTransform scales
 applied, and `transform.position` / `localPosition` of UI elements convert between world metres and
 canvas units, so menus that scripts move onto table anchor spots land where Unity puts them.
+`--vr` spawns the OpenXR player instead (`udon_runtime/udon_vr_player.gd`: one pointer per
+controller, trigger = use / UI / Interact / sit, grip = grab, left stick walk, right stick snap
+turn; `--vr-sim` drives the same code with simulated controllers, which is how `scenarios/vr.gd`
+tests it; it has not been run on a headset yet).
 `godot_world_template/scenarios/fixture.gd` (with `player.gd`) and `billiards_play.gd` verify this
 through real window input: the fixture clicks colour-coded buttons at known Unity coordinates and
 samples the rendered colours at their projected pivots, the billiards scenario opens the lobby,

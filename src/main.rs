@@ -48,6 +48,7 @@ struct Args {
     externs: Option<PathBuf>,
     coverage: bool,
     coverage_missing: Option<PathBuf>,
+    ast_summary: Option<PathBuf>,
     quiet: bool,
 }
 
@@ -65,6 +66,7 @@ fn parse_args() -> Result<Args, String> {
         externs: None,
         coverage: false,
         coverage_missing: None,
+        ast_summary: None,
         quiet: false,
     };
     let mut it = std::env::args().skip(1);
@@ -91,6 +93,7 @@ fn parse_args() -> Result<Args, String> {
             "--externs" => a.externs = Some(PathBuf::from(it.next().ok_or("--externs needs a value")?)),
             "--catalog-coverage" => a.coverage = true,
             "--coverage-missing" => a.coverage_missing = Some(PathBuf::from(it.next().ok_or("--coverage-missing needs a value")?)),
+            "--ast-summary" => a.ast_summary = Some(PathBuf::from(it.next().ok_or("--ast-summary needs a value")?)),
             "-q" | "--quiet" => a.quiet = true,
             s if s.starts_with('-') => return Err(format!("unknown option `{}`", s)),
             s => a.inputs.push(PathBuf::from(s)),
@@ -194,6 +197,17 @@ fn main() {
                 had_error = true;
             }
         }
+    }
+
+    if let Some(p) = &args.ast_summary {
+        // structural summary of what the parser produced (tools/parser_diff.py compares it with
+        // tree-sitter-c-sharp); nothing is lowered
+        let items: Vec<String> = units.iter().map(udon2godot::summary::summarize).collect();
+        if let Err(e) = std::fs::write(p, format!("[{}]\n", items.join(",\n"))) {
+            eprintln!("cannot write {}: {}", p.display(), e);
+            std::process::exit(2);
+        }
+        std::process::exit(if had_error { 1 } else { 0 });
     }
 
     let mut diags = Diagnostics::new();

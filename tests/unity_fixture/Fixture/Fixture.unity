@@ -335,6 +335,9 @@ MonoBehaviour:
   itemPressed: -1
   scrollEvents: 0
   scrollY: 1
+  useEvents: 0
+  lastUseHand: -1
+  moveV: 0
   sliderChanged: 0
   toggled: 0
   inputEnded: 0

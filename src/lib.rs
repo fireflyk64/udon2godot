@@ -11,6 +11,7 @@ pub mod lower;
 pub mod names;
 pub mod parser;
 pub mod program;
+pub mod summary;
 pub mod template;
 pub mod token;
 pub mod types;

@@ -252,13 +252,16 @@ impl<'a> Lexer<'a> {
             "endif" => {
                 self.pp_stack.pop();
             }
-            "define" => {
+            // #define / #undef inside an inactive branch do nothing (`#if UNITY_ANDROID` +
+            // `#define HT_QUEST` must not define the symbol on desktop)
+            "define" if self.pp_active() => {
                 let sym: &'static str = Box::leak(rest.to_string().into_boxed_str());
                 self.defined.push(sym);
             }
-            "undef" => {
+            "undef" if self.pp_active() => {
                 self.defined.retain(|s| *s != rest);
             }
+            "define" | "undef" => {}
             // region, endregion, pragma, warning, error, line, nullable: ignored
             _ => {}
         }
@@ -870,6 +873,9 @@ mod tests {
 
     #[test]
     fn lex_preprocessor() {
+        // a #define in an inactive branch is ignored
+        let toks2 = tokenize("#if UNITY_ANDROID\n#define QUEST\n#endif\n#if !QUEST\nint desktop;\n#endif").unwrap();
+        assert!(toks2.iter().any(|t| matches!(&t.tok, Tok::Ident(n) if n == "desktop")), "code under #if !QUEST must survive an inactive #define");
         let toks = tokenize("#if UNITY_EDITOR\nint a;\n#else\nint b;\n#endif\nint c;").unwrap();
         let idents: Vec<String> = toks
             .iter()
