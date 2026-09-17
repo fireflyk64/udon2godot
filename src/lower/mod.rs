@@ -84,8 +84,13 @@ pub struct Lowerer<'p> {
     /// branches): template arguments must not be hoisted there.
     pub(crate) hoist_ok: bool,
     pub(crate) used_enums: BTreeSet<String>,
+    /// Enums whose values are converted to text: each gets a `_enum_name_<Enum>(v)` helper.
+    pub(crate) enum_name_funcs: BTreeSet<String>,
     pub(crate) usage: Usage,
     pub(crate) loops: Vec<LoopCtx>,
+    /// Locals of a switch section that another section uses: declared before the `match`, so
+    /// their declaration statement only assigns.
+    pub(crate) hoisted_locals: Vec<String>,
     pub(crate) in_static: bool,
     /// Cross-class constants being inlined (`Class.Name`): a constant that reaches itself through
     /// other constants must not recurse.
@@ -108,8 +113,10 @@ pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> Cl
         pre: vec![],
         hoist_ok: true,
         used_enums: BTreeSet::new(),
+        enum_name_funcs: BTreeSet::new(),
         usage: Usage::default(),
         loops: vec![],
+        hoisted_locals: vec![],
         in_static: false,
         const_stack: Vec::new(),
         foreign_const: 0,
@@ -223,7 +230,11 @@ impl<'p> Lowerer<'p> {
                 script.extends = Some("Node".into());
             }
         } else {
-            self.warn(class.span, format!("class `{}` does not derive from UdonSharpBehaviour; emitted as a plain Node script", class.name));
+            // static helper classes are expected: their statics run on a holder node
+            let is_static = class.decls.iter().any(|d| d.modifiers.contains(&Modifier::Static));
+            if !is_static {
+                self.warn(class.span, format!("class `{}` does not derive from UdonSharpBehaviour; emitted as a plain Node script", class.name));
+            }
             script.extends = Some("Node".into());
         }
         // Behaviours deriving from another user behaviour extend that script instead.
@@ -370,6 +381,35 @@ impl<'p> Lowerer<'p> {
         for m in &class.methods {
             let f = self.lower_method(m);
             script.funcs.push(f);
+        }
+
+        // C# prints an enum value as its member name.
+        let named: Vec<String> = self.enum_name_funcs.iter().cloned().collect();
+        for name in named {
+            let members: Vec<(String, i64)> = match self.prog.user_enum(&name) {
+                Some(ue) => ue.members.clone(),
+                None => self.prog.catalog.get(&name).map(|t| t.enum_members.clone()).unwrap_or_default(),
+            };
+            let mut seen = BTreeSet::new();
+            let arms: Vec<GMatchArm> = members
+                .iter()
+                .filter(|(_, v)| seen.insert(*v))
+                .map(|(n, v)| GMatchArm { patterns: vec![GExpr::Int(*v)], body: vec![GStmt::Return(Some(GExpr::str(n)))] })
+                .collect();
+            let mut body = Vec::new();
+            if !arms.is_empty() {
+                body.push(GStmt::Match { subject: GExpr::ident("v"), arms });
+            }
+            body.push(GStmt::Return(Some(GExpr::ident("str").call(vec![GExpr::ident("v")]))));
+            script.funcs.push(GFunc {
+                name: format!("_enum_name_{}", self.enum_gd_name(&name)),
+                params: vec![GParam { name: "v".into(), ty: None, default: None }],
+                ret: Some("String".into()),
+                body,
+                is_static: true,
+                doc: None,
+                comment: Some(format!("{}.ToString()", name)),
+            });
         }
 
         // Enums referenced anywhere in the class.
@@ -660,6 +700,12 @@ impl<'p> Lowerer<'p> {
                         }
                         None => (None, declared_ty.clone().unwrap_or(Ty::Unknown)),
                     };
+                    if self.hoisted_locals.contains(&d.name) {
+                        if let (Some(l), Some(value)) = (self.lookup_local(&d.name), init) {
+                            out.push(GStmt::Assign { target: GExpr::ident(&l.gd_name), op: "=", value });
+                        }
+                        continue;
+                    }
                     let gd = self.declare_local(&d.name, ty.clone());
                     let hint = match &ty {
                         Ty::Null | Ty::Unknown => None,
@@ -1008,6 +1054,33 @@ impl<'p> Lowerer<'p> {
         let subj = self.lower_expr(subject);
         out.extend(self.take_pre());
         let subj_ty = subj.ty.clone();
+        // C# switch sections share one declaration space (`case 0: Vector3 dir = a; ... case 1:
+        // dir = b;`), `match` branches do not: such locals are declared before the match.
+        let hoisted_before = self.hoisted_locals.len();
+        for (i, sec) in sections.iter().enumerate() {
+            for st in &sec.body {
+                let Stmt::LocalDecl { ty, declarators, .. } = st else { continue };
+                for d in declarators {
+                    let shared = sections.iter().enumerate().any(|(j, o)| j != i && o.body.iter().any(|x| assigns_var(x, &d.name)));
+                    if !shared {
+                        continue;
+                    }
+                    let t = match (&d.init, ty.is_var()) {
+                        (Some(e), true) => self.peek_type(e),
+                        _ => self.prog.resolve_type_ref(ty),
+                    };
+                    let gd = self.declare_local(&d.name, t.clone());
+                    let (hint, init) = match &t {
+                        Ty::Null | Ty::Unknown | Ty::Object => (None, GExpr::Null),
+                        Ty::String => (self.gd_type(&t), GExpr::str("")),
+                        Ty::Array(_) | Ty::MultiArray(..) => (None, GExpr::Null),
+                        other => (self.gd_type(other), self.prog.default_value(other)),
+                    };
+                    out.push(GStmt::VarDecl { name: gd, ty: hint, init: Some(init) });
+                    self.hoisted_locals.push(d.name.clone());
+                }
+            }
+        }
         let mut arms = Vec::new();
         let mut default_arm: Option<GMatchArm> = None;
         for sec in sections {
@@ -1046,6 +1119,7 @@ impl<'p> Lowerer<'p> {
         if let Some(d) = default_arm {
             arms.push(d);
         }
+        self.hoisted_locals.truncate(hoisted_before);
         out.push(GStmt::Match { subject: subj.e, arms });
         out
     }

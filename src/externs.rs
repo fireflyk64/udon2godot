@@ -46,7 +46,21 @@ impl ExternSig {
                     if ag.is_empty() {
                         vec![]
                     } else {
-                        ag.split('_').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect::<Vec<_>>()
+                        // `_` separates arguments, but also sits inside `VRC_Pickup` / `TMP_Dropdown`
+                        // (`VRCSDKBaseVRC_PickupPickupHand`): a piece after `...VRC` / `...TMP` that
+                        // is not itself a namespace-rooted name continues the previous one.
+                        let mut out: Vec<String> = Vec::new();
+                        for piece in ag.split('_').filter(|s| !s.is_empty()) {
+                            let rooted = ["System", "UnityEngine", "Unity", "VRC", "TMPro", "Cinemachine", "UdonSharp"].iter().any(|r| piece.starts_with(r));
+                            match out.last_mut() {
+                                Some(prev) if !rooted && (prev.ends_with("VRC") || prev.ends_with("TMP")) => {
+                                    prev.push('_');
+                                    prev.push_str(piece);
+                                }
+                                _ => out.push(piece.to_string()),
+                            }
+                        }
+                        out
                     }
                 })
                 .collect()
@@ -158,6 +172,10 @@ mod tests {
         assert_eq!(s.arg_types, vec!["SystemSingle", "SystemSingle"]);
         assert_eq!(s.ret_type, "SystemSingle");
         assert_eq!(s.to_sig_string(), "SystemSingle.__op_Addition__SystemSingle_SystemSingle__SystemSingle");
+        let p = ExternSig::parse("VRCSDKBaseVRCPlayerApi.__GetPickupInHand__VRCSDKBaseVRC_PickupPickupHand__VRCSDKBaseVRC_Pickup").unwrap();
+        assert_eq!(p.arg_types, vec!["VRCSDKBaseVRC_PickupPickupHand"]);
+        let d = ExternSig::parse("TMProTMP_DropdownOptionDataArray.__Set__SystemInt32_TMProTMP_DropdownOptionData__SystemVoid").unwrap();
+        assert_eq!(d.arg_types, vec!["SystemInt32", "TMProTMP_DropdownOptionData"]);
         let g = ExternSig::parse("UnityEngineTransform.__get_position__UnityEngineVector3").unwrap();
         assert!(g.arg_types.is_empty());
         assert_eq!(g.kind(), ExternKind::PropGet);

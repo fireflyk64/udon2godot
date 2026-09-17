@@ -128,6 +128,7 @@ type VRCPlayerApi kind=class gd=Object extern=VRCSDKBaseVRCPlayerApi
   GetPickupInHand(PickupHand): VRC_Pickup => $0.get_pickup_in_hand($1)
   PlayHapticEventInHand(PickupHand, float, float, float): void => $0.play_haptic_event_in_hand($1, $2, $3, $4)
   SetPlayerTag(string, string): void => $0.set_player_tag($1, $2)
+  SetPlayerTag(string): void => $0.set_player_tag($1, "")
   GetPlayerTag(string): string => $0.get_player_tag($1)
   ClearPlayerTags(): void => $0.clear_player_tags()
   GetPlayersWithTag(string, string): object => Udon.get_players_with_tag($1, $2)
@@ -491,6 +492,7 @@ type PlayerData kind=static extern=VRCSDK3PersistencePlayerData
   static GetType(VRCPlayerApi, string): Type => U.type_of(Udon.player_data_get($1, $2, null))
 
 type DataToken kind=struct gd=Variant extern=VRCSDK3DataDataToken
+  ctor() => null
   ctor(string) => $1
   ctor(int) => $1
   ctor(float) => $1

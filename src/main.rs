@@ -31,6 +31,7 @@ OPTIONS:
     --externs <FILE>         Use a custom KnownExterns list (one signature per line)
     --catalog-coverage       Print which Udon externs of catalog types are not mapped
     --coverage-missing <FILE> Write every unmapped extern (all types) as `Type<TAB>member` lines
+    --coverage-overloads     Print extern overloads whose name is mapped but not with that argument count
     -q, --quiet              Only print errors
     -h, --help               Show this help
 ";
@@ -48,6 +49,7 @@ struct Args {
     externs: Option<PathBuf>,
     coverage: bool,
     coverage_missing: Option<PathBuf>,
+    coverage_overloads: bool,
     ast_summary: Option<PathBuf>,
     quiet: bool,
 }
@@ -66,6 +68,7 @@ fn parse_args() -> Result<Args, String> {
         externs: None,
         coverage: false,
         coverage_missing: None,
+        coverage_overloads: false,
         ast_summary: None,
         quiet: false,
     };
@@ -92,6 +95,7 @@ fn parse_args() -> Result<Args, String> {
             "--check" => a.check = true,
             "--externs" => a.externs = Some(PathBuf::from(it.next().ok_or("--externs needs a value")?)),
             "--catalog-coverage" => a.coverage = true,
+            "--coverage-overloads" => a.coverage_overloads = true,
             "--coverage-missing" => a.coverage_missing = Some(PathBuf::from(it.next().ok_or("--coverage-missing needs a value")?)),
             "--ast-summary" => a.ast_summary = Some(PathBuf::from(it.next().ok_or("--ast-summary needs a value")?)),
             "-q" | "--quiet" => a.quiet = true,
@@ -99,7 +103,7 @@ fn parse_args() -> Result<Args, String> {
             s => a.inputs.push(PathBuf::from(s)),
         }
     }
-    if a.inputs.is_empty() && !a.coverage && a.coverage_missing.is_none() {
+    if a.inputs.is_empty() && !a.coverage && !a.coverage_overloads && a.coverage_missing.is_none() {
         return Err("no input files".into());
     }
     Ok(a)
@@ -151,6 +155,12 @@ fn main() {
         None => ExternTable::load_embedded(),
     };
 
+    if args.coverage_overloads {
+        print_overload_gaps(&catalog, &externs);
+        if args.inputs.is_empty() {
+            return;
+        }
+    }
     if args.coverage || args.coverage_missing.is_some() {
         let missing = print_coverage(&catalog, &externs, args.coverage);
         if let Some(p) = &args.coverage_missing {
@@ -496,6 +506,76 @@ fn report_json(report: &BTreeMap<String, ReportEntry>) -> String {
 /// Coverage of the Udon extern list by the catalog. Array types (`FooArray`) are covered by the
 /// generic `Array` mapping; component boilerplate is covered by the `Component`/`Object` bases.
 /// Returns every (extern type, member) pair still unmapped.
+/// Extern overloads whose member name has a catalog mapping, but none that accepts those
+/// arguments (`byte.Parse(string, NumberStyles)` next to a mapped `byte.Parse(string)`). Argument
+/// types are compared by catalog name; types the catalog does not know match anything.
+fn print_overload_gaps(catalog: &Catalog, externs: &ExternTable) {
+    let mut by_extern: BTreeMap<String, String> = BTreeMap::new();
+    for t in catalog.types() {
+        if let Some(e) = &t.extern_name {
+            by_extern.insert(e.clone(), t.name.clone());
+        }
+        for e in &t.extern_aliases {
+            by_extern.insert(e.clone(), t.name.clone());
+        }
+    }
+    // extern argument name -> catalog type name (None: unknown to the catalog, matches anything)
+    let translate = |arg: &str| -> Option<String> {
+        let base = arg.strip_suffix("Ref").unwrap_or(arg);
+        if let Some(n) = by_extern.get(base) {
+            return Some(n.clone());
+        }
+        if let Some(elem) = base.strip_suffix("Array") {
+            return by_extern.get(elem).map(|n| format!("{}[]", n));
+        }
+        None
+    };
+    let numeric = ["int", "uint", "long", "ulong", "short", "ushort", "byte", "sbyte", "float", "double", "decimal", "char"];
+    let accepts = |param: &udon2godot::types::Ty, arg: &Option<String>| -> bool {
+        let Some(a) = arg else { return true };
+        let p = param.name();
+        if p == *a || p == "object" || p == "T" || p == "T[]" || p == "?" || p == "Array" && a.ends_with("[]") || p == "object[]" && a.ends_with("[]") {
+            return true;
+        }
+        // catalog entries often declare the widest numeric type once
+        if numeric.contains(&p.as_str()) && numeric.contains(&a.as_str()) {
+            return true;
+        }
+        // a base type in the catalog accepts the derived extern type
+        catalog.is_a(a.trim_end_matches("[]"), p.trim_end_matches("[]")) && a.ends_with("[]") == p.ends_with("[]")
+    };
+    let mut gaps = 0usize;
+    for ext in externs.type_names() {
+        let Some(n) = by_extern.get(ext) else { continue };
+        let mut names: Vec<&str> = externs.methods_of(ext);
+        names.sort();
+        for m in names {
+            if m.starts_with("get_") || m.starts_with("set_") || m.starts_with("op_") {
+                continue;
+            }
+            let members: Vec<&udon2godot::api::MemberInfo> = if m == "ctor" { catalog.ctors(n) } else { catalog.members(n, m).into_iter().filter(|mm| mm.is_method()).collect() };
+            if members.is_empty() {
+                continue;
+            }
+            for sig in externs.overloads(ext, m) {
+                let args: Vec<Option<String>> = sig.arg_types.iter().map(|a| translate(a)).collect();
+                let fits = members.iter().any(|mm| {
+                    if mm.has_params_array() {
+                        let fixed = mm.params.len() - 1;
+                        return args.len() >= fixed && mm.params[..fixed].iter().zip(&args).all(|(p, a)| accepts(&p.ty, a));
+                    }
+                    mm.params.len() == args.len() && mm.params.iter().zip(&args).all(|(p, a)| accepts(&p.ty, a))
+                });
+                if !fits {
+                    gaps += 1;
+                    println!("{}.{}({})", n, m, sig.arg_types.join(", "));
+                }
+            }
+        }
+    }
+    println!("overload gaps: {}", gaps);
+}
+
 fn print_coverage(catalog: &Catalog, externs: &ExternTable, verbose: bool) -> Vec<(String, String)> {
     let mut by_extern: BTreeMap<String, String> = BTreeMap::new();
     for t in catalog.types() {

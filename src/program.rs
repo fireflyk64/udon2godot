@@ -143,6 +143,21 @@ pub struct Program {
     enum_index: HashMap<String, usize>,
 }
 
+/// Bases that are ordinary C# / editor classes rather than behaviours of a missing package.
+fn is_plain_csharp_base(name: &str) -> bool {
+    let short = name.rsplit('.').next().unwrap_or(name);
+    let interface = short.len() > 1 && short.starts_with('I') && short[1..].starts_with(|c: char| c.is_ascii_uppercase());
+    interface
+        || matches!(
+            short,
+            "MonoBehaviour" | "ScriptableObject" | "Editor" | "EditorWindow" | "DefaultExecutionOrder" | "Attribute" | "PropertyAttribute" | "PropertyDrawer" | "DecoratorDrawer" | "Exception" | "AssetPostprocessor" | "ScriptedImporter" | "object" | "Object" | "ValueType" | "Enum"
+        )
+        || short.ends_with("Attribute")
+        || short.ends_with("Exception")
+        || short.ends_with("Drawer")
+        || short.ends_with("Editor")
+}
+
 impl Program {
     pub fn build(units: &[CompilationUnit], catalog: Catalog, externs: ExternTable, diags: &mut Diagnostics) -> Program {
         let mut classes: BTreeMap<String, ClassInfo> = BTreeMap::new();
@@ -200,8 +215,21 @@ impl Program {
             }
         }
 
-        // Resolve base chain to decide behaviour-ness.
+        // A base written with a namespace-relative name (`class FloatField : Abstract.Field`) names a
+        // user class by its last segment.
         let names: Vec<String> = classes.keys().cloned().collect();
+        for c in classes.values_mut() {
+            if let Some(b) = &c.base {
+                if !names.iter().any(|k| k == b) {
+                    let short = b.rsplit('.').next().unwrap_or(b).to_string();
+                    if short != *b && names.iter().any(|k| *k == short) {
+                        c.base = Some(short);
+                    }
+                }
+            }
+        }
+
+        // Resolve base chain to decide behaviour-ness.
         for n in &names {
             let mut cur = classes.get(n).and_then(|c| c.base.clone());
             let mut is_b = false;
@@ -215,7 +243,19 @@ impl Program {
                     is_b = true;
                     break;
                 }
-                cur = classes.get(&b).and_then(|c| c.base.clone());
+                match classes.get(&b) {
+                    Some(c) => cur = c.base.clone(),
+                    None => {
+                        // The base comes from a package that is not among the sources
+                        // (`ConsoleWindow : UdonLogger`). U# classes only derive from behaviours.
+                        if catalog.get(&b).is_none() && !is_plain_csharp_base(&b) {
+                            let c = &classes[n];
+                            diags.warn(c.span, format!("base class `{}` of `{}` is not among the converted sources; assuming it is an UdonSharpBehaviour", b, n));
+                            is_b = true;
+                        }
+                        break;
+                    }
+                }
             }
             classes.get_mut(n).unwrap().is_behaviour = is_b;
         }
@@ -333,19 +373,6 @@ impl Program {
             prog.class_index.insert(name.clone(), prog.classes.len());
             prog.classes.push(ci);
         }
-        // A base written with a namespace-relative name (`class FloatField : Abstract.Field`) names a
-        // user class by its last segment.
-        let known: Vec<String> = prog.class_index.keys().cloned().collect();
-        for c in prog.classes.iter_mut() {
-            if let Some(b) = &c.base {
-                if !known.iter().any(|k| k == b) {
-                    let short = b.rsplit('.').next().unwrap_or(b).to_string();
-                    if short != *b && known.iter().any(|k| *k == short) {
-                        c.base = Some(short);
-                    }
-                }
-            }
-        }
         prog
     }
 
@@ -400,7 +427,12 @@ impl Program {
         let chain = self.class_chain(name);
         let last = chain.last()?;
         let b = last.base.as_deref()?;
-        self.catalog.get(b)
+        match self.catalog.get(b) {
+            Some(t) => Some(t),
+            // behaviour whose base lives in a package outside the sources
+            None if last.is_behaviour => self.catalog.get("UdonSharpBehaviour"),
+            None => None,
+        }
     }
 
     /// Look up a field/property/method in a user class or its user bases.

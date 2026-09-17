@@ -49,7 +49,7 @@ func _init() -> void:
 	await process_frame
 	check(host._udon_started, "Start dispatched by runtime")
 	check(host.get("localPlayer") != null, "Networking.LocalPlayer resolved")
-	check(str(host.get("label")).begins_with("c0 2.00 phase=0"), "string formatting in Start: " + str(host.get("label")))
+	check(str(host.get("label")).begins_with("c0 2.00 phase=Idle"), "string formatting in Start: " + str(host.get("label")))
 	check(host.get("flags").size() == 10, "new bool[MAX]")
 	check(host.get("grid")[1][2] == 4.5, "2D array")
 	var p0: Vector3 = host.get("positions")[1]

@@ -4258,6 +4258,55 @@ func str_equals(a: String, b: String, comparison: int) -> bool:
 		return a.nocasecmp_to(b) == 0
 	return a == b
 
+## StringComparison: the odd values ignore case (CurrentCultureIgnoreCase 1,
+## InvariantCultureIgnoreCase 3, OrdinalIgnoreCase 5).
+func str_ignore_case(comparison: int) -> bool:
+	return comparison == 1 or comparison == 3 or comparison == 5
+
+func str_compare_cmp(a: String, b: String, comparison: int) -> int:
+	return str_compare(a, b, str_ignore_case(comparison))
+
+func str_compare_range(a: String, ia: int, b: String, ib: int, length: int, ignore_case: bool = false) -> int:
+	return str_compare(a.substr(ia, length), b.substr(ib, length), ignore_case)
+
+## `s.IndexOf(what, start, count, comparison)`; count < 0 searches to the end.
+func str_index_of(s: String, what: String, start: int = 0, count: int = -1, comparison: int = 4) -> int:
+	var hay: String = s if count < 0 else s.substr(0, start + count)
+	if str_ignore_case(comparison):
+		return hay.findn(what, start)
+	return hay.find(what, start)
+
+## `s.LastIndexOf(what, start, count, comparison)`: searches backwards from `start` over `count`
+## characters (start < 0: from the end, count < 0: down to the beginning).
+func str_last_index_of(s: String, what: String, start: int = -1, count: int = -1, comparison: int = 4) -> int:
+	if s.is_empty():
+		return -1
+	var from: int = s.length() - 1 if start < 0 else mini(start, s.length() - 1)
+	var lo: int = 0 if count < 0 else maxi(from - count + 1, 0)
+	var hay: String = s.substr(0, from + 1)
+	var i: int = hay.rfindn(what) if str_ignore_case(comparison) else hay.rfind(what)
+	return i if i >= lo else -1
+
+func str_starts_with(s: String, what: String, comparison: int) -> bool:
+	if str_ignore_case(comparison):
+		return s.to_lower().begins_with(what.to_lower())
+	return s.begins_with(what)
+
+func str_ends_with(s: String, what: String, comparison: int) -> bool:
+	if str_ignore_case(comparison):
+		return s.to_lower().ends_with(what.to_lower())
+	return s.ends_with(what)
+
+func str_contains(s: String, what: String, comparison: int) -> bool:
+	if str_ignore_case(comparison):
+		return s.containsn(what)
+	return s.contains(what)
+
+func str_replace_cmp(s: String, what: String, with: String, comparison: int) -> String:
+	if str_ignore_case(comparison):
+		return s.replacen(what, with)
+	return s.replace(what, with)
+
 func str_split(s: String, sep: String, options: int) -> Array:
 	var out: Array = Array(s.split(sep, options & 1 == 0))
 	if options & 2:

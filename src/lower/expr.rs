@@ -255,8 +255,29 @@ impl<'p> Lowerer<'p> {
         Lw::new(acc.unwrap_or_else(|| GExpr::str("")), Ty::String)
     }
 
+    /// Canonical name of the enum a type denotes (user enums win over same-named catalog enums).
+    pub(crate) fn enum_of(&self, ty: &Ty) -> Option<String> {
+        let Ty::Named(n) = ty else { return None };
+        if self.prog.is_user_class(n) {
+            return None;
+        }
+        if let Some(e) = self.prog.user_enum(n) {
+            return Some(e.name.clone());
+        }
+        self.prog.catalog.get(n).filter(|t| t.is_enum()).map(|t| t.name.clone())
+    }
+
+    /// `value.ToString()` of an enum: the member name, through a generated helper.
+    pub(crate) fn enum_to_string(&mut self, enum_name: &str, e: GExpr) -> GExpr {
+        self.enum_name_funcs.insert(enum_name.to_string());
+        GExpr::ident(&format!("_enum_name_{}", self.enum_gd_name(enum_name))).call(vec![e])
+    }
+
     /// `str(x)` unless x is already a string; floats use C#-style formatting.
     pub(crate) fn stringify(&mut self, lw: Lw) -> GExpr {
+        if let Some(en) = self.enum_of(&lw.ty) {
+            return self.enum_to_string(&en, lw.e);
+        }
         match &lw.ty {
             Ty::String | Ty::Char => lw.e,
             Ty::Float | Ty::Double => GExpr::ident("U").method("float_str", vec![lw.e]),
@@ -315,6 +336,13 @@ impl<'p> Lowerer<'p> {
         if let Some(t) = self.prog.catalog.resolve_name(name) {
             return Resolved::Type(t.to_string());
         }
+        // BCL names of the keyword types (`Single.Parse`, `Int32.MaxValue`)
+        let canon = canonical_type_name(name);
+        if canon != name {
+            if let Some(t) = self.prog.catalog.resolve_name(&canon) {
+                return Resolved::Type(t.to_string());
+            }
+        }
         let _ = span;
         Resolved::Unresolved
     }
@@ -334,6 +362,14 @@ impl<'p> Lowerer<'p> {
         if let Some(e) = self.prog.user_enum(&canon) {
             return Some(e.name.clone());
         }
+        // namespace-relative path to a user class (`Runtime.Pool.Pool` inside `TLP.UdonUtils`)
+        if let Some((prefix, last)) = dotted.rsplit_once('.') {
+            if let Some(c) = self.prog.class(last) {
+                if format!(".{}", c.namespace).ends_with(&format!(".{}", prefix)) {
+                    return Some(last.to_string());
+                }
+            }
+        }
         if canon.contains('.') || dotted.contains('.') {
             if let Some(t) = self.prog.catalog.resolve_name(&canon) {
                 // Only accept when the *whole* path denotes a type (avoid `transform.position` → `Transform`).
@@ -346,6 +382,32 @@ impl<'p> Lowerer<'p> {
         None
     }
 
+    /// C#'s "Color Color" rule: a field or property named like its type
+    /// (`public TestController TestController;`) still lets `TestController.ExecutionOrder`
+    /// reach a static member of the type.
+    fn type_behind_member(&self, target: &Expr, member: &str) -> Option<String> {
+        let Expr::Ident(head, _) = target.unparen() else { return None };
+        if self.lookup_local(head).is_some() {
+            return None;
+        }
+        if self.prog.find_field(&self.class.name, head).is_none() && self.prog.find_prop(&self.class.name, head).is_none() {
+            return None;
+        }
+        if self.prog.is_user_class(head) {
+            let st_field = self.prog.find_field(head, member).map_or(false, |(_, f)| f.is_static || f.is_const);
+            let st_prop = self.prog.find_prop(head, member).map_or(false, |(_, p)| p.is_static);
+            let methods = self.prog.find_methods(head, member);
+            let st_method = !methods.is_empty() && methods.iter().all(|m| m.is_static);
+            return if st_field || st_prop || st_method { Some(head.clone()) } else { None };
+        }
+        let canon = self.prog.catalog.resolve_name(head)?.to_string();
+        let members = self.prog.catalog.members(&canon, member);
+        if !members.is_empty() && members.iter().all(|m| m.is_static) {
+            return Some(canon);
+        }
+        None
+    }
+
     // ----- member access -----
 
     fn lower_member(&mut self, target: &Expr, name: &str, null_cond: bool, span: Span) -> Lw {
@@ -354,7 +416,7 @@ impl<'p> Lowerer<'p> {
         if let Some(t) = self.resolve_dotted_type(&full) {
             return Lw::new(GExpr::ident(&t), Ty::TypeName(t));
         }
-        let t = if let Some(tn) = self.resolve_dotted_type(target) { Lw::new(GExpr::ident(&tn), Ty::TypeName(tn)) } else { self.lower_expr(target) };
+        let t = if let Some(tn) = self.resolve_dotted_type(target).or_else(|| self.type_behind_member(target, name)) { Lw::new(GExpr::ident(&tn), Ty::TypeName(tn)) } else { self.lower_expr(target) };
         if null_cond {
             // `a?.b` → (a.b if a != null else null); evaluate `a` once
             let tmp = self.fresh_tmp();
@@ -700,6 +762,11 @@ impl<'p> Lowerer<'p> {
                         return self.call_catalog(&base_name, name, Some(target), args, &type_args, span);
                     }
                 }
+                // System.Object members on `this` (`GetType()`, `ToString()`)
+                if self.prog.catalog.members("object", name).iter().any(|m| m.is_method() && !m.is_static) {
+                    let target = Lw::new(GExpr::ident("self"), Ty::Named(self.class.name.clone()));
+                    return self.call_catalog("object", name, Some(target), args, &type_args, span);
+                }
                 // local delegate / unknown
                 self.warn(span, format!("unresolved method `{}`", name));
                 self.usage.unresolved.insert(format!("{}()", name));
@@ -713,7 +780,7 @@ impl<'p> Lowerer<'p> {
                     return Lw::new(GExpr::ident("super").method(&crate::names::mangle(name), a), ret);
                 }
                 // static call on a type
-                if let Some(tn) = self.resolve_dotted_type(target) {
+                if let Some(tn) = self.resolve_dotted_type(target).or_else(|| self.type_behind_member(target, name)) {
                     return self.static_call(&tn, name, args, &type_args, span);
                 }
                 let t = self.lower_expr(target);
@@ -790,8 +857,25 @@ impl<'p> Lowerer<'p> {
                 Lw::unknown(t.e.method(&crate::names::mangle(name), a))
             }
             Ty::Named(n) => {
+                if let Some(en) = self.enum_of(&t.ty) {
+                    match (name, args.len()) {
+                        ("ToString", 0) => return Lw::new(self.enum_to_string(&en, t.e), Ty::String),
+                        ("GetHashCode", 0) => return Lw::new(self.enum_as_int(t).e, Ty::Int),
+                        ("Equals", 1) => {
+                            let o = self.lower_expr(&args[0].expr);
+                            return Lw::new(t.e.bin("==", o.e), Ty::Bool);
+                        }
+                        ("CompareTo", 1) => {
+                            let o = self.lower_expr(&args[0].expr);
+                            let o = self.enum_as_int(o);
+                            let a = self.enum_as_int(t);
+                            return Lw::new(GExpr::ident("signi").call(vec![a.e.bin("-", o.e)]), Ty::Int);
+                        }
+                        _ => {}
+                    }
+                }
                 // Enum.HasFlag on user and catalog enums: (x & f) == f
-                let is_enum = self.prog.catalog.get(&n).map_or(true, |ti| ti.kind == crate::api::TypeKind::Enum);
+                let is_enum = self.prog.user_enum(&n).is_some() || self.prog.catalog.get(&n).map_or(true, |ti| ti.kind == crate::api::TypeKind::Enum);
                 if name == "HasFlag" && args.len() == 1 && is_enum {
                     let f = self.lower_expr(&args[0].expr);
                     let f = self.enum_as_int(f);
@@ -1125,6 +1209,10 @@ impl<'p> Lowerer<'p> {
         // (`behaviour.GetUdonTypeName()` vs `UdonSharpBehaviour.GetUdonTypeName<T>()`).
         if target.is_some() && cands.iter().any(|m| !m.is_static) {
             cands.retain(|m| !m.is_static);
+        }
+        if cands.is_empty() && target.is_some() && type_name != "object" && self.prog.catalog.members("object", name).iter().any(|m| m.is_method() && !m.is_static) {
+            // System.Object members every type has (`component.GetType()`, `array.ToString()`)
+            return self.call_catalog("object", name, target, args, type_args, span);
         }
         if cands.is_empty() {
             // maybe a field holding a Signal/Callable being invoked, or unmapped
@@ -1850,6 +1938,22 @@ impl<'p> Lowerer<'p> {
                 return out;
             }
         }
+        // Inherited catalog member written without `this.` (`name = "Entry"`).
+        if let Expr::Ident(name, _) = lhs.unparen() {
+            let own = self.lookup_local(name).is_some() || self.prog.find_field(&self.class.name, name).is_some() || self.prog.find_prop(&self.class.name, name).is_some();
+            if !own {
+                let tmpl = self.prog.catalog_base_of_class(&self.class.name).and_then(|b| self.prog.catalog.field_for_write(&b.name, name, false)).and_then(|m| m.set.clone());
+                if let Some(tmpl) = tmpl {
+                    let e = self.expand_template(&tmpl, Some(&GExpr::ident("self")), &[], Some(&value), &[], &[], name);
+                    let mut out = self.take_pre();
+                    match e {
+                        GExpr::Raw(s) => out.push(GStmt::Raw(s)),
+                        other => out.push(GStmt::Expr(other)),
+                    }
+                    return out;
+                }
+            }
+        }
         // Struct member of a property (e.g. `transform.position.x = 1`) is a C# error; but
         // `localPos.x = 1` on a local is fine.
         match &target.e {
@@ -1943,7 +2047,14 @@ impl<'p> Lowerer<'p> {
             if self.prog.find_field(&tn, name).is_some() || self.prog.find_prop(&tn, name).is_some() {
                 return None;
             }
-            self.prog.catalog_base_of_class(&tn).map(|b| b.name.clone())?
+            let base = self.prog.catalog_base_of_class(&tn).map(|b| b.name.clone());
+            match base {
+                Some(b) if self.prog.catalog.field_for_write(&b, name, false).is_some() => b,
+                // a user class named like a catalog type (`Toggle`): the member only exists there
+                _ if self.prog.catalog.get(&tn).is_some() => self.prog.catalog.resolve_name(&tn).unwrap_or(&tn).to_string(),
+                Some(b) => b,
+                None => return None,
+            }
         } else {
             tn
         };
@@ -1981,12 +2092,57 @@ fn is_plain_lvalue(e: &GExpr) -> bool {
         GExpr::Ident(_) => true,
         GExpr::Member(t, _) => is_plain_lvalue(t) || matches!(**t, GExpr::Call(..) | GExpr::MethodCall(..)),
         GExpr::Index(t, _) => is_plain_lvalue(t) || matches!(**t, GExpr::Call(..) | GExpr::MethodCall(..)),
-        GExpr::Raw(s) => {
-            let b = s.as_bytes();
-            !s.contains(' ') && !s.contains('(') && b.first().map_or(false, |c| c.is_ascii_alphabetic() || *c == b'_')
-        }
+        GExpr::Raw(s) => raw_is_lvalue(s),
         _ => false,
     }
+}
+
+/// A raw template result that can still be assigned to: a member path whose subscripts may hold
+/// any expression (`_images[result.get("url", "")]`), but no call or operator outside them.
+fn raw_is_lvalue(s: &str) -> bool {
+    let b = s.as_bytes();
+    if !b.first().map_or(false, |c| c.is_ascii_alphabetic() || *c == b'_') {
+        return false;
+    }
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' {
+            i += 1;
+            continue;
+        }
+        if c != b'[' {
+            return false;
+        }
+        let mut depth = 0i32;
+        let mut quote: Option<u8> = None;
+        let mut closed = false;
+        while i < b.len() {
+            let c = b[i];
+            match quote {
+                Some(_) if c == b'\\' => i += 1,
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None if c == b'"' || c == b'\'' => quote = Some(c),
+                None if c == b'[' || c == b'(' || c == b'{' => depth += 1,
+                None if c == b']' || c == b')' || c == b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        closed = true;
+                    }
+                }
+                None => {}
+            }
+            i += 1;
+            if closed {
+                break;
+            }
+        }
+        if !closed {
+            return false;
+        }
+    }
+    true
 }
 
 /// A getter template like `$0.global_position` or `$0.x` can be assigned to.

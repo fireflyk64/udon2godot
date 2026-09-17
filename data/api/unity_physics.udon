@@ -244,6 +244,7 @@ type ConstantForce : Component kind=component gd=RigidBody3D extern=UnityEngineC
   set relativeTorque: Vector3 => $0.constant_torque = U.transform_direction($0, $v)
 
 type RaycastHit kind=struct gd=Dictionary extern=UnityEngineRaycastHit
+  ctor() => {}
   point: Vector3 => $0.get("position", Vector3.ZERO)
   normal: Vector3 => $0.get("normal", Vector3.UP)
   distance: float => $0.get("distance", 0.0)

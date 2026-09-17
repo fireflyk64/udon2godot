@@ -334,6 +334,35 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       `scripts/test_world_billiards.sh` runs it headless (PLAY_SHOTS=1 on the display with
       screenshots); `scripts/play_world.sh <world>` launches it for a person.
 
+## Overload-level extern coverage
+
+Catalog coverage (100 %) is counted per member *name*. UdonEssentials' player list showed the hole:
+`byte.Parse(hex, NumberStyles.HexNumber)` fell back to the one-argument `byte.Parse` and parsed
+hex as decimal. `udon2godot --coverage-overloads` lists every extern whose name is mapped while no
+mapping accepts those arguments (count and catalog types; unknown types match anything, numeric
+types match each other, a base type accepts a derived one): 1344 on 2026-09-16 (675 by argument
+count alone).
+
+- [x] Audit tool: `--coverage-overloads`, comparing argument types, with the extern signature split
+      fixed for `VRC_Pickup` / `TMP_Dropdown` style names (`VRCSDKBaseVRC_PickupPickupHand` is one
+      argument).
+- [ ] System types: integer and float `Parse` / `TryParse` with `NumberStyles` / `IFormatProvider`,
+      `ToString(format, provider)`, `string` (`IndexOf(char, int, int)`, `LastIndexOf(char, int)`,
+      `Compare` ranges, `StringComparison` forms, `ToCharArray(int, int)`), `char.IsX(string, int)`,
+      `Convert.ToX(object, provider)`, `Array` ranges, `StringBuilder.Insert`, `DateTime`,
+      `Encoding`, `Regex`.
+- [ ] Unity 3D types in common use: `Physics.CheckBox` / `CheckCapsule` / `SphereCast(Ray, ...)` /
+      `RaycastNonAlloc(Ray, ...)`, `Rigidbody.AddRelativeForce(x, y, z)` family,
+      `Transform.TransformVector(x, y, z)`, `Vector2.SmoothDamp`, `Vector3.OrthoNormalize` (3 refs),
+      `Mathf.SmoothDampAngle` (5 args), `Rect`, `Random.ColorHSV` (8 args), `ToString(format)` of
+      vectors / colours, `Material` / `Mesh` / `Texture2D` list and range overloads.
+- [ ] `List<T>`-taking overloads (`GetComponents(Type, List<Component>)`, `Material.GetColorArray(int,
+      List<Color>)`): Udon cannot construct a `List<T>`, decide between mapping to arrays or marking
+      unsupported.
+- [ ] 2D physics (167 of the gaps): `Physics2D` casts and overlaps, `Collider2D` family, `Rigidbody2D`.
+- [ ] Coverage fixture checks for the overloads that change results (hex parse, string ranges, casts
+      from a Ray), and `scripts/ci.sh` fails when the gap count grows.
+
 ## Next
 
 - VR on real OpenXR hardware (the player and per-hand pointers exist and pass with simulated
@@ -376,7 +405,23 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
     `out string x` locals start as "" instead of a typed null. The "routed through
     Udon.call_static" warning is gone (that path is supported at runtime). Warnings now:
     UdonEssentials 4, EmyChess 1, UdonCombatSystem 3, UdonZip 0, model-loader-tablet 15,
-    glb-loader 25, Udonity 72 (was 548), UdonUtils 120 (was 390). Not done yet for these: scene import and runtime scenarios, the remaining
+    glb-loader 25, Udonity 72 (was 548), UdonUtils 120 (was 390). Fourth pass: enum values print
+    as their member name (`ToString()`, interpolation, concatenation; a generated
+    `_enum_name_<Enum>` helper per script, the e2e expectation `phase=0` was wrong and is now
+    `phase=Idle`), a user enum wins over a same-named nested catalog enum (`Mode` vs
+    `Navigation.Mode`), a base class from a package outside the sources makes the class a
+    behaviour (`ConsoleWindow : UdonLogger`) instead of a plain Node, C#'s "Color Color" rule
+    (`TestController TestController;` + `TestController.ExecutionOrder`), namespace-relative type
+    paths (`Runtime.Pool.Pool`), BCL aliases (`Single.Parse`, `Int32.MaxValue`), `GetType()` /
+    `ToString()` of System.Object on any type and on `this`, inherited setters without `this.`
+    (`name = ...`), setters on a field whose type is shadowed by a user class
+    (`toggle.interactable`), `dict[computed key] = v` was dropped when the key came from a
+    template, locals shared between `switch` sections are declared before the `match`, static
+    helper classes no longer warn. Warnings now: UdonEssentials 3, EmyChess 0, UdonCombatSystem 0,
+    UdonZip 0, model-loader-tablet 11, glb-loader 23, Udonity 42, UdonUtils 67 (coverage 885
+    checks). What is left is mostly packages that are not in the clones (UdonLogger,
+    EnumResolver, UdonAssetDatabase), editor-only code and see "Overload-level extern coverage".
+    Not done yet for these: scene import and runtime scenarios, the remaining
     unmapped members and "unknown type" warnings. Examples:
     1. https://github.com/Varneon/UdonEssentials (Console, Event Dispatcher, Player list)
     2. https://github.com/emymin/EmyChess

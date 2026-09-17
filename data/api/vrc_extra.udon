@@ -748,6 +748,9 @@ type VRCCameraMode kind=enum extern=VRCSDK3RenderingVRCCameraMode
   enum Photo = 1
   enum Stream = 2
   enum Other = 3
+  # newer SDK members used by community packages; numeric values assumed (not in the extern list)
+  enum ThirdPersonView = 4
+  enum FocusView = 5
 
 type VRCMirrorReflection
   OnWillRenderObject(): void => pass

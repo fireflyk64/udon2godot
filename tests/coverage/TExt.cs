@@ -58,8 +58,19 @@ namespace Coverage
         }
     }
 
+    public enum TExtMode { Idle, Run = 5 }
+
+    public class TExtPeer : UdonSharpBehaviour
+    {
+        public const int Order = 7;
+        public static int Thrice(int n) { return n * 3; }
+    }
+
     public class TExt : UdonSharpBehaviour
     {
+        // C# "Color Color": a field named like its type does not hide the type's statics
+        public TExtPeer TExtPeer;
+
         public string[] failures = new string[64];
         public int failCount;
         public int total;
@@ -69,6 +80,20 @@ namespace Coverage
         {
             total++;
             if (!ok) { failures[failCount] = what; failCount++; }
+        }
+
+        private Vector3 Pick(int mode)
+        {
+            switch (mode)
+            {
+                case 0:
+                    Vector3 dir = Vector3.up;
+                    return dir;
+                case 1:
+                    dir = Vector3.right;
+                    return dir;
+            }
+            return Vector3.zero;
         }
 
         public void RunTests()
@@ -88,6 +113,20 @@ namespace Coverage
             int counter = 1;
             TExtHelpers.Bump(ref counter, 4);
             Check(counter == 5, "ref argument through a cross-class static call: " + counter);
+            TExtMode mode = TExtMode.Run;
+            Check(mode.ToString() == "Run" && ("" + mode) == "Run" && $"{mode}" == "Run" && KeyCode.Space.ToString() == "Space", "enum values print as member names: " + mode);
+            Check(TExtPeer.Order == 7 && TExtPeer.Thrice(4) == 12 && TExtPeer == null, "field named like its type still reaches the type's statics");
+            Check(Pick(0) == Vector3.up && Pick(1) == Vector3.right, "switch sections share one declaration space");
+            var byKey = new DataDictionary();
+            string key = " k ";
+            byKey[key.Trim()] = 5;
+            Check(byKey.Count == 1 && byKey["k"].Int == 5, "dictionary element with a computed key is assigned");
+            Check(GetType().Name == "TExt", "GetType() on this: " + GetType());
+            string oldName = name;
+            name = "Renamed";
+            Check(gameObject.name == "Renamed", "inherited `name` setter without this.");
+            name = oldName;
+            Check(Mathf.Abs(Single.Parse("1.5") - 1.5f) < 0.001f && Int32.MaxValue == int.MaxValue, "BCL aliases of keyword types");
             var d = new DataDictionary { ["ok"] = true, ["n"] = 3 };
             Check(d.Count == 2 && d["n"].Int == 3 && d["ok"].Boolean, "index initializer on DataDictionary");
             var l = new DataList { 1, 2, 3 };

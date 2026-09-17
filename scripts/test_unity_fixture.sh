@@ -7,7 +7,10 @@ OUT=${1:-/tmp/udon2godot_worlds/fixture}
 . scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 SCENE=res://unity_fixture/Fixture/Fixture.tscn
 mkdir -p "$(dirname "$OUT")"   # the import log sits next to the world folder
-if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ "${REIMPORT:-0}" = 1 ]; then
+# a world imported before the Unity sources or the importer changed is stale
+STALE=$(find tests/unity_fixture refs/unidot_importer/udon_integration.gd -newer "$OUT/unity_fixture/Fixture/Fixture.tscn" -type f 2>/dev/null | head -1)
+if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ -n "$STALE" ] || [ "${REIMPORT:-0}" = 1 ]; then
+  [ -n "$STALE" ] && echo "re-importing: $STALE is newer than the imported scene"
   rm -rf "$OUT"
   scripts/import_world.sh tests/unity_fixture "$OUT" > "$OUT.import.log" 2>&1 || true
   grep -E "class\(es\)|import finished|did not finish|scripts attached" "$OUT.import.log"
