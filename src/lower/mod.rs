@@ -87,6 +87,12 @@ pub struct Lowerer<'p> {
     pub(crate) usage: Usage,
     pub(crate) loops: Vec<LoopCtx>,
     pub(crate) in_static: bool,
+    /// Cross-class constants being inlined (`Class.Name`): a constant that reaches itself through
+    /// other constants must not recurse.
+    pub(crate) const_stack: Vec<String>,
+    /// > 0 while the initializer of another class's constant is lowered: `class` is then the
+    /// declaring class and its own constants are inlined instead of named.
+    pub(crate) foreign_const: u32,
 }
 
 pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> ClassOutput {
@@ -105,6 +111,8 @@ pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> Cl
         usage: Usage::default(),
         loops: vec![],
         in_static: false,
+        const_stack: Vec::new(),
+        foreign_const: 0,
     };
     let script = l.lower();
     let source = Printer::new().script(&script);

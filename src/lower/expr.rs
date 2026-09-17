@@ -268,6 +268,13 @@ impl<'p> Lowerer<'p> {
         }
         // fields / properties of this class chain
         if let Some((_, f)) = self.prog.find_field(&self.class.name, name) {
+            if self.foreign_const > 0 {
+                // inside another class's constant initializer: its fields are not in scope of the
+                // script being generated, so constants are inlined
+                let _ = f;
+                let cn = self.class.name.clone();
+                return Resolved::Value(self.static_member(&cn, name, span));
+            }
             return Resolved::Value(Lw::new(GExpr::ident(&f.gd_name), f.ty.clone()));
         }
         if let Some((_, p)) = self.prog.find_prop(&self.class.name, name) {
@@ -467,13 +474,29 @@ impl<'p> Lowerer<'p> {
         }
         // user class static/const
         if self.prog.is_user_class(tn) {
-            if let Some((_, f)) = self.prog.find_field(tn, name) {
-                if tn == self.class.name {
+            let prog: &'p crate::program::Program = self.prog;
+            if let Some((decl, f)) = prog.find_field(tn, name) {
+                if tn == self.class.name && self.foreign_const == 0 {
                     return Lw::new(GExpr::ident(&f.gd_name), f.ty.clone());
                 }
                 if let Some(init) = &f.init {
                     if f.is_const || (f.is_static && f.is_readonly) {
+                        // Inline the constant: its initializer belongs to the declaring class, so
+                        // unqualified names in it are resolved there (and inlined in turn), and a
+                        // constant that reaches itself through a chain is cut instead of recursing.
+                        let key = format!("{}.{}", decl.name, name);
+                        if self.const_stack.contains(&key) || self.const_stack.len() > 64 {
+                            self.warn(span, format!("constant `{}` refers to itself through other constants; emitted dynamically", key));
+                            return Lw::new(GExpr::ident("Udon").method("static_get", vec![GExpr::str(&decl.name), GExpr::str(&f.gd_name)]), f.ty.clone());
+                        }
+                        self.const_stack.push(key);
+                        let saved = self.class;
+                        self.class = decl;
+                        self.foreign_const += 1;
                         let lw = self.lower_expr(init);
+                        self.foreign_const -= 1;
+                        self.class = saved;
+                        self.const_stack.pop();
                         return Lw::new(lw.e, f.ty.clone());
                     }
                 }
@@ -1408,15 +1431,57 @@ impl<'p> Lowerer<'p> {
 
     // ----- object creation -----
 
+    /// `new T(args) { A = 1, [k] = v, x }`: the object goes into a temporary, the initializer
+    /// becomes member assignments, index assignments and `Add` calls on it.
     fn lower_new(&mut self, ty: &TypeRef, args: &[Arg], init: Option<&[Expr]>, span: Span) -> Lw {
+        let made = self.lower_new_ctor(ty, args, span);
+        let Some(items) = init else { return made };
+        if items.is_empty() {
+            return made;
+        }
+        if !self.hoist_ok {
+            self.warn(span, "object initializer inside a conditionally evaluated operand is not supported; ignored");
+            return made;
+        }
+        let tmp = self.fresh_tmp();
+        let made_ty = made.ty.clone();
+        self.pre.push(GStmt::VarDecl { name: tmp.clone(), ty: None, init: Some(made.e) });
+        if let Some(sc) = self.scopes.last_mut() {
+            sc.insert(tmp.clone(), Local { gd_name: tmp.clone(), ty: made_ty.clone() });
+        }
+        let target = || Box::new(Expr::Ident(tmp.clone(), span));
+        for item in items {
+            let stmt_expr = match item {
+                Expr::Assign { op: None, lhs, rhs, span: s } => match &**lhs {
+                    Expr::Ident(name, ns) => Expr::Assign { op: None, lhs: Box::new(Expr::Member { target: target(), name: name.clone(), null_cond: false, span: *ns }), rhs: rhs.clone(), span: *s },
+                    Expr::Index { target: it, indices, span: is, .. } if matches!(&**it, Expr::Ident(n, _) if n == "$init") => {
+                        Expr::Assign { op: None, lhs: Box::new(Expr::Index { target: target(), indices: indices.clone(), null_cond: false, span: *is }), rhs: rhs.clone(), span: *s }
+                    }
+                    _ => item.clone(),
+                },
+                Expr::ArrayInit(parts, s) => Expr::Call {
+                    callee: Box::new(Expr::Member { target: target(), name: "Add".into(), null_cond: false, span: *s }),
+                    args: parts.iter().map(|p| Arg { name: None, mode: ParamMode::Value, out_decl: None, expr: p.clone() }).collect(),
+                    span: *s,
+                },
+                other => Expr::Call {
+                    callee: Box::new(Expr::Member { target: target(), name: "Add".into(), null_cond: false, span }),
+                    args: vec![Arg { name: None, mode: ParamMode::Value, out_decl: None, expr: other.clone() }],
+                    span,
+                },
+            };
+            let stmts = self.lower_stmt(&Stmt::Expr(stmt_expr, span));
+            self.pre.extend(stmts);
+        }
+        Lw::new(GExpr::ident(&tmp), made_ty)
+    }
+
+    fn lower_new_ctor(&mut self, ty: &TypeRef, args: &[Arg], span: Span) -> Lw {
         let t = self.prog.resolve_type_ref(ty);
         let tn = t.name();
         if self.prog.is_user_class(&tn) {
             self.error(span, format!("`new {}()`: Udon behaviours cannot be constructed; use Instantiate", tn));
             return Lw::new(GExpr::Null, t);
-        }
-        if init.is_some() {
-            self.warn(span, "object initializer `{ ... }` is not supported; ignored");
         }
         let ctors: Vec<MemberInfo> = self.prog.catalog.ctors(&tn).into_iter().cloned().collect();
         if ctors.is_empty() {

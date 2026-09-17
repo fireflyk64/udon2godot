@@ -171,8 +171,15 @@ impl Parser {
                 self.namespace.push(name);
                 while !self.is_punct(P::RBrace) && !self.at_eof() {
                     if self.is_kw(Kw::Using) {
+                        // using X; using static X; using A = B; (inside a namespace body)
                         self.advance();
+                        if self.is_ident_named("static") {
+                            self.advance();
+                        }
                         let _ = self.parse_qualified_name()?;
+                        if self.eat_punct(P::Eq) {
+                            let _ = self.parse_type()?;
+                        }
                         self.expect_punct(P::Semi)?;
                         continue;
                     }
@@ -1027,6 +1034,25 @@ impl Parser {
                 let span = self.span();
                 let inner = self.parse_array_init_body()?;
                 items.push(Expr::ArrayInit(inner, span));
+            } else if self.is_punct(P::LBracket) {
+                // index initializer `[key] = value` of an object initializer: the target is the
+                // object under construction, named `$init` until the initializer is lowered
+                let span = self.span();
+                self.advance();
+                let mut indices = vec![self.parse_expr()?];
+                while self.eat_punct(P::Comma) {
+                    indices.push(self.parse_expr()?);
+                }
+                self.expect_punct(P::RBracket)?;
+                self.expect_punct(P::Eq)?;
+                let rhs = if self.is_punct(P::LBrace) {
+                    let s2 = self.span();
+                    Expr::ArrayInit(self.parse_array_init_body()?, s2)
+                } else {
+                    self.parse_expr()?
+                };
+                let lhs = Expr::Index { target: Box::new(Expr::Ident("$init".into(), span)), indices, null_cond: false, span };
+                items.push(Expr::Assign { op: None, lhs: Box::new(lhs), rhs: Box::new(rhs), span });
             } else {
                 items.push(self.parse_expr()?);
             }

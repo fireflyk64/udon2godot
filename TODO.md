@@ -246,7 +246,7 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       Done for the mouse: `udon_pointer.gd` (`Udon.pointer()`), hover enter/exit, Interact and
       pickups on solid hits, `set_ray`/`press`/`release` for other sources. Open: a VR/controller
       source, Lasso snapping as an alternative picker, hover prompt in a HUD.
-- [ ] Desktop player controller (replaces the static `--spawn` body): `desktop_player.gd` in the
+- [x] Desktop player controller (replaces the static `--spawn` body): `desktop_player.gd` in the
       runtime, spawned by `world_runner.gd --play` (and usable from any game). CharacterBody3D +
       capsule at the scene descriptor spawn, WASD / arrows, Shift run, Space jump, mouse look with the
       mouse captured, Esc/Tab frees the mouse for canvases. Provides VRCPlayerApi data: position,
@@ -255,7 +255,7 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       (registered with `InputMap.add_action` at startup when the project has none), `Mouse X`/`Mouse Y`
       from the relative mouse motion of the frame, `Jump`/`Fire1` buttons, `Udon.input_event`
       (InputJump/InputUse/InputGrab/InputDrop/InputMove*/InputLook*) fired from the same actions.
-- [ ] Pickups and Interact from the pointer: hover shows `InteractionText`, left click / E on a
+- [x] Pickups and Interact from the pointer: hover shows `InteractionText`, left click / E on a
       behaviour with `Interact` calls it (within `proximity`); on a `udon_pickup` node the click picks
       it up (`OnPickup`, held at a hand offset in front of the camera, `exact_gun`/`exact_grip`
       orientation), left mouse while held = `OnPickupUseDown/Up`, drop with G / right click (`OnDrop`).
@@ -336,7 +336,8 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
 
 ## Next
 
-- VR input: controller rays through the same pointer, stations, VR-only events.
+- VR on real OpenXR hardware (the player and per-hand pointers exist and pass with simulated
+  controllers), Lasso snapping as an alternative picker.
 - Realistic rendering: lightmaps cannot be imported; `--shadows` substitutes real-time shadows. Ambient
   occlusion / GI fallback needs the Forward+ renderer (not available on the headless box).
 
@@ -354,7 +355,16 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
   - Performance: per-frame host round-trip cost for Update-heavy scripts, binary translation settings.
   - Editor import plugin wrapping the headless pipeline.
 
-  - Let's keep trying some more Udon prefabs. There are hundreds out there. Some examples:
+  - Let's keep trying some more Udon prefabs. There are hundreds out there. Converter-level status
+    (2026-09-16, `udon2godot --check --report refs/<repo>`, clones are not part of setup_deps.sh):
+    UdonEssentials 6 classes, EmyChess 13, UdonCombatSystem 32, UdonZip 2,
+    vrchat-3d-model-loader-tablet 29, vrchat-glb-loader 16, VUdon-Udonity 94, UdonUtils 150: all
+    convert with 0 errors except two lambdas in UdonUtils' reflection helper (not Udon). Fixed on
+    the way: a stack overflow on chained `new const` values across classes (constants are now
+    inlined in the declaring class's context with a re-entry guard), `using A = B;` inside a
+    namespace, index initializers, and object / collection initializers (they were dropped). All
+    324 files match tree-sitter structurally. Not done yet for these: scene import and runtime
+    scenarios, the remaining unmapped members and "unknown type" warnings (548 in Udonity). Examples:
     1. https://github.com/Varneon/UdonEssentials (Console, Event Dispatcher, Player list)
     2. https://github.com/emymin/EmyChess
     3. https://github.com/Toly65/UdonCombatSystem (might be hard to test without VR, but it does support some desktop features)

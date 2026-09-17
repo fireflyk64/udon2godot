@@ -174,3 +174,53 @@ fn reference_corpora_convert_without_errors() {
     assert!(mapped > 10000, "mapped: {}", mapped);
     assert!(unmapped <= 8, "unmapped members: {}", unmapped);
 }
+
+/// Found by converting community prefabs (UdonUtils, VUdon-Udonity): chained `new const` values
+/// across classes used to overflow the stack, `using A = B;` inside a namespace and index
+/// initializers did not parse, and object initializers were dropped.
+#[test]
+fn prefab_gaps_const_chains_aliases_and_initializers() {
+    let src = r#"
+using UdonSharp;
+using UnityEngine;
+using VRC.SDK3.Data;
+namespace Demo
+{
+    using Animator = UnityEngine.Animator;
+
+    public class Base : UdonSharpBehaviour
+    {
+        public const int Order = Unknown.Order + 1;
+    }
+    public class Mid : Base
+    {
+        public new const int Order = Base.Order + 1;
+        public const int Twice = Order * 2;
+    }
+    public class Leaf : Mid
+    {
+        public new const int Order = Mid.Order + 1;
+        public int seen;
+        public Animator anim;
+        void Start()
+        {
+            seen = Mid.Twice + Leaf.Order;
+            var d = new DataDictionary { ["ok"] = true, ["n"] = 3 };
+            var l = new DataList { 1, 2 };
+            seen += d.Count + l.Count;
+        }
+    }
+}
+"#;
+    let dir = std::env::temp_dir().join("udon2godot_prefab_gaps");
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("Demo.cs");
+    std::fs::write(&f, src).unwrap();
+    let (outs, diags) = convert(&[f]);
+    assert!(!diags.has_errors(), "errors: {:?}", diags.items.iter().map(|d| d.message.clone()).collect::<Vec<_>>());
+    let leaf = outs.iter().find(|o| o.name == "Leaf").expect("Leaf converted");
+    let code = &leaf.source;
+    assert!(code.contains("SetValue") || code.contains("[\"ok\"]") || code.contains("dict_set"), "index initializer lowered:\n{}", code);
+    assert!(code.contains("Add") || code.contains("append") || code.contains("list_add"), "collection initializer lowered:\n{}", code);
+    assert!(!code.contains("$init"), "initializer target placeholder must not leak:\n{}", code);
+}
