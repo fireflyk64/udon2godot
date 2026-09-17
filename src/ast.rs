@@ -180,6 +180,8 @@ pub struct MethodDecl {
     pub modifiers: Vec<Modifier>,
     pub ret: TypeRef,
     pub name: String,
+    /// Generic parameters of `T Foo<T>(...)`; calls substitute them from type arguments.
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     /// `None` for abstract/extern methods.
     pub body: Option<Block>,

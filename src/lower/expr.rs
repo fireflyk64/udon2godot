@@ -26,6 +26,13 @@ impl Lw {
 }
 
 /// What an identifier or member path resolved to.
+/// Where a user method is called: on `self`, on an instance, or as a static of another class.
+enum UserCallee {
+    This,
+    On(Lw),
+    Static(String),
+}
+
 enum Resolved {
     Value(Lw),
     Type(String),
@@ -682,7 +689,7 @@ impl<'p> Lowerer<'p> {
                 let methods = self.prog.find_methods(&self.class.name, name);
                 if !methods.is_empty() {
                     let m = self.pick_user_method(&methods, args);
-                    return self.call_user_method(m, None, args, span);
+                    return self.call_user_method(m, None, args, &type_args, span);
                 }
                 // catalog base method (SendCustomEvent etc.)
                 if let Some(base) = self.prog.catalog_base_of_class(&self.class.name) {
@@ -736,16 +743,11 @@ impl<'p> Lowerer<'p> {
             if !methods.is_empty() {
                 let m = self.pick_user_method(&methods, args);
                 if tn == self.class.name || self.prog.class_chain(&self.class.name).iter().any(|c| c.name == tn) {
-                    return self.call_user_method(m, None, args, span);
+                    return self.call_user_method(m, None, args, type_args, span);
                 }
-                // cross-class static call
-                let a = self.lower_args_plain(args);
-                let ret = m.ret.clone();
-                if self.opts.class_name {
-                    return Lw::new(GExpr::ident(tn).method(&m.gd_name, a), ret);
-                }
-                self.warn(span, format!("cross-class static call `{}.{}` routed through Udon.call_static (enable --class-name for a direct call)", tn, name));
-                return Lw::new(GExpr::ident("Udon").method("call_static", vec![GExpr::str(tn), GExpr::str(&m.gd_name), GExpr::Array(a)]), ret);
+                // cross-class static call: `Class.method(..)` with --class-name, otherwise through
+                // the runtime's static holder of that class
+                return self.call_user_method_on(m, UserCallee::Static(tn.to_string()), args, type_args, span);
             }
             self.warn(span, format!("unknown static method `{}.{}`", tn, name));
             let a = self.lower_args_plain(args);
@@ -767,7 +769,7 @@ impl<'p> Lowerer<'p> {
                 let methods = self.prog.find_methods(&n, name);
                 if !methods.is_empty() {
                     let m = self.pick_user_method(&methods, args);
-                    return self.call_user_method(m, Some(t), args, span);
+                    return self.call_user_method(m, Some(t), args, type_args, span);
                 }
                 if let Some(base) = self.prog.catalog_base_of_class(&n) {
                     let base_name = base.name.clone();
@@ -915,6 +917,23 @@ impl<'p> Lowerer<'p> {
         Some(r)
     }
 
+    /// Declare the local of an `out T x` / `out var x` argument with the default of its type
+    /// (typed String and Array slots cannot hold null).
+    fn declare_out_local(&mut self, name: &str, ty: &Ty) -> String {
+        let gd = self.declare_local(name, ty.clone());
+        let init = match ty {
+            Ty::String => GExpr::str(""),
+            Ty::Array(_) | Ty::MultiArray(..) => GExpr::Array(vec![]),
+            t => self.prog.default_value(t),
+        };
+        let hint = match ty {
+            Ty::Null | Ty::Unknown => None,
+            t => self.gd_type(t),
+        };
+        self.pre.push(GStmt::VarDecl { name: gd.clone(), ty: hint, init: Some(init) });
+        gd
+    }
+
     fn lower_args_plain(&mut self, args: &[Arg]) -> Vec<GExpr> {
         args.iter().map(|a| self.lower_expr(&a.expr).e).collect()
     }
@@ -976,7 +995,67 @@ impl<'p> Lowerer<'p> {
         lw.ty
     }
 
-    fn call_user_method(&mut self, m: &crate::program::MethodInfo, target: Option<Lw>, args: &[Arg], span: Span) -> Lw {
+    fn call_user_method(&mut self, m: &crate::program::MethodInfo, target: Option<Lw>, args: &[Arg], type_args: &[(String, Ty)], span: Span) -> Lw {
+        let callee = match target {
+            Some(t) => UserCallee::On(t),
+            None => UserCallee::This,
+        };
+        self.call_user_method_on(m, callee, args, type_args, span)
+    }
+
+    /// Generic parameters of a user method bound to the call's type arguments, or inferred from
+    /// the arguments (`T Foo<T>(T[] items)` called with a `Transform[]`).
+    fn bind_type_params(&mut self, m: &crate::program::MethodInfo, args: &[Arg], type_args: &[(String, Ty)]) -> Vec<(String, Ty)> {
+        let names = &m.decl.type_params;
+        if names.is_empty() {
+            return vec![];
+        }
+        let mut bound: Vec<(String, Ty)> = names.iter().zip(type_args.iter()).map(|(n, (_, t))| (n.clone(), t.clone())).collect();
+        if bound.len() < names.len() {
+            for (p, a) in m.params.iter().zip(args.iter()) {
+                if a.out_decl.is_some() || p.mode == ParamMode::Out {
+                    continue;
+                }
+                let name = match &p.ty {
+                    Ty::Named(n) => Some((n.clone(), false)),
+                    Ty::Array(inner) => match &**inner {
+                        Ty::Named(n) => Some((n.clone(), true)),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let Some((n, is_array)) = name else { continue };
+                if !names.contains(&n) || bound.iter().any(|(b, _)| *b == n) {
+                    continue;
+                }
+                let at = self.peek_type(&a.expr);
+                let t = match (is_array, at) {
+                    (true, Ty::Array(e)) => *e,
+                    (false, t) if !matches!(t, Ty::Unknown | Ty::Null) => t,
+                    _ => continue,
+                };
+                bound.push((n, t));
+            }
+        }
+        bound
+    }
+
+    fn call_user_method_on(&mut self, m: &crate::program::MethodInfo, callee: UserCallee, args: &[Arg], type_args: &[(String, Ty)], span: Span) -> Lw {
+        let bound = self.bind_type_params(m, args, type_args);
+        let subst = |t: &Ty| -> Ty {
+            match t {
+                Ty::Named(n) => bound.iter().find(|(b, _)| b == n).map(|(_, t)| t.clone()).unwrap_or_else(|| t.clone()),
+                Ty::Array(inner) => match &**inner {
+                    Ty::Named(n) => match bound.iter().find(|(b, _)| b == n) {
+                        Some((_, e)) => Ty::Array(Box::new(e.clone())),
+                        None => t.clone(),
+                    },
+                    _ => t.clone(),
+                },
+                _ => t.clone(),
+            }
+        };
+        let ret = subst(&m.ret);
         let mut gargs = Vec::new();
         let mut byref_targets: Vec<(Expr, Option<(TypeRef, String)>)> = Vec::new();
         let has_params = m.params.last().map_or(false, |p| p.mode == ParamMode::Params);
@@ -989,10 +1068,8 @@ impl<'p> Lowerer<'p> {
                 if matches!(p.mode, ParamMode::Out | ParamMode::Ref) {
                     // declare `out var x`
                     if let Some((t, n)) = &a.out_decl {
-                        let ty = if t.is_var() { p.ty.clone() } else { self.prog.resolve_type_ref(t) };
-                        let gd = self.declare_local(n, ty.clone());
-                        let hint = self.gd_type(&ty);
-                        self.pre.push(GStmt::VarDecl { name: gd, ty: hint, init: Some(self.prog.default_value(&ty)) });
+                        let ty = if t.is_var() { subst(&p.ty) } else { self.prog.resolve_type_ref(t) };
+                        self.declare_out_local(n, &ty);
                     }
                     let lw = self.lower_expr(&a.expr);
                     gargs.push(lw.e);
@@ -1018,9 +1095,11 @@ impl<'p> Lowerer<'p> {
                 gargs.push(GExpr::Array(params_items));
             }
         }
-        let call = match target {
-            Some(t) => t.e.method(&m.gd_name, gargs),
-            None => GExpr::ident(&m.gd_name).call(gargs),
+        let call = match callee {
+            UserCallee::On(t) => t.e.method(&m.gd_name, gargs),
+            UserCallee::This => GExpr::ident(&m.gd_name).call(gargs),
+            UserCallee::Static(tn) if self.opts.class_name => GExpr::ident(&tn).method(&m.gd_name, gargs),
+            UserCallee::Static(tn) => GExpr::ident("Udon").method("call_static", vec![GExpr::str(&tn), GExpr::str(&m.gd_name), GExpr::Array(gargs)]),
         };
         if m.has_byref() {
             // var _t = call(); x = _t[1]; ... ; value = _t[0]
@@ -1034,9 +1113,9 @@ impl<'p> Lowerer<'p> {
             if m.ret.is_void() {
                 return Lw::new(GExpr::raw("pass"), Ty::Void);
             }
-            return Lw::new(GExpr::ident(&tmp).index(GExpr::Int(0)), m.ret.clone());
+            return Lw::new(GExpr::ident(&tmp).index(GExpr::Int(0)), ret);
         }
-        Lw::new(call, m.ret.clone())
+        Lw::new(call, ret)
     }
 
     /// Call a catalog method (`type_name` canonical), instance when `target` is Some.
@@ -1089,10 +1168,7 @@ impl<'p> Lowerer<'p> {
             if let Some((t, n)) = &a.out_decl {
                 let pty = m.params.get(i).map(|p| p.ty.clone()).unwrap_or(Ty::Unknown);
                 let ty = if t.is_var() { pty } else { self.prog.resolve_type_ref(t) };
-                let gd = self.declare_local(n, ty.clone());
-                let hint = self.gd_type(&ty);
-                let dv = self.prog.default_value(&ty);
-                self.pre.push(GStmt::VarDecl { name: gd.clone(), ty: hint, init: Some(dv) });
+                let gd = self.declare_out_local(n, &ty);
                 lowered[i] = Lw::new(GExpr::ident(&gd), ty);
             }
         }

@@ -369,9 +369,14 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
     (`Varneon.VUdon.Editors.Foo` -> `Foo`), user types that shadow a catalog type fall back to the
     catalog member, nine more Unity enums, `Type.Equals`, VUdon-style array extensions, and arrays
     that are initialised with or compared against null stay untyped in SafeGDScript. Coverage fixture
-    `TExt.cs` (875 checks in total). Warnings now: UdonEssentials 4, EmyChess 1,
-    UdonCombatSystem 3, UdonZip 0, model-loader-tablet 18, glb-loader 26, Udonity 78 (was 548),
-    UdonUtils 390. Not done yet for these: scene import and runtime scenarios, the remaining
+    `TExt.cs` (878 checks in total). Third pass: `out` / `ref` arguments (and `out var x`
+    declarations) of cross-class static and extension calls were dropped, they now use the same
+    `[ret, out...]` path as same-class calls; generic method parameters are bound from the type
+    arguments or inferred from the arguments, so `out var x` of a `T` parameter gets a real type;
+    `out string x` locals start as "" instead of a typed null. The "routed through
+    Udon.call_static" warning is gone (that path is supported at runtime). Warnings now:
+    UdonEssentials 4, EmyChess 1, UdonCombatSystem 3, UdonZip 0, model-loader-tablet 15,
+    glb-loader 25, Udonity 72 (was 548), UdonUtils 120 (was 390). Not done yet for these: scene import and runtime scenarios, the remaining
     unmapped members and "unknown type" warnings. Examples:
     1. https://github.com/Varneon/UdonEssentials (Console, Event Dispatcher, Player list)
     2. https://github.com/emymin/EmyChess

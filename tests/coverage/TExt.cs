@@ -37,6 +37,25 @@ namespace Coverage
         {
             return n * 2;
         }
+
+        public static bool TryHalve(this int n, out int half)
+        {
+            half = n / 2;
+            return n % 2 == 0;
+        }
+
+        public static bool TryFirst<T>(this T[] items, out T first)
+        {
+            first = default;
+            if (items == null || items.Length == 0) { return false; }
+            first = items[0];
+            return true;
+        }
+
+        public static void Bump(ref int counter, int by)
+        {
+            counter += by;
+        }
     }
 
     public class TExt : UdonSharpBehaviour
@@ -62,6 +81,13 @@ namespace Coverage
             Check(Mathf.Abs(f.Half() - 2.5f) < 0.001f, "extension on float");
             Check((transform.Above(2f) - transform.position - Vector3.up * 2f).magnitude < 0.001f, "extension on a Unity type (Transform)");
             Check(TExtHelpers.Twice(21) == 42 && TExtHelpers.Answer == 42, "cross-class static call and chained constant: " + TExtHelpers.Twice(21) + " " + TExtHelpers.Answer);
+            int ten = 10;
+            Check(ten.TryHalve(out var five) && five == 5 && !five.TryHalve(out int two) && two == 2, "out var through an extension method of another class: " + five + " " + two);
+            string[] words = new string[] { "first", "second" };
+            Check(words.TryFirst(out var word) && word.Length == 5, "generic out parameter takes the element type: " + word);
+            int counter = 1;
+            TExtHelpers.Bump(ref counter, 4);
+            Check(counter == 5, "ref argument through a cross-class static call: " + counter);
             var d = new DataDictionary { ["ok"] = true, ["n"] = 3 };
             Check(d.Count == 2 && d["n"].Int == 3 && d["ok"].Boolean, "index initializer on DataDictionary");
             var l = new DataList { 1, 2, 3 };

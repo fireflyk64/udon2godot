@@ -468,7 +468,7 @@ impl Parser {
                 self.skip_balanced(P::LParen, P::RParen)?;
             }
             let body = Some(self.parse_block()?);
-            return Ok(Member::Constructor(MethodDecl { attrs, modifiers, ret: TypeRef::Void, name, params, body, doc, span }));
+            return Ok(Member::Constructor(MethodDecl { attrs, modifiers, ret: TypeRef::Void, name, type_params: vec![], params, body, doc, span }));
         }
         // destructor
         if self.is_punct(P::Tilde) {
@@ -492,8 +492,15 @@ impl Parser {
 
         // method
         if self.is_punct(P::LParen) || self.is_punct(P::Lt) {
-            if self.is_punct(P::Lt) {
-                self.skip_balanced(P::Lt, P::Gt)?;
+            let mut type_params = Vec::new();
+            if self.eat_punct(P::Lt) {
+                loop {
+                    type_params.push(self.expect_ident()?);
+                    if !self.eat_punct(P::Comma) {
+                        break;
+                    }
+                }
+                self.expect_punct(P::Gt)?;
             }
             let params = self.parse_params()?;
             while self.is_ident_named("where") {
@@ -512,7 +519,7 @@ impl Parser {
             } else {
                 Some(self.parse_block()?)
             };
-            return Ok(Member::Method(MethodDecl { attrs, modifiers, ret: ty, name, params, body, doc, span }));
+            return Ok(Member::Method(MethodDecl { attrs, modifiers, ret: ty, name, type_params, params, body, doc, span }));
         }
 
         // property
