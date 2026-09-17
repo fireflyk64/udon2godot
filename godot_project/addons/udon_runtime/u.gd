@@ -1100,6 +1100,7 @@ const _VRC_COMPONENTS: Dictionary = {
 	"VRCAvatarPedestal": "avatar_pedestal", "VRC_AvatarPedestal": "avatar_pedestal", "VRCPortalMarker": "portal",
 	"VRC_PortalMarker": "portal", "VRCMirrorReflection": "mirror", "VRC_MirrorReflection": "mirror",
 	"BaseVRCVideoPlayer": "video", "VRCUnityVideoPlayer": "video", "VRCAVProVideoPlayer": "video",
+	"VRCSpatialAudioSource": "spatial_audio", "VRC_SpatialAudioSource": "spatial_audio",
 }
 
 func node_is_type(n, type_name: String) -> bool:

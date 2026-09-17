@@ -135,6 +135,8 @@ func _ui_checks(r, fx: Node) -> void:
 	# canvas by the script (UdonEssentials' player list entries): unidot typed the prefab root as
 	# Node3D and dropped such prefabs.
 	r.check(fx.get("itemTemplate") != null, "UI prefab template resolved: " + str(fx.get("itemTemplate")))
+	var nested_item: Node = r.find("NestedItem")
+	r.check(nested_item is Control and cv.is_ancestor_of(nested_item) and fx.get("nestedItem") == nested_item, "instance of a UI prefab nested in the canvas, referenced through its stripped GameObject: %s / %s" % [str(nested_item), str(fx.get("nestedItem"))])
 	if fx.get("itemTemplate") != null:
 		fx.SpawnItem()
 		fx.SpawnItem()
@@ -147,6 +149,12 @@ func _ui_checks(r, fx: Node) -> void:
 					slabel = n
 		r.check(int(fx.get("itemsSpawned")) == 2 and spawned is Control and cv.is_ancestor_of(spawned), "two items instantiated under the canvas: %s" % str(spawned))
 		r.check(slabel != null and str(slabel.text) == "item 2", "the instance's Text was found and set: " + str(slabel.text if slabel else null))
+	# SDK components referenced through the SDK's DLL (one GUID, the class is the fileID): the GUID
+	# alone used to mean VRC_Pickup, which tagged audio sources, object syncs and UI shapes as pickups
+	var dll_pickup: Node = r.find("DllPickup")
+	var dll_audio: Node = r.find("DllAudio")
+	r.check(dll_pickup != null and dll_pickup.is_in_group("udon_pickup") and dll_pickup.has_meta("udon_pickup"), "DLL-referenced VRC_Pickup is a pickup")
+	r.check(dll_audio != null and not dll_audio.is_in_group("udon_pickup") and dll_audio.has_meta("udon_spatial_audio") and is_equal_approx(float(dll_audio.get_meta("udon_spatial_audio").get("far", 0.0)), 12.0), "DLL-referenced VRCSpatialAudioSource is not a pickup and keeps its settings: " + str(dll_audio.get_meta("udon_spatial_audio") if dll_audio != null and dll_audio.has_meta("udon_spatial_audio") else null))
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)

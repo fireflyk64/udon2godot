@@ -14,6 +14,9 @@ public class Fixture : UdonSharpBehaviour
     // the way a player list adds its entries.
     public GameObject itemTemplate;
     public Transform itemParent;
+    // the inactive instance of the same prefab that sits in the canvas (a stripped GameObject of a
+    // nested prefab instance): the usual in-scene template
+    public GameObject nestedItem;
     public int itemsSpawned;
     // [HideInInspector] hides a public field, Unity still serializes it (EmyChess keeps each piece's
     // type and board like this): the values written in the scene must arrive.
@@ -194,7 +197,7 @@ public class Fixture : UdonSharpBehaviour
     public void OnOverlay() { overlayPressed++; }
     public void SpawnItem()
     {
-        GameObject item = VRCInstantiate(itemTemplate);
+        GameObject item = VRCInstantiate(nestedItem != null && itemsSpawned % 2 == 1 ? nestedItem : itemTemplate);
         item.SetActive(true);
         Transform t = item.transform;
         t.SetParent(itemParent);
