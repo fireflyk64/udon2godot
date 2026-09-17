@@ -4,6 +4,7 @@
 # repositories under refs/ (unidot_importer fork, converter corpora).
 #
 #   scripts/setup_deps.sh                  # Godot + sandbox binaries + refs/ (Linux x86_64)
+#   scripts/setup_deps.sh --community      # also clone the community prefab repositories (pinned)
 #   scripts/setup_deps.sh --build-sandbox  # also clone the patched godot-sandbox source and rebuild
 #                                          # the Linux library (needs cmake, ninja, a C++20 compiler)
 #
@@ -58,6 +59,18 @@ clone_at refs/unidot_importer https://github.com/fireflyk64/unidot_importer.git 
 clone_at refs/MS-VRCSA-Billiards https://github.com/Sacchan-VRC/MS-VRCSA-Billiards.git 2a325d297be759130990bad999a5b2e2af82fac5
 clone_at refs/vrcbce https://github.com/VRCBilliards/vrcbce 968d176077b5397b09538c94839540bd57623807
 clone_at refs/SaccFlightAndVehicles https://github.com/Sacchan-VRC/SaccFlightAndVehicles 8578813e3627b39f2f564684e865be940c6947d3
+
+if [ "${1:-}" = "--community" ]; then
+  echo "== community prefab repositories (converter checks and scripts/test_world_community.sh)"
+  clone_at refs/UdonEssentials https://github.com/Varneon/UdonEssentials.git 85d00945aadb075dc9728bf58561eda83a01b02c
+  clone_at refs/EmyChess https://github.com/emymin/EmyChess.git 428aae78a7a9c280b8d4e182045306e02d45efd1
+  clone_at refs/UdonCombatSystem https://github.com/Toly65/UdonCombatSystem.git 43586e4ca3b515b98ce44a05ad94df927ca707f4
+  clone_at refs/UdonZip https://github.com/Foorack/UdonZip.git 715a36d6108f514e4a448397ead507a877b76d97
+  clone_at refs/vrchat-3d-model-loader-tablet https://github.com/vr-voyage/vrchat-3d-model-loader-tablet.git 11e2c0c12a634ee5e5b9a9b25862069e614bc0fc
+  clone_at refs/vrchat-glb-loader https://github.com/vr-voyage/vrchat-glb-loader.git 344db9b850be0a4ac26317891020df195e7c7a7b
+  clone_at refs/VUdon-Udonity https://github.com/Varneon/VUdon-Udonity.git 1727357acce1d93d4ac5b82c71bd88ce48c71d06
+  clone_at refs/UdonUtils https://github.com/Guribo/UdonUtils.git 89502b175df61b73294854acbe1ef357fa78d11e
+fi
 
 if [ "${1:-}" = "--build-sandbox" ]; then
   echo "== patched godot-sandbox source (branch $SANDBOX_BRANCH) and Linux library rebuild"

@@ -409,6 +409,9 @@ pub struct GVar {
     pub ty: Option<String>,
     pub init: Option<GExpr>,
     pub export: bool,
+    /// `@export_storage`: saved with the scene but not shown in the inspector (a public Unity
+    /// field with `[HideInInspector]` is still serialized).
+    pub export_storage: bool,
     pub doc: Option<String>,
     pub comment: Option<String>,
     /// Inline setter body statements (`set(value): ...`) — `value` is the parameter name.
@@ -551,7 +554,9 @@ impl Printer {
             self.line(&format!("# {}", c));
         }
         let mut s = String::new();
-        if v.export {
+        if v.export_storage {
+            s.push_str("@export_storage ");
+        } else if v.export {
             s.push_str("@export ");
         }
         s.push_str("var ");

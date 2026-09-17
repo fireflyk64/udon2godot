@@ -380,17 +380,19 @@ The eight community repositories convert (see "Long term"); none has been import
 run yet. The ones that ship an example scene go through `scripts/import_world.sh` and get a
 scenario, like the pool table.
 
-- [ ] `scripts/setup_deps.sh --community` clones the repositories at pinned commits (they are not
-      needed for the core suites): UdonEssentials 85d0094, EmyChess 428aae7, UdonUtils 89502b1, and
-      the converter-only ones.
-- [ ] EmyChess `ExampleScene.unity`: import, doctor report clean of unknown scripts, scenario
-      `scenarios/emychess.gd`: the board sets up, a game starts, a legal move made through the
-      script API changes the board state, an illegal one is rejected; screenshot of the board.
+- [x] `scripts/setup_deps.sh --community` clones the eight repositories at pinned commits (they
+      are not needed for the core suites).
+- [x] EmyChess `ExampleScene.unity`: imports (24 scripts attached, 74 UI nodes, 13 wired events, 17
+      pickups, 0 unresolved references; the one unknown script is the SDK's pipeline manager) and
+      `scenarios/emychess.gd` passes 20 checks: both sides register, the imported Start button
+      starts the game, 32 pieces, 1. e4, an illegal pawn jump is rejected, 1... e5, 2. Nf3,
+      2... d5 3. exd5 captures (31 pieces, white scores), a blocked bishop move is rejected, end.
 - [ ] UdonEssentials `UdonEssentials_ExampleScene.unity`: import, scenario: the console window
       receives log lines, the player list shows the local player, the event dispatcher fires.
 - [ ] UdonUtils `RuntimeTestingExample.unity`: the package's own `TestController` runs its test
       cases in the imported world; the scenario reports its pass / fail counts.
-- [ ] `scripts/test_world_community.sh` runs the three (skips what is not cloned); optional CI step.
+- [~] `scripts/test_world_community.sh` runs them (skips what is not cloned, re-imports when the
+      importer changed); EmyChess so far. Not part of `ci.sh` yet.
 - [~] Whatever the imports expose in the converter, importer or runtime is fixed at the source and
       covered by a fixture check (not patched in the scenario). So far: EmyChess lost its menus
       (3 UI nodes, 27 unresolved references): a Canvas parented to a node of a model / prefab
@@ -405,6 +407,15 @@ scenario, like the pool table.
       inner loop's never-emitted end label (still so in upstream main). Fixed in the fork
       (godot-sandbox e649bf2, compiler regression test), library rebuilt and tracked, coverage
       check in `TExt.cs` (921 checks); world test scripts refresh the library of a reused world.
+      `[HideInInspector] public` fields are serialized by Unity, the converter emitted them as
+      plain `var` and their saved values were lost (each chess piece's `type`, `board`, `pool`;
+      also the pool table's hidden cloth colours): they are `@export_storage` now. Overrides of
+      scripted components inside nested prefab instances arrive in unidot as a virtual object
+      without `m_Script` and were ignored; reference overrides were additionally queued against
+      an owner that never matched and written into a shared dictionary, so nothing was saved
+      (fork 66854ef + next). Fixture: `Holder.prefab` with a scripted child, `Outer.prefab` nesting
+      it, value and reference overrides from the scene and from the outer prefab, hidden fields
+      (62 / 95 / 25 / 16 checks).
 
 ## Next
 

@@ -7,6 +7,8 @@ using UnityEngine;
 public class HolderScreen : UdonSharpBehaviour
 {
     public Transform target;
+    /// Set inside the prefab (its own root): the node already carries references when the instance adds one.
+    public Transform holderRoot;
     public int number = 1;
     public string label = "prefab";
 }

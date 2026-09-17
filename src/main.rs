@@ -450,7 +450,7 @@ fn manifest_json(prog: &Program, res_prefix: &str, report: &BTreeMap<String, Rep
                 "{}: {{\"gd\": {}, \"exported\": {}, \"synced\": {}, \"ty\": {}}}",
                 json_str(&f.name),
                 json_str(&f.gd_name),
-                f.serialized && !f.hide_in_inspector,
+                f.serialized,
                 f.synced,
                 type_json(prog, &f.ty)
             ));

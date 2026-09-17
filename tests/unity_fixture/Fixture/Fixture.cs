@@ -10,6 +10,10 @@ using VRC.Udon.Common;
 public class Fixture : UdonSharpBehaviour
 {
     public Transform target;
+    // [HideInInspector] hides a public field, Unity still serializes it (EmyChess keeps each piece's
+    // type and board like this): the values written in the scene must arrive.
+    [HideInInspector] public int hiddenNumber;
+    [HideInInspector] public Transform hiddenTarget;
     public BoxCollider floorCollider;
     public GameObject[] targets;
     public string[] names;
@@ -82,6 +86,7 @@ public class Fixture : UdonSharpBehaviour
         Check(Near(transform.eulerAngles.y, 90f), "eulerAngles.y " + transform.eulerAngles.y);
         Check(NearV(transform.TransformPoint(Vector3.forward), new Vector3(2, 2, 3)), "TransformPoint " + transform.TransformPoint(Vector3.forward));
         Check(target != null, "target reference bound");
+        Check(hiddenNumber == 42 && hiddenTarget == target, "[HideInInspector] public fields keep their serialized values: " + hiddenNumber);
         if (target != null)
         {
             Check(NearV(target.position, new Vector3(-2, 0.5f, 4)), "target position " + target.position);

@@ -96,6 +96,21 @@ func _ui_checks(r, fx: Node) -> void:
 	if hs != null:
 		r.check(int(hs.get("number")) == 7 and str(hs.get("label")) == "prefab", "value override on the instance (7), untouched field keeps the prefab's: %s %s" % [str(hs.get("number")), str(hs.get("label"))])
 		r.check(hs.get("target") == r.find("Target"), "reference override points at an object of the scene: " + str(hs.get("target")))
+		r.check(hs.get("holderRoot") == r.find("Holder"), "the prefab's own reference survives next to the override: " + str(hs.get("holderRoot")))
+	# The same kind of override made inside another prefab (Outer.prefab nests Holder.prefab and
+	# points its `target` at Outer's own Anchor): the reference is queued while the nested
+	# instance has no owner yet, and is resolved when the prefab that contains it is finished.
+	var outer: Node = r.find("Outer")
+	var inner: Node = null
+	if outer != null:
+		for n in r._all(outer):
+			if n.has_meta("udon_class") and str(n.get_meta("udon_class")) == "HolderScreen":
+				inner = n
+	r.check(outer != null and inner != null, "prefab nested in a prefab keeps its scripted child: %s %s" % [str(outer), str(inner)])
+	if inner != null:
+		r.check(int(inner.get("number")) == 9, "value override made in the outer prefab: " + str(inner.get("number")))
+		r.check(inner.get("target") != null and inner.get("target") == r.find("Anchor"), "reference override made in the outer prefab points at its Anchor: " + str(inner.get("target")))
+		r.check(inner.get("holderRoot") == r.find("InnerHolder"), "and the nested prefab's own reference is kept: " + str(inner.get("holderRoot")))
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)

@@ -318,6 +318,8 @@ MonoBehaviour:
   - c
   speed: 2.5
   label: hello
+  hiddenNumber: 42
+  hiddenTarget: {fileID: 501}
   pressed: 0
   uiTL: {fileID: 911}
   uiTR: {fileID: 921}
@@ -4094,3 +4096,64 @@ MonoBehaviour:
           m_StringArgument: OnScreenBtn
           m_BoolArgument: 0
         m_CallState: 2
+--- !u!1001 &1700
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 200, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_Name
+      value: Outer
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_RootOrder
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 201, guid: f1a7c0de00000000000000000000fe06, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: f1a7c0de00000000000000000000fe06, type: 3}

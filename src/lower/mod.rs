@@ -264,7 +264,7 @@ impl<'p> Lowerer<'p> {
                     script.consts.push(GConst { name: f.gd_name.clone(), ty: self.gd_type(&f.ty), value: init, comment: f.doc.clone() });
                 } else {
                     // Non-foldable constant: emit as a plain member.
-                    script.vars.push(GVar { name: f.gd_name.clone(), ty: self.gd_type(&f.ty), init: Some(init), export: false, doc: f.doc.clone(), comment: Some("const (non-foldable initializer)".into()), setter: None, getter: None });
+                    script.vars.push(GVar { name: f.gd_name.clone(), ty: self.gd_type(&f.ty), init: Some(init), export: false, export_storage: false, doc: f.doc.clone(), comment: Some("const (non-foldable initializer)".into()), setter: None, getter: None });
                 }
             }
         }
@@ -486,9 +486,12 @@ impl<'p> Lowerer<'p> {
                 None => format!("[{}]", h),
             });
         }
+        // [HideInInspector] only hides a field: Unity still serializes it (EmyChess keeps each
+        // piece's `type`, `board` and `pool` that way), so the scene importer must be able to set it.
         let export = f.serialized && !f.hide_in_inspector;
+        let export_storage = f.serialized && f.hide_in_inspector;
         let mut ty = self.gd_type(&f.ty);
-        if export {
+        if export || export_storage {
             // Scene importers wire exported object references late (nodes of any class, UI
             // controls included), so exported component/GameObject/behaviour fields are typed `Node`.
             if let Ty::Named(n) = &f.ty {
@@ -499,12 +502,12 @@ impl<'p> Lowerer<'p> {
                 }
             }
         }
-        GVar { name: f.gd_name.clone(), ty, init, export, doc, comment, setter: None, getter: None }
+        GVar { name: f.gd_name.clone(), ty, init, export, export_storage, doc, comment, setter: None, getter: None }
     }
 
     fn lower_property(&mut self, p: &crate::program::PropInfo) -> GVar {
         let d = &p.decl;
-        let mut var = GVar { name: p.gd_name.clone(), ty: self.gd_type(&p.ty), init: None, export: false, doc: d.doc.clone(), comment: Some("property".into()), setter: None, getter: None };
+        let mut var = GVar { name: p.gd_name.clone(), ty: self.gd_type(&p.ty), init: None, export: false, export_storage: false, doc: d.doc.clone(), comment: Some("property".into()), setter: None, getter: None };
         if let Some(e) = &d.expr_body {
             self.push_scope();
             let lw = self.lower_expr(e);

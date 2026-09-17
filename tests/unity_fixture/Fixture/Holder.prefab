@@ -76,6 +76,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 0}
+  holderRoot: {fileID: 101}
   number: 1
   label: prefab
   _udonSharpBackingUdonBehaviour: {fileID: 113}

@@ -108,6 +108,8 @@ tools/Godot_v4.7.2-stable_linux.x86_64 --headless --path /tmp/worlds/billiards -
 scripts/play_world.sh /tmp/worlds/billiards                         # play it: WASD, mouse look, click, Esc frees the mouse
 scripts/test_world_billiards.sh /tmp/worlds/billiards               # lobby → join → 8-ball → break, with screenshots; then played through window input
 scripts/test_unity_fixture.sh /tmp/worlds/fixture                   # hand-written Unity scene: transforms, refs, raycasts, onClick
+scripts/setup_deps.sh --community && scripts/test_world_community.sh # community prefabs with an example scene (EmyChess: a game is played)
+scripts/diff_converter_output.sh                                    # generated lines that differ from the last commit's converter
 scripts/ci.sh                                                       # all suites, one Godot at a time
 tools/parser_diff.py tests refs/vrcbce                              # hand-written C# parser vs tree-sitter-c-sharp (pip install tree-sitter tree-sitter-c-sharp)
 ```
@@ -386,5 +388,6 @@ godot_world_template/  project skeleton for scripts/import_world.sh: world_runne
                 (fixture.gd, player.gd, billiards.gd, billiards_play.gd)
 refs/           reference checkouts made by scripts/setup_deps.sh (ignored)
 scripts/        setup_deps.sh, verify.sh, coverage_test.sh, net_test.sh, import_world.sh, play_world.sh,
-                test_unity_fixture.sh, test_world_billiards.sh, world_doctor.py, ci.sh
+                test_unity_fixture.sh, test_world_billiards.sh, test_world_community.sh,
+                diff_converter_output.sh, world_doctor.py, ci.sh
 ```
