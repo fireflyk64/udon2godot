@@ -17,11 +17,13 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 
 | Corpus | Classes | Lines of C# | Converter errors | Compiles in sandbox | Runs |
 |---|---|---|---|---|---|
-| [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break, 9/9 scenario checks |
+| [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break (9 checks), then played through window input (17 checks) |
+| [EmyChess](https://github.com/emymin/EmyChess) (example scene) | 13 | 2.2k | 0 | 13/13 | imported world: a game is played, 20/20 scenario checks (`scripts/test_world_community.sh`) |
+| [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | — | 0 | 6/6 | imported world, fields from the Udon variable table; scenario in progress |
 | [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table) | 21 | 7.1k | 0 | 21/21 | — |
 | [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | — |
-| `tests/coverage/*.cs` API coverage fixtures (16 classes) | 16 | 3.1k | 0 | 16/16 | 846/846 checks |
-| `tests/unity_fixture` Unity scene through unidot + udon_integration | 1 | — | 0 | 1/1 | 40 script + 16 scenario checks |
+| `tests/coverage/*.cs` API coverage fixtures (17 files) | 19 | 2.8k | 0 | all | 924/924 checks |
+| `tests/unity_fixture` Unity scene + prefabs through unidot + udon_integration | 5 | — | 0 | 5/5 | 77 headless / 110 display / 25 player / 16 VR checks |
 | `tests/fixtures/Counter.cs` end-to-end lifecycle | 1 | — | 0 | 1/1 | 23/23 checks |
 | `tests/fixtures/Counter.cs` over ENet, host + client processes | 1 | — | 0 | 1/1 | 28/28 checks |
 
@@ -38,7 +40,9 @@ C# helper classes emitted as Node scripts, dynamic access on unknown types, two 
 calls that `--class-name` turns into direct calls).
 
 Catalog coverage of the 21,941 Udon externs that apply to scripts: **100 %** mapped by the
-hand-written and generator-written catalogs (`--catalog-coverage` reports 0 unmapped). The generic
+hand-written and generator-written catalogs (`--catalog-coverage` reports 0 unmapped), and every
+overload of a mapped member is mapped with its own argument list (`--coverage-overloads` reports
+0 gaps; the 975 overloads that take a `List<T>` cannot be called from UdonSharp). The generic
 stub file `generated.udon` is empty; 87 entries inside `unity_ui.udon`, `unity_particles.udon` and
 `unity_extra.udon` are still marked `!stub` (editor-style factory helpers and particle module
 internals with no engine counterpart) and are reported as "stubbed" when a script uses them.
@@ -321,7 +325,7 @@ checks the UNIDOT mapping against Unity's numbers. 2D uses Unity's Y-up in scrip
 
 ## Coverage fixtures
 
-`tests/coverage/` holds sixteen UdonSharp classes written to exercise the API surface at runtime:
+`tests/coverage/` holds seventeen UdonSharp fixtures written to exercise the API surface at runtime:
 `TMath`/`TMathB` (integer and float semantics, `Mathf`, vectors, quaternions, colours,
 matrices, random, bounds), `TStrings` (formatting, interpolation, `StringBuilder`, chars),
 `TArrays` (arrays, params/ref/out, `DataList`, `DataDictionary`, JSON, enums), `TTransform`
@@ -330,9 +334,12 @@ raycasts, triggers, collisions, joints), `TMedia` (audio, animator, particles, m
 lights, camera, line renderer, curves), `TUI` (Unity UI and TextMeshPro over Godot controls),
 `TVRC` (players, ownership, events, sync, pickups, stations, object sync/pool, player data,
 input), `T2D` (2D physics), `TParticles` (particle modules), `TSystem` (.NET extras), `TNav`
-(navigation meshes, links and agents) and `TAnim` (constraints, curves, humanoid tables).
+(navigation meshes, links and agents), `TAnim` (constraints, curves, humanoid tables), `TExt`
+(extension methods, cross-class statics, initializers, enum names, short-circuit side effects,
+loops the sandbox compiler got wrong) and `TOverloads` (overloads that used to fall back to
+another argument list: styled parsing, string comparisons and ranges, binary search).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 846 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 924 checks pass.
 
 ### Debug switches
 

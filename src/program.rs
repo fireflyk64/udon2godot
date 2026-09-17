@@ -357,7 +357,8 @@ impl Program {
                                 // Overloads with the same arity are ambiguous in GDScript; keep the first and warn.
                                 let prev_m = &ci.methods[*prev];
                                 if !ci.is_editor_only() && prev_m.params.iter().map(|p| &p.ty).ne(params.iter().map(|p| &p.ty)) {
-                                    diags.warn(md.span, format!("method `{}.{}` is overloaded with the same arity; GDScript cannot overload, the later definition is renamed `{}_{}`", name, md.name, md.name, params.len()));
+                                    let n = ci.methods.iter().filter(|m| m.name == md.name).count() + 1;
+                                    diags.warn(md.span, format!("method `{}.{}` is overloaded with the same arity; GDScript cannot overload, this definition is emitted as `{}_{}`", name, md.name, mangle(&md.name), n));
                                 }
                             }
                             let overload_count = ci.methods.iter().filter(|m| m.name == md.name).count();

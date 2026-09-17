@@ -80,7 +80,10 @@ Status legend: [x] done and verified, [~] implemented but needs more coverage, [
       (`f(a * b)` read as a pointer declaration, `(name) & x` read as a cast). `scripts/ci.sh` runs
       it when the Python packages are installed. The rewrite to a parser-generator idiom stays
       deferred: there is no known parse gap left to justify it.
-- [~] VRC SDK component nodes: VRC_Pickup (by GUID) and, by field signature, VRCStation, VRCObjectSync,
+- [~] VRC SDK component nodes: components referenced through the SDK DLL are identified by the
+      DLL's class fileID (the DLL GUID alone used to mean VRC_Pickup: 51 of the pool table's 89
+      "pickups" were spatial audio sources, object syncs and UI shapes; now 38 / 34 / 9), new kind
+      VRCSpatialAudioSource; otherwise by field signature: VRCStation, VRCObjectSync,
       VRCObjectPool, VRC_MirrorReflection, VRC_SceneDescriptor, VRC_AvatarPedestal, VRC_PortalMarker,
       video players are marked with `udon_<kind>` groups + metadata read by the adapters; more GUIDs can
       be added through `udon/component_guids`. Only VRC_Pickup is exercised by the billiards table.
