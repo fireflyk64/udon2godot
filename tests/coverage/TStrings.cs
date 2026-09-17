@@ -101,6 +101,9 @@ namespace Coverage
             Check(sb.ToString() == ">12.5c\ny-9", "StringBuilder insert/replace/remove: " + sb.ToString());
             sb.Clear();
             Check(sb.Length == 0 && sb.ToString() == "", "StringBuilder.Clear");
+            sb.Append("hello");
+            sb[0] = 'J';
+            Check(sb[0] == 'J' && sb[4] == 'o' && sb.ToString() == "Jello", "StringBuilder indexer get/set: " + sb.ToString());
 
             // Regex
             Regex re = new Regex(@"(\w+)@(\w+)\.com");

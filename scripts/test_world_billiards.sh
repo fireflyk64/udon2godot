@@ -5,7 +5,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/billiards}
-GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
+. scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 SCENE=res://MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn
 if [ ! -f "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" ] || [ "${REIMPORT:-0}" = 1 ]; then
   rm -rf "$OUT"
@@ -46,4 +46,5 @@ PCODE=$?
 grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/play.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/play.log")  (log: $OUT/play.log)"
 [ $PCODE -ne 0 ] && CODE=$PCODE
+godot_guard_report "$OUT"/*.log
 exit $CODE

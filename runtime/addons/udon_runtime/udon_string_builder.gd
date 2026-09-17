@@ -45,6 +45,11 @@ func set_length(n: int) -> void:
 func char_at(i: int) -> String:
 	return _s[i] if i >= 0 and i < _s.length() else ""
 
+## `sb[i] = c`
+func set_char(i: int, c) -> void:
+	if i >= 0 and i < _s.length():
+		_s = _s.substr(0, i) + str(c).substr(0, 1) + _s.substr(i + 1)
+
 func to_string() -> String:
 	return _s
 

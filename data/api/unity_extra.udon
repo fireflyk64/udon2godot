@@ -135,6 +135,8 @@ type Mesh
   set boneWeights: Array => pass
   bindposes: Matrix4x4[] => []
   set bindposes: Matrix4x4[] => pass
+  GetBindposes(ListUnityEngineMatrix4x4): void => $1.clear()
+  GetBoneWeights(ListUnityEngineBoneWeight): void => $1.clear()
   vertexBufferCount: int => 1
   vertexAttributeCount: int => 4
   indexFormat: int => 0

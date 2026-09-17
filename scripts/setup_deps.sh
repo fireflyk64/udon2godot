@@ -71,7 +71,7 @@ if [ ! -f godot_project/.godot/extension_list.cfg ]; then
   echo "== first import of godot_project (registers the sandbox extension and class_name scripts)"
   mkdir -p godot_project/.godot
   echo "res://addons/godot_sandbox/bin/godot-riscv.gdextension" > godot_project/.godot/extension_list.cfg
-  "$GODOT_BIN" --headless --path godot_project --import >/dev/null 2>&1 || true
+  GODOT_BIN="$PWD/$GODOT_BIN" scripts/godot.sh --headless --path godot_project --import >/dev/null 2>&1 || true
 fi
 
 echo "== done: next run scripts/verify.sh (or scripts/ci.sh for everything)"

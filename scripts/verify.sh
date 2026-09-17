@@ -5,7 +5,7 @@
 #   GODOT=/path/to/Godot_v4.7.2-stable_linux.x86_64 scripts/verify.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
+. scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 
 echo "== cargo build & test"
 cargo build --release
@@ -29,8 +29,8 @@ if [ -d refs/vrcbce ] || [ -d refs/SaccFlightAndVehicles ]; then
     $( [ -d refs/SaccFlightAndVehicles ] && echo refs/SaccFlightAndVehicles )
 fi
 
-if [ ! -x "$GODOT" ]; then
-  echo "Godot binary not found at $GODOT; skipping Godot checks"
+if ! "$GODOT" --version >/dev/null 2>&1; then
+  echo "Godot binary not found (${GODOT_BIN:-tools/Godot_v4.7.2-stable_linux.x86_64}); skipping Godot checks"
   exit 0
 fi
 

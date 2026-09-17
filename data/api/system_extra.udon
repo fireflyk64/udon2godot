@@ -12,6 +12,7 @@ type StringBuilder kind=class gd=Object extern=SystemTextStringBuilder
   set Capacity: int => pass
   MaxCapacity: int => 2147483647
   this[int]: char => $0.char_at($1)
+  set this[int]: char => $0.set_char($1, $v)
   Append(string): StringBuilder => $0.append($1)
   Append(char): StringBuilder => $0.append($1)
   Append(int): StringBuilder => $0.append(str($1))

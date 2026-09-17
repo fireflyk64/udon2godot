@@ -3,7 +3,7 @@
 #   GODOT=/path/to/godot scripts/net_test.sh [port]
 set -uo pipefail
 cd "$(dirname "$0")/.."
-GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
+. scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 PORT="${1:-27777}"
 PROJ=godot_project
 LOGS=$(mktemp -d)

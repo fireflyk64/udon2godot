@@ -150,6 +150,11 @@ renders screenshots (`--display-driver x11 --rendering-method gl_compatibility` 
 `--shadows` turns on real-time shadows for every light, the stand-in for the lightmaps Unity
 baked (lightmap data cannot be imported).
 
+Every script starts Godot through `scripts/godot.sh`: the engine is killed when its resident
+memory passes `GODOT_MEM_MB` (default 6144) or it runs longer than `GODOT_MAX_SECONDS` (default
+3600, unlimited while playing), and termination signals are forwarded so a `timeout` never leaves
+an orphaned instance behind. `GODOT=/path/to/binary` still selects the engine.
+
 Playing: `--play` (what `scripts/play_world.sh` passes) spawns the desktop player
 (`udon_runtime/udon_desktop_player.gd`, a CharacterBody3D with a first-person camera: WASD / arrows,
 Shift run, Space jump, mouse look while the mouse is captured, Esc / Tab frees it) at the scene

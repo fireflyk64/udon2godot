@@ -515,7 +515,8 @@ fn print_coverage(catalog: &Catalog, externs: &ExternTable, verbose: bool) -> Ve
             } else if let Some(n) = &cat_name {
                 let members = catalog.members(n, base);
                 let is_enum = catalog.chain(n).iter().any(|t| t.enum_value(base).is_some());
-                let indexer = base == "Item" && catalog.chain(n).iter().any(|t| t.members.iter().any(|mm| mm.name.starts_with("this[")));
+                // the default indexer is `Item` unless [IndexerName] renames it (StringBuilder: `Chars`)
+                let indexer = (base == "Item" || base == "Chars") && catalog.chain(n).iter().any(|t| t.members.iter().any(|mm| mm.name.starts_with("this[")));
                 let has = if m.starts_with("set_") { members.iter().any(|mm| mm.set.is_some() || (mm.is_field() && mm.get.is_none())) || indexer } else { !members.is_empty() || is_enum || indexer };
                 has || component_base.contains(base) && catalog.is_a(n, "Object")
             } else {

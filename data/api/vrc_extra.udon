@@ -904,6 +904,20 @@ type VRCCameraDollyAnimation
 
 type VRCCameraDollyPathPoint
   destroyCancellationToken: CancellationToken => null
+  # a path point is a component in the SDK and a plain dictionary here: it carries no node, so the
+  # Component surface answers from the dictionary (scripts only read Position/Rotation/… above)
+  gameObject: GameObject => $0.get("gameObject")
+  transform: Transform => $0.get("transform")
+  name: string => str($0.get("name", ""))
+  set name: string => $0["name"] = $v
+  enabled: bool => bool($0.get("enabled", true))
+  set enabled: bool => $0["enabled"] = $v
+  GetComponent(Type): Component => null
+  GetComponents(Type): Component[] => []
+  GetComponentInChildren(Type): Component => null
+  GetComponentInParent(Type): Component => null
+  GetComponentsInChildren(Type): Component[] => []
+  GetComponentsInParent(Type): Component[] => []
 
 # --- last VRC leftovers: PhysBone curves and limits, contacts, per-object network stats, player
 # data types, MIDI data, drones, economy and menu calls ---------------------------------------------

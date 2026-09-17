@@ -3,7 +3,7 @@
 #   GODOT=/path/to/godot scripts/coverage_test.sh [FixtureName ...]
 set -uo pipefail
 cd "$(dirname "$0")/.."
-GODOT="${GODOT:-tools/Godot_v4.7.2-stable_linux.x86_64}"
+. scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 PROJ=godot_project
 BIN=target/release/udon2godot
 
@@ -26,4 +26,5 @@ CODE=$?
 grep -E "^== |^   FAIL|COVERAGE DONE" "$LOG"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$LOG" || true) (log: $LOG)"
 grep -E "^ERROR|^SCRIPT ERROR|Message:" "$LOG" | sort | uniq -c | sort -rn | head -15
+godot_guard_report "$LOG"
 exit $CODE

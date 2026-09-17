@@ -80,11 +80,16 @@ func run_fixture(name: String) -> void:
 		# physics fixtures wait for real physics steps (headless process frames can outrun them)
 		var physics: bool = name in ["TPhysics", "T2D"]
 		var frames: int = 90 if physics else 8
-		for i in range(frames):
+		# at least `frames` frames and 150 ms: fixtures schedule SendCustomEventDelayedSeconds(0.05),
+		# and headless process frames take anything from 1 ms to tens of ms depending on the load
+		var t0: int = Time.get_ticks_msec()
+		var i: int = 0
+		while i < frames or Time.get_ticks_msec() - t0 < 150:
 			if physics:
 				await physics_frame
 			else:
 				await process_frame
+			i += 1
 		target.call("AfterFrames")
 	var late: Array = _godot_checks_late(name, target, host)
 	if not late.is_empty():

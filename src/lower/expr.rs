@@ -1586,6 +1586,26 @@ impl<'p> Lowerer<'p> {
             out.push(GStmt::Expr(call));
             return out;
         }
+        // Catalog indexer setter: `sb[i] = c` → the `set this[int]` template (`$1` index, `$v` value).
+        if let Expr::Index { target: obj, indices, null_cond: false, .. } = lhs.unparen() {
+            if indices.len() == 1 {
+                let o = self.lower_expr(obj);
+                if let Ty::Named(n) = &o.ty {
+                    let setter = self.prog.catalog.members(n, "this[int]").iter().find_map(|m| m.set.clone());
+                    if let Some(tmpl) = setter {
+                        let i = self.lower_expr(&indices[0]);
+                        let i = self.coerce(i, &Ty::Int);
+                        let e = self.expand_template(&tmpl, Some(&o.e), &[i.e], Some(&value), &[], &[], "this[int]");
+                        let mut out = self.take_pre();
+                        match e {
+                            GExpr::Raw(s) => out.push(GStmt::Raw(s)),
+                            other => out.push(GStmt::Expr(other)),
+                        }
+                        return out;
+                    }
+                }
+            }
+        }
         // Property setter templates: re-resolve the member to find a `set` template.
         if let Expr::Member { target: obj, name, .. } = lhs.unparen() {
             if let Some(setter) = self.find_setter(obj, name) {
