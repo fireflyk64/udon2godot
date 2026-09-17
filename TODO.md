@@ -434,6 +434,49 @@ scenario, like the pool table.
       button raycast is guarded by its state again). Attribute / editor / exception classes are
       skipped instead of lowered (UdonUtils: 67 warnings and 2 errors -> 4 warnings).
 
+## Every converted script compiles in the sandbox
+
+`udon2godot --check` only says the converter had no errors. `scripts/compile_check_refs.sh` converts
+every repository under `refs/` and loads each script in the sandbox: on 2026-09-17, 165 of the 362
+scripts of the pool table and the community prefabs did not compile (verify.sh only checked vrcbce
+and SaccFlight, 108 scripts that all compile). Now 362 of 362 compile; `tests/coverage/TNulls.cs`
+runs every case below in the sandbox (26 checks; coverage 954 / 0).
+
+- [x] `scripts/compile_check_refs.sh` (prints the compiler's message per failed script); part of
+      `scripts/ci.sh`, and `scripts/verify.sh` now fails when its own compile check does (the
+      result was only printed).
+- [x] 123 x "Constant 'X' is already declared in <base script>": C# `public new const int
+      ExecutionOrder` hides the base constant (UdonUtils does it in every class); a GDScript class
+      cannot redeclare a base member. A field, constant or auto-property that hides a base member
+      is emitted as `<name>_<Class>`; the class and its subclasses resolve to it, base code keeps
+      the base member.
+- [x] 45 x "Cannot assign null to global 'X' of type String": `string s = null`, `return null`
+      from a string method, null for `System.Type` / `VRCUrl` (Strings on the Godot side) and
+      string auto-properties. `""` stands for a null string everywhere (assignments, returns,
+      arguments, defaults), and `x == null` on those types also tests `""`.
+- [x] Arrays, `DataList` and `DataDictionary` that C# sets to null, compares with null or returns
+      as null are declared with SafeGDScript's nullable types (`Array?`, `Dictionary?`): fields
+      (a non-serialized one starts null, so `if (cache == null) cache = new T[n];` works; it never
+      ran before), locals, parameters (also `out` / `ref` and `= null` defaults) and return types
+      (by method name, so overrides keep one signature). `src/nullflow.rs` finds them by name;
+      everything else keeps the plain type the sandbox compiles to typed instructions.
+- [x] A bare `default` takes the type it is assigned to (`bounds = default;` was `null`).
+- [x] 34 x "Enum 'X' is already declared in <base script>": a derived script inherits the enum
+      blocks of its base scripts and no longer repeats them.
+- [x] `abstract` / `virtual` / `override` properties always go through `get_X()` / `set_X()`: an
+      abstract `{ get; }` was a plain variable, so base-class code read the variable while the
+      subclass defined a getter nobody called (Udonity's `InspectedType`). A virtual
+      auto-property keeps one `_prop_X` variable in the first class that declares it.
+- [x] Overloads along a class chain: a base with `Foo()` and `Foo(int)` names them `Foo` and
+      `Foo_2`; an `override Foo(int)` in a subclass was named `Foo` again and replaced the wrong
+      base method (Udonity's `OnContextDropdownActionInvoked`, the model loader's `Clear` /
+      `Display`). Overrides take the name of the base method with the same parameter types, new
+      overloads avoid names the bases use, and `base.Foo(n)` calls the matching overload.
+- [x] `Next() ?? fallback` evaluated `Next()` up to three times; the left side runs once.
+- [x] A call no overload here can take, in a class whose base is not among the sources (Udonity's
+      `Log(string)` from the VUdon logger package): called by name with a warning instead of a
+      call the compiler rejects for its argument count.
+
 ## Unity UI layout groups
 
 UdonEssentials' player list adds its entries under a `VerticalLayoutGroup` + `ContentSizeFitter`;

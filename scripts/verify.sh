@@ -53,6 +53,13 @@ echo "runtime errors during e2e: $ERRS"
 
 if [ -d "$PROJ/converted_corpus" ]; then
   echo "== godot: compile check of converted corpora"
-  "$GODOT" --headless --path "$PROJ" -s compile_check.gd 2>&1 | grep -E "COMPILE" || true
+  CLOG=$(mktemp)
+  "$GODOT" --headless --path "$PROJ" -s compile_check.gd >"$CLOG" 2>&1 || true
+  grep -E "COMPILE" "$CLOG"
+  # a script the sandbox rejects is a converter bug, however clean the conversion looked
+  if ! grep -qE "COMPILE CHECK: [0-9]+ ok, 0 failed" "$CLOG"; then
+    grep -E "^ERROR: SafeGDScript: " "$CLOG" | sort -u | cut -c1-220 | head -20
+    echo "compile check FAILED (see $CLOG)"; exit 1
+  fi
 fi
 echo "== done"

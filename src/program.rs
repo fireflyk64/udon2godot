@@ -7,7 +7,7 @@ use crate::diag::{Diagnostics, Span};
 use crate::externs::ExternTable;
 use crate::names::mangle;
 use crate::types::{canonical_type_name, ty_from_ref, Ty};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncMode {
@@ -61,6 +61,15 @@ pub struct PropInfo {
     pub is_static: bool,
     pub is_public: bool,
     pub decl: PropertyDecl,
+}
+
+impl PropInfo {
+    /// A plain member variable: an auto-property that takes no part in virtual dispatch. An
+    /// `abstract` / `virtual` / `override` property is reached through `get_X()` / `set_X()` even
+    /// when this declaration has no accessor bodies, since another class of the chain may have.
+    pub fn is_plain(&self) -> bool {
+        self.decl.is_auto() && !self.decl.modifiers.iter().any(|m| matches!(m, Modifier::Abstract | Modifier::Virtual | Modifier::Override))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +163,16 @@ pub struct Program {
     pub enums: Vec<UserEnum>,
     pub catalog: Catalog,
     pub externs: ExternTable,
+    /// Names the sources compare with null or set to null anywhere (see `nullflow`).
+    pub null_touched: HashSet<String>,
+    /// Names of methods with a `return null`; every method of that name gets a nullable return
+    /// type, so overrides keep one signature.
+    pub null_returning: HashSet<String>,
+    /// (method name, parameter name) of parameters that default to null or are compared with /
+    /// set to null in a body.
+    pub null_params: HashSet<(String, String)>,
+    /// Enum blocks each lowered script declares or inherits (filled by the lowering).
+    pub enum_blocks: std::cell::RefCell<HashMap<String, std::collections::BTreeSet<String>>>,
     class_index: HashMap<String, usize>,
     enum_index: HashMap<String, usize>,
 }
@@ -280,6 +299,10 @@ impl Program {
             enums,
             catalog,
             externs,
+            null_touched: HashSet::new(),
+            null_returning: HashSet::new(),
+            null_params: HashSet::new(),
+            enum_blocks: Default::default(),
             class_index: HashMap::new(),
             enum_index: HashMap::new(),
         };
@@ -391,7 +414,144 @@ impl Program {
             prog.class_index.insert(name.clone(), prog.classes.len());
             prog.classes.push(ci);
         }
+        prog.rename_hiding_members();
+        prog.name_methods_along_chains();
+        prog.note_null_flow();
         prog
+    }
+
+    /// Overloads get numbered names per class (`Foo`, `Foo_2`), but a derived script shares one
+    /// namespace with its base scripts: an override must carry the name of the base method with
+    /// the same signature (not `Foo` because it is the first `Foo` of its own class), and a new
+    /// overload must not land on a name a base uses for another signature.
+    fn name_methods_along_chains(&mut self) {
+        let mut order: Vec<usize> = (0..self.classes.len()).collect();
+        order.sort_by_key(|i| self.class_chain(&self.classes[*i].name).len());
+        for ci in order {
+            let inherited: Vec<(String, Vec<Ty>, String)> = self
+                .class_chain(&self.classes[ci].name)
+                .into_iter()
+                .skip(1)
+                .flat_map(|b| b.methods.iter().map(|m| (m.name.clone(), m.params.iter().map(|p| p.ty.clone()).collect::<Vec<Ty>>(), m.gd_name.clone())))
+                .collect();
+            if inherited.is_empty() {
+                continue;
+            }
+            let mut taken: Vec<String> = Vec::new();
+            let mut names: Vec<String> = Vec::new();
+            for m in &self.classes[ci].methods {
+                let sig: Vec<Ty> = m.params.iter().map(|p| p.ty.clone()).collect();
+                let gd = match inherited.iter().find(|(n, s, _)| *n == m.name && *s == sig) {
+                    Some((_, _, gd)) => gd.clone(),
+                    None => {
+                        let base = mangle(&m.name);
+                        let used = |g: &str| taken.iter().any(|t| t == g) || inherited.iter().any(|(_, _, ig)| ig == g);
+                        let mut gd = base.clone();
+                        let mut n = 1;
+                        while used(&gd) {
+                            n += 1;
+                            gd = format!("{}_{}", base, n);
+                        }
+                        gd
+                    }
+                };
+                taken.push(gd.clone());
+                names.push(gd);
+            }
+            for (m, gd) in self.classes[ci].methods.iter_mut().zip(names) {
+                m.gd_name = gd;
+            }
+        }
+    }
+
+    /// C# lets a member hide an inherited one (`public new const int ExecutionOrder = ...` in every
+    /// class of a hierarchy); a GDScript class cannot redeclare a member of its base script. The
+    /// hiding member gets a class-qualified name: code of the class and below resolves to it
+    /// (lookups walk the chain from the derived end), code of the base keeps the base member.
+    fn rename_hiding_members(&mut self) {
+        let mut renames: Vec<(usize, bool, usize, String)> = Vec::new();
+        for (ci, c) in self.classes.iter().enumerate() {
+            let bases: Vec<&ClassInfo> = self.class_chain(&c.name).into_iter().skip(1).collect();
+            if bases.is_empty() {
+                continue;
+            }
+            let taken = |gd: &str| bases.iter().any(|b| b.fields.iter().any(|f| f.gd_name == gd) || b.props.iter().any(|p| p.gd_name == gd && p.is_plain()));
+            for (fi, f) in c.fields.iter().enumerate() {
+                if taken(&f.gd_name) {
+                    renames.push((ci, true, fi, format!("{}_{}", f.gd_name, c.name)));
+                }
+            }
+            for (pi, p) in c.props.iter().enumerate() {
+                if p.is_plain() && taken(&p.gd_name) {
+                    renames.push((ci, false, pi, format!("{}_{}", p.gd_name, c.name)));
+                }
+            }
+        }
+        for (ci, is_field, i, gd) in renames {
+            if is_field {
+                self.classes[ci].fields[i].gd_name = gd;
+            } else {
+                self.classes[ci].props[i].gd_name = gd;
+            }
+        }
+    }
+
+    fn note_null_flow(&mut self) {
+        use crate::nullflow;
+        let mut touched = HashSet::new();
+        let mut returning = HashSet::new();
+        let mut params = HashSet::new();
+        for c in &self.classes {
+            for m in &c.methods {
+                for p in &m.params {
+                    if p.default.as_ref().map_or(false, nullflow::may_be_null) {
+                        params.insert((m.name.clone(), p.name.clone()));
+                    }
+                }
+                let Some(body) = &m.decl.body else { continue };
+                let mut local = HashSet::new();
+                nullflow::null_touched(&body.stmts, &mut local);
+                for p in &m.params {
+                    if local.contains(&p.name) {
+                        params.insert((m.name.clone(), p.name.clone()));
+                    }
+                }
+                touched.extend(local);
+                if nullflow::returns_null(&body.stmts) {
+                    returning.insert(m.name.clone());
+                }
+            }
+            for p in &c.props {
+                for acc in [&p.decl.getter, &p.decl.setter].into_iter().flatten() {
+                    if let Some(b) = &acc.body {
+                        nullflow::null_touched(&b.stmts, &mut touched);
+                    }
+                }
+            }
+        }
+        self.null_touched = touched;
+        self.null_returning = returning;
+        self.null_params = params;
+    }
+
+    /// A C# reference type that is a Godot value type in the generated code (arrays, DataList,
+    /// DataDictionary ...): a slot typed `Array` / `Dictionary` rejects the null C# allows there.
+    pub fn is_value_backed_ref(&self, ty: &Ty) -> bool {
+        match ty {
+            Ty::Array(_) | Ty::MultiArray(..) => true,
+            Ty::Named(n) => {
+                !self.is_user_class(n)
+                    && self.user_enum(n).is_none()
+                    && self.catalog.get(n).map_or(false, |t| t.kind == crate::api::TypeKind::Class && (matches!(t.gd.as_str(), "Array" | "Dictionary") || t.gd.starts_with("Packed")))
+            }
+            _ => false,
+        }
+    }
+
+    /// The type annotation of a slot: `T?` when `nullable` and the type would reject null.
+    pub fn gd_slot_type(&self, ty: &Ty, nullable: bool) -> Option<String> {
+        let t = self.gd_type(ty)?;
+        Some(if nullable && self.is_value_backed_ref(ty) { format!("{}?", t) } else { t })
     }
 
     pub fn class(&self, name: &str) -> Option<&ClassInfo> {
@@ -611,10 +771,14 @@ impl Program {
                         "Rect2" => GExpr::raw("Rect2()"),
                         "Plane" => GExpr::raw("Plane()"),
                         "Dictionary" => GExpr::raw("{}"),
+                        // DataList and other Array-backed classes (null-touched ones are `Array?`)
+                        "Array" => GExpr::Array(vec![]),
                         "int" => GExpr::Int(0),
                         "float" => GExpr::Float(0.0),
                         "bool" => GExpr::Bool(false),
-                        "String" => GExpr::Null,
+                        // classes that are Strings on the Godot side (System.Type, VRCUrl): a
+                        // `String` slot rejects null, and "" reads as null in comparisons
+                        "String" => GExpr::str(""),
                         _ => GExpr::Null,
                     };
                 }

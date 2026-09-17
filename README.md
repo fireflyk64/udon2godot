@@ -20,9 +20,10 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 | [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break (9 checks), then played through window input (17 checks) |
 | [EmyChess](https://github.com/emymin/EmyChess) (example scene) | 13 | 2.2k | 0 | 13/13 | imported world: a game is played, 20/20 scenario checks (`scripts/test_world_community.sh`) |
 | [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | 1.9k | 0 | 6/6 | imported world, fields decoded from the Udon variable table: player list, player settings, groups, event dispatcher, 16/16 scenario checks |
+| [UdonUtils](https://github.com/Guribo/UdonUtils), [VUdon-Udonity](https://github.com/Varneon/VUdon-Udonity), [UdonCombatSystem](https://github.com/Toly65/UdonCombatSystem), [vrchat-glb-loader](https://github.com/vr-voyage/vrchat-glb-loader), [3d-model-loader-tablet](https://github.com/vr-voyage/vrchat-3d-model-loader-tablet), [UdonZip](https://github.com/Foorack/UdonZip) (no example scene, or one that needs packages that are not in the repository) | 317 | 44.5k | 0 | 317/317 (`scripts/compile_check_refs.sh`) | — |
 | [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table) | 21 | 7.1k | 0 | 21/21 | — |
 | [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | — |
-| `tests/coverage/*.cs` API coverage fixtures (17 files) | 19 | 2.8k | 0 | all | 924/924 checks |
+| `tests/coverage/*.cs` API coverage fixtures (18 files) | 21 | 3.0k | 0 | all | 954/954 checks |
 | `tests/unity_fixture` Unity scene + prefabs through unidot + udon_integration | 5 | — | 0 | 5/5 | 77 headless / 110 display / 25 player / 16 VR checks |
 | `tests/fixtures/Counter.cs` end-to-end lifecycle | 1 | — | 0 | 1/1 | 23/23 checks |
 | `tests/fixtures/Counter.cs` over ENet, host + client processes | 1 | — | 0 | 1/1 | 28/28 checks |
@@ -95,6 +96,7 @@ $GODOT --headless --path godot_project -s e2e_counter.gd          # lifecycle of
 $GODOT --headless --path godot_project -s coverage_runner.gd      # the API coverage fixtures
 $GODOT --headless --path godot_project -s compile_check.gd [-- res://dir ...]
 scripts/verify.sh        # cargo tests, corpus conversion, e2e, compile check
+scripts/compile_check_refs.sh # every repository under refs/ converts to scripts the sandbox compiles
 scripts/coverage_test.sh # converts tests/coverage and runs coverage_runner.gd
 scripts/net_test.sh      # host + client Godot processes over ENet (godot_project/net_test.gd)
 ```
@@ -230,7 +232,13 @@ packages without one use VRChat's fixed layer table.
   `break`-exit rewriting), `??`, `?.`, `x++` inside expressions, `out`/`ref` parameters (user
   methods return `[ret, refs…]`), casts with C# truncation/wrapping, `char` arithmetic on code
   points, `Enum.HasFlag`, implicit `bool` conversions (`RaycastHit2D`), enum declarations
-  re-emitted per script, name mangling against GDScript keywords and Node members.
+  re-emitted per script (a derived script inherits those of its base scripts), name mangling
+  against GDScript keywords and Node members. null where Godot has a value type: `""` stands for
+  a null `string` / `System.Type` / `VRCUrl`, and arrays, `DataList`, `DataDictionary` that the
+  sources set to, compare with or return as null are declared with SafeGDScript's nullable
+  types (`Array?`; `src/nullflow.rs`). Along a class chain: members that hide a base member
+  (`new const`) get a class-qualified name, `abstract` / `virtual` properties dispatch through
+  `get_X()` / `set_X()`, and an override carries the name of the base overload it replaces.
 * **Emitter** (`src/gd.rs`): precedence-aware GDScript printer.
 
 Each generated script `extends "res://addons/udon_runtime/udon_behaviour.gd"` and keeps the
@@ -347,7 +355,7 @@ input), `T2D` (2D physics), `TParticles` (particle modules), `TSystem` (.NET ext
 loops the sandbox compiler got wrong) and `TOverloads` (overloads that used to fall back to
 another argument list: styled parsing, string comparisons and ranges, binary search).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 924 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 954 checks pass.
 
 ### Debug switches
 

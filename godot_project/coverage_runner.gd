@@ -15,7 +15,7 @@ func _init() -> void:
 	_U = root.get_node("U")
 	_Udon = root.get_node("Udon")
 	var only: Array = OS.get_cmdline_user_args()
-	var names: Array = ["TCoord", "TMath", "TMathB", "TStrings", "TArrays", "TTransform", "TPhysics", "TMedia", "TUI", "TVRC", "T2D", "TParticles", "TSystem", "TNav", "TAnim", "TExt", "TOverloads"]
+	var names: Array = ["TCoord", "TMath", "TMathB", "TStrings", "TArrays", "TTransform", "TPhysics", "TMedia", "TUI", "TVRC", "T2D", "TParticles", "TSystem", "TNav", "TAnim", "TExt", "TOverloads", "TNulls"]
 	for n in names:
 		if not only.is_empty() and not only.has(n):
 			continue

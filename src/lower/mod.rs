@@ -53,6 +53,8 @@ pub struct ClassOutput {
     pub source: String,
     pub diags: Diagnostics,
     pub usage: Usage,
+    /// Enum blocks the script declares or inherits from its base scripts.
+    pub enums: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +86,8 @@ pub struct Lowerer<'p> {
     /// branches): template arguments must not be hoisted there.
     pub(crate) hoist_ok: bool,
     pub(crate) used_enums: BTreeSet<String>,
+    /// Enum blocks of the base scripts: a derived script sees them and must not declare them again.
+    pub(crate) inherited_enums: BTreeSet<String>,
     /// Enums whose values are converted to text: each gets a `_enum_name_<Enum>(v)` helper.
     pub(crate) enum_name_funcs: BTreeSet<String>,
     pub(crate) usage: Usage,
@@ -101,6 +105,17 @@ pub struct Lowerer<'p> {
 }
 
 pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> ClassOutput {
+    // the enum blocks of the base scripts (known once those are lowered; cached per class)
+    let mut inherited_enums = BTreeSet::new();
+    if class.is_behaviour {
+        if let Some(base) = class.base.as_deref().and_then(|b| prog.class(b)) {
+            let cached = prog.enum_blocks.borrow().get(&base.name).cloned();
+            inherited_enums = match cached {
+                Some(e) => e,
+                None => lower_class(prog, base, opts).enums,
+            };
+        }
+    }
     let mut l = Lowerer {
         prog,
         class,
@@ -113,6 +128,7 @@ pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> Cl
         pre: vec![],
         hoist_ok: true,
         used_enums: BTreeSet::new(),
+        inherited_enums,
         enum_name_funcs: BTreeSet::new(),
         usage: Usage::default(),
         loops: vec![],
@@ -122,8 +138,11 @@ pub fn lower_class(prog: &Program, class: &ClassInfo, opts: &LowerOptions) -> Cl
         foreign_const: 0,
     };
     let script = l.lower();
+    let mut enums = l.inherited_enums.clone();
+    enums.extend(script.enums.iter().map(|e| e.name.clone()));
+    prog.enum_blocks.borrow_mut().insert(class.name.clone(), enums.clone());
     let source = Printer::new().script(&script);
-    ClassOutput { name: class.name.clone(), source, diags: l.diags, usage: l.usage }
+    ClassOutput { name: class.name.clone(), source, diags: l.diags, usage: l.usage, enums }
 }
 
 impl<'p> Lowerer<'p> {
@@ -185,6 +204,16 @@ impl<'p> Lowerer<'p> {
 
     pub(crate) fn gd_type(&self, ty: &Ty) -> Option<String> {
         self.prog.gd_type(ty)
+    }
+
+    /// What a typed variable starts with: the C# default, except that strings and arrays start
+    /// empty (a `String` / `Array` slot rejects null; nullable ones are handled by the caller).
+    pub(crate) fn slot_default(&self, ty: &Ty) -> GExpr {
+        match ty {
+            Ty::String => GExpr::str(""),
+            Ty::Array(_) | Ty::MultiArray(..) => GExpr::Array(vec![]),
+            t => self.prog.default_value(t),
+        }
     }
 
     pub(crate) fn note_enum(&mut self, name: &str) {
@@ -283,12 +312,24 @@ impl<'p> Lowerer<'p> {
         // and the sandbox allows only a few nested VM entries).
         let mut prop_funcs: Vec<GFunc> = Vec::new();
         for p in &class.props {
-            if p.decl.is_auto() {
+            if p.is_plain() {
                 let var = self.lower_property(p);
                 script.vars.push(var);
-            } else {
-                prop_funcs.extend(self.lower_property_funcs(p));
+                continue;
             }
+            let is_abstract = p.decl.modifiers.contains(&Modifier::Abstract);
+            if p.decl.is_auto() && !is_abstract {
+                // `virtual` / `override` auto-property: storage behind the accessors, declared by
+                // the first class of the chain that has it (an auto override changes nothing)
+                let inherited = self.prog.class_chain(&class.name).iter().skip(1).any(|b| b.prop(&p.name).map_or(false, |bp| bp.decl.is_auto() && !bp.decl.modifiers.contains(&Modifier::Abstract)));
+                if inherited {
+                    continue;
+                }
+                let mut var = self.lower_property(p);
+                var.name = format!("_prop_{}", p.gd_name);
+                script.vars.push(var);
+            }
+            prop_funcs.extend(self.lower_property_funcs(p));
         }
 
         // Metadata functions used by the runtime.
@@ -430,6 +471,7 @@ impl<'p> Lowerer<'p> {
         }
         script.enums.sort_by(|a, b| a.name.cmp(&b.name));
         script.enums.dedup_by(|a, b| a.name == b.name);
+        script.enums.retain(|e| !self.inherited_enums.contains(&e.name));
         script
     }
 
@@ -457,10 +499,18 @@ impl<'p> Lowerer<'p> {
             }
         };
         self.pop_scope();
+        // A member the sources compare with null or set to null keeps C#'s null (`Array?`): the
+        // lazy `if (cache == null) cache = new T[n];` depends on it. Unity never leaves a
+        // serialized array null, so those start empty.
+        let nullable = self.prog.is_value_backed_ref(&f.ty) && self.prog.null_touched.contains(&f.name);
+        let starts_null = nullable && !f.serialized && f.init.as_ref().map_or(true, crate::nullflow::may_be_null);
         // Strings default to "" rather than null so `String`-typed members stay valid.
         let init = match (&f.ty, init) {
+            (_, _) if starts_null => Some(GExpr::Null),
             (Ty::String, Some(GExpr::Null)) => Some(GExpr::str("")),
             (Ty::Array(_), Some(GExpr::Null)) | (Ty::MultiArray(..), Some(GExpr::Null)) => Some(GExpr::Array(vec![])),
+            // classes that are Strings on the Godot side (VRCUrl): same rule as `string`
+            (t, Some(GExpr::Null)) if self.gd_type(t).as_deref() == Some("String") => Some(GExpr::str("")),
             (_, i) => i,
         };
         let mut comment = None;
@@ -490,7 +540,7 @@ impl<'p> Lowerer<'p> {
         // piece's `type`, `board` and `pool` that way), so the scene importer must be able to set it.
         let export = f.serialized && !f.hide_in_inspector;
         let export_storage = f.serialized && f.hide_in_inspector;
-        let mut ty = self.gd_type(&f.ty);
+        let mut ty = self.prog.gd_slot_type(&f.ty, nullable);
         if export || export_storage {
             // Scene importers wire exported object references late (nodes of any class, UI
             // controls included), so exported component/GameObject/behaviour fields are typed `Node`.
@@ -507,7 +557,8 @@ impl<'p> Lowerer<'p> {
 
     fn lower_property(&mut self, p: &crate::program::PropInfo) -> GVar {
         let d = &p.decl;
-        let mut var = GVar { name: p.gd_name.clone(), ty: self.gd_type(&p.ty), init: None, export: false, export_storage: false, doc: d.doc.clone(), comment: Some("property".into()), setter: None, getter: None };
+        let nullable = self.prog.is_value_backed_ref(&p.ty) && self.prog.null_touched.contains(&p.name);
+        let mut var = GVar { name: p.gd_name.clone(), ty: self.prog.gd_slot_type(&p.ty, nullable), init: None, export: false, export_storage: false, doc: d.doc.clone(), comment: Some("property".into()), setter: None, getter: None };
         if let Some(e) = &d.expr_body {
             self.push_scope();
             let lw = self.lower_expr(e);
@@ -548,7 +599,7 @@ impl<'p> Lowerer<'p> {
         if var.getter.is_none() && var.setter.is_none() {
             var.comment = Some("auto-property".into());
             if var.init.is_none() {
-                var.init = Some(self.prog.default_value(&p.ty));
+                var.init = Some(if nullable { GExpr::Null } else { self.slot_default(&p.ty) });
             }
         } else if var.getter.is_some() && var.setter.is_none() && d.setter.is_none() {
             // read-only property: keep getter only
@@ -578,6 +629,7 @@ impl<'p> Lowerer<'p> {
                     self.pop_scope();
                     b
                 }
+                None if d.modifiers.contains(&Modifier::Abstract) => vec![GStmt::Return(Some(self.slot_default(&p.ty)))],
                 None => vec![GStmt::Return(Some(GExpr::ident(&format!("_prop_{}", p.gd_name))))],
             };
             out.push(GFunc { name: format!("get_{}", p.gd_name), params: vec![], ret: ret.clone(), body, is_static: p.is_static, doc: d.doc.clone(), comment: Some(format!("property {} (getter)", p.name)) });
@@ -589,6 +641,7 @@ impl<'p> Lowerer<'p> {
             }
             let body = match &st.body {
                 Some(b) => self.lower_block_stmts(&b.stmts),
+                None if d.modifiers.contains(&Modifier::Abstract) => vec![GStmt::Pass],
                 None => vec![GStmt::Assign { target: GExpr::ident(&format!("_prop_{}", p.gd_name)), op: "=", value: GExpr::ident("value") }],
             };
             self.pop_scope();
@@ -610,14 +663,10 @@ impl<'p> Lowerer<'p> {
                 let _ = self.take_pre();
                 self.coerce(lw, &p.ty).e
             });
-            let mut ty = if p.mode == ParamMode::Params { Some("Array".into()) } else { self.gd_type(&p.ty) };
-            // An array parameter the body tests against null (`a == null ? 0 : a.Length`) must be
-            // able to receive null: a typed Array slot rejects it, so the parameter stays untyped.
-            if matches!(p.ty, Ty::Array(_) | Ty::MultiArray(..)) && p.mode != ParamMode::Params {
-                if m.decl.body.as_ref().map_or(false, |b| b.stmts.iter().any(|s| stmt_null_tests(s, &p.name))) {
-                    ty = None;
-                }
-            }
+            // An array parameter the body tests against null (`a == null ? 0 : a.Length`), sets to
+            // null (`out`) or that defaults to null must be able to hold it: `Array?`.
+            let nullable = self.prog.null_params.contains(&(m.name.clone(), p.name.clone()));
+            let ty = if p.mode == ParamMode::Params { Some("Array".into()) } else { self.prog.gd_slot_type(&p.ty, nullable) };
             let default = if p.mode == ParamMode::Params { Some(GExpr::Array(vec![])) } else { default };
             params.push(GParam { name: gd, ty, default });
         }
@@ -636,7 +685,7 @@ impl<'p> Lowerer<'p> {
             }
             Some("Array".into())
         } else {
-            if m.ret.is_void() { Some("void".into()) } else { self.gd_type(&m.ret) }
+            if m.ret.is_void() { Some("void".into()) } else { self.prog.gd_slot_type(&m.ret, self.prog.null_returning.contains(&m.name)) }
         };
         self.pop_scope();
         self.cur_method = None;
@@ -710,12 +759,11 @@ impl<'p> Lowerer<'p> {
                         continue;
                     }
                     let gd = self.declare_local(&d.name, ty.clone());
+                    // `T[] x = null;` and locals compared with null keep their null (`Array?`)
+                    let nullable = self.prog.is_value_backed_ref(&ty) && (matches!(init, Some(GExpr::Null)) || self.prog.null_touched.contains(&d.name));
                     let hint = match &ty {
                         Ty::Null | Ty::Unknown => None,
-                        // `T[] x = null;` keeps its null (scripts test `x == null`): a typed Array
-                        // slot cannot hold it, so the local stays untyped
-                        Ty::Array(_) | Ty::MultiArray(..) if matches!(init, Some(GExpr::Null)) => None,
-                        t => self.gd_type(t),
+                        t => self.prog.gd_slot_type(t, nullable),
                     };
                     // Uninitialized locals get their C# default so typed slots never hold the
                     // uninitialized sentinel (objects stay null).
@@ -723,6 +771,7 @@ impl<'p> Lowerer<'p> {
                         (Ty::String, None) => Some(GExpr::str("")),
                         (Ty::Array(_), None) | (Ty::MultiArray(..), None) => Some(GExpr::Array(vec![])),
                         (Ty::String, Some(GExpr::Null)) => Some(GExpr::str("")),
+                        (t, None) | (t, Some(GExpr::Null)) if self.gd_type(t).as_deref() == Some("String") => Some(GExpr::str("")),
                         (t, None) if !matches!(t, Ty::Unknown | Ty::Null | Ty::Object) && !self.prog.is_unity_object(t) && !self.prog.is_player(t) => {
                             let d = self.prog.default_value(t);
                             if d == GExpr::Null { None } else { Some(d) }
@@ -1233,46 +1282,6 @@ impl<'p> Lowerer<'p> {
 
 pub(crate) fn is_ident(e: &Expr, name: &str) -> bool {
     matches!(e.unparen(), Expr::Ident(n, _) if n == name)
-}
-
-/// Does the statement compare the variable `var` with null (`var == null`, `null != var`)?
-fn stmt_null_tests(s: &Stmt, var: &str) -> bool {
-    let e = |x: &Expr| expr_null_tests(x, var);
-    match s {
-        Stmt::Block(b) => b.stmts.iter().any(|s| stmt_null_tests(s, var)),
-        Stmt::LocalDecl { declarators, .. } => declarators.iter().any(|d| d.init.as_ref().map_or(false, e)),
-        Stmt::Expr(x, _) => e(x),
-        Stmt::If { cond, then, els, .. } => e(cond) || stmt_null_tests(then, var) || els.as_ref().map_or(false, |s| stmt_null_tests(s, var)),
-        Stmt::While { cond, body, .. } | Stmt::DoWhile { body, cond, .. } => e(cond) || stmt_null_tests(body, var),
-        Stmt::For { init, cond, update, body, .. } => init.iter().any(|s| stmt_null_tests(s, var)) || cond.as_ref().map_or(false, e) || update.iter().any(e) || stmt_null_tests(body, var),
-        Stmt::Foreach { iter, body, .. } => e(iter) || stmt_null_tests(body, var),
-        Stmt::Switch { subject, sections, .. } => e(subject) || sections.iter().any(|sec| sec.body.iter().any(|s| stmt_null_tests(s, var))),
-        Stmt::Return(x, _) | Stmt::Throw(x, _) => x.as_ref().map_or(false, e),
-        Stmt::Try { body, catches, finally, .. } => body.stmts.iter().any(|s| stmt_null_tests(s, var)) || catches.iter().any(|b| b.stmts.iter().any(|s| stmt_null_tests(s, var))) || finally.as_ref().map_or(false, |b| b.stmts.iter().any(|s| stmt_null_tests(s, var))),
-        Stmt::Lock { body, .. } => stmt_null_tests(body, var),
-        _ => false,
-    }
-}
-
-fn expr_null_tests(x: &Expr, var: &str) -> bool {
-    let is_var = |e: &Expr| matches!(e.unparen(), Expr::Ident(n, _) if n == var);
-    let is_null = |e: &Expr| matches!(e.unparen(), Expr::Lit(Lit::Null, _));
-    let r = |e: &Expr| expr_null_tests(e, var);
-    match x {
-        Expr::Binary { op: BinOp::Eq | BinOp::Ne, lhs, rhs, .. } if (is_var(lhs) && is_null(rhs)) || (is_null(lhs) && is_var(rhs)) => true,
-        Expr::Binary { lhs, rhs, .. } | Expr::Assign { lhs, rhs, .. } => r(lhs) || r(rhs),
-        Expr::Unary { expr, .. } | Expr::Cast { expr, .. } | Expr::Is { expr, .. } | Expr::As { expr, .. } => r(expr),
-        Expr::Paren(e, _) | Expr::Nameof(e, _) | Expr::Checked(e, _, _) => r(e),
-        Expr::Cond { cond, then, els, .. } => r(cond) || r(then) || r(els),
-        Expr::Member { target, .. } => r(target),
-        Expr::Call { callee, args, .. } => r(callee) || args.iter().any(|a| r(&a.expr)),
-        Expr::Index { target, indices, .. } => r(target) || indices.iter().any(r),
-        Expr::New { args, init, .. } => args.iter().any(|a| r(&a.expr)) || init.as_ref().map_or(false, |i| i.iter().any(r)),
-        Expr::NewArray { sizes, init, .. } => sizes.iter().flatten().any(r) || init.as_ref().map_or(false, |i| i.iter().any(r)),
-        Expr::ArrayInit(items, _) => items.iter().any(r),
-        Expr::Interp(pieces, _) => pieces.iter().any(|p| matches!(p, InterpPiece::Expr { expr, .. } if r(expr))),
-        _ => false,
-    }
 }
 
 fn is_const_expr(e: &GExpr) -> bool {

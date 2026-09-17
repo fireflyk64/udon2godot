@@ -9,6 +9,7 @@ pub mod gd;
 pub mod lexer;
 pub mod lower;
 pub mod names;
+pub mod nullflow;
 pub mod parser;
 pub mod program;
 pub mod summary;

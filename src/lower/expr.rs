@@ -168,8 +168,28 @@ impl<'p> Lowerer<'p> {
         lw.e
     }
 
+    /// `string`, and classes that are a `String` on the Godot side (`System.Type`, `VRCUrl`): null is
+    /// written `""` for them.
+    pub(crate) fn is_stringy(&self, ty: &Ty) -> bool {
+        match ty {
+            Ty::String => true,
+            Ty::Named(n) => !self.prog.is_user_class(n) && self.prog.user_enum(n).is_none() && self.prog.catalog.get(n).map_or(false, |t| !t.is_enum() && t.gd == "String"),
+            _ => false,
+        }
+    }
+
     /// Insert implicit conversions when an expression of type `from` is used where `to` is expected.
     pub(crate) fn coerce(&mut self, lw: Lw, to: &Ty) -> Lw {
+        if matches!(lw.e, GExpr::Null) {
+            // `""` stands for a null string in the generated code (a `String` slot rejects null)
+            if lw.ty == Ty::Null && self.is_stringy(to) {
+                return Lw::new(GExpr::str(""), to.clone());
+            }
+            // a bare `default` takes the type it is assigned to
+            if lw.ty == Ty::Unknown && !matches!(to, Ty::Unknown | Ty::Null | Ty::Void | Ty::Object) {
+                return Lw::new(self.slot_default(to), to.clone());
+            }
+        }
         match (&lw.ty, to) {
             (Ty::Char, Ty::Int) | (Ty::Char, Ty::UInt) | (Ty::Char, Ty::Long) | (Ty::Char, Ty::Float) | (Ty::Char, Ty::Double) | (Ty::Char, Ty::Short) | (Ty::Char, Ty::Byte) | (Ty::Char, Ty::UShort) => {
                 let e = lw.e.method("unicode_at", vec![GExpr::Int(0)]);
@@ -306,7 +326,7 @@ impl<'p> Lowerer<'p> {
             return Resolved::Value(Lw::new(GExpr::ident(&f.gd_name), f.ty.clone()));
         }
         if let Some((_, p)) = self.prog.find_prop(&self.class.name, name) {
-            if p.decl.is_auto() {
+            if p.is_plain() {
                 return Resolved::Value(Lw::new(GExpr::ident(&p.gd_name), p.ty.clone()));
             }
             return Resolved::Value(Lw::new(GExpr::ident(&format!("get_{}", p.gd_name)).call(vec![]), p.ty.clone()));
@@ -448,7 +468,7 @@ impl<'p> Lowerer<'p> {
                         return Lw::new(t.e.member(&f.gd_name), f.ty.clone());
                     }
                     if let Some((_, p)) = self.prog.find_prop(&n, name) {
-                        if p.decl.is_auto() {
+                        if p.is_plain() {
                             return Lw::new(t.e.member(&p.gd_name), p.ty.clone());
                         }
                         return Lw::new(t.e.method(&format!("get_{}", p.gd_name), vec![]), p.ty.clone());
@@ -749,6 +769,14 @@ impl<'p> Lowerer<'p> {
             Expr::Ident(name, _) => {
                 // user method on self
                 let methods = self.prog.find_methods(&self.class.name, name);
+                if !methods.is_empty() && !arity_fits(&methods, args.len()) && self.has_missing_base() {
+                    // an overload of a base class that is not among the sources (a package that
+                    // was not converted along): nothing here can take these arguments
+                    self.warn(span, format!("no `{}` here takes {} argument(s); the overload must come from a base class that is not among the sources, called by name", name, args.len()));
+                    let mut a = vec![GExpr::str(&crate::names::mangle(name))];
+                    a.extend(self.lower_args_plain(args));
+                    return Lw::unknown(GExpr::ident("call").call(a));
+                }
                 if !methods.is_empty() {
                     let m = self.pick_user_method(&methods, args);
                     return self.call_user_method(m, None, args, &type_args, span);
@@ -775,9 +803,16 @@ impl<'p> Lowerer<'p> {
             }
             Expr::Member { target, name, null_cond, .. } => {
                 if let Expr::Base(_) = target.unparen() {
+                    // the base implementation, under the name the base scripts give that overload
+                    let own = self.class.name.clone();
+                    let methods: Vec<&crate::program::MethodInfo> = self.prog.class_chain(&own).into_iter().skip(1).flat_map(|c| c.methods_named(name)).collect();
+                    let picked = if methods.is_empty() { None } else { Some(self.pick_user_method(&methods, args)) };
                     let a = self.lower_args_plain(args);
-                    let ret = self.prog.find_methods(&self.class.name, name).first().map(|m| m.ret.clone()).unwrap_or(Ty::Unknown);
-                    return Lw::new(GExpr::ident("super").method(&crate::names::mangle(name), a), ret);
+                    let (gd, ret) = match picked {
+                        Some(m) => (m.gd_name.clone(), m.ret.clone()),
+                        None => (crate::names::mangle(name), Ty::Unknown),
+                    };
+                    return Lw::new(GExpr::ident("super").method(&gd, a), ret);
                 }
                 // static call on a type
                 if let Some(tn) = self.resolve_dotted_type(target).or_else(|| self.type_behind_member(target, name)) {
@@ -1012,10 +1047,16 @@ impl<'p> Lowerer<'p> {
         };
         let hint = match ty {
             Ty::Null | Ty::Unknown => None,
-            t => self.gd_type(t),
+            // `TryGet(out var list)` followed by `list == null`: the callee may hand back null
+            t => self.prog.gd_slot_type(t, self.prog.null_touched.contains(name)),
         };
         self.pre.push(GStmt::VarDecl { name: gd.clone(), ty: hint, init: Some(init) });
         gd
+    }
+
+    /// Does the class chain end in a base class that is neither converted nor in the catalog?
+    fn has_missing_base(&self) -> bool {
+        self.prog.class_chain(&self.class.name).last().and_then(|c| c.base.as_deref()).map_or(false, |b| !self.prog.is_user_class(b) && self.prog.catalog.get(b).is_none())
     }
 
     fn lower_args_plain(&mut self, args: &[Arg]) -> Vec<GExpr> {
@@ -1484,9 +1525,10 @@ impl<'p> Lowerer<'p> {
                 self.hoist_ok = saved;
                 let ty = if matches!(a.ty, Ty::Null | Ty::Unknown) { b.ty.clone() } else { a.ty.clone() };
                 // strings: "" stands for null in the generated code (see binary_lowered)
-                let is_str = a.ty == Ty::String || (ty == Ty::String && a.ty == Ty::Null);
+                let is_str = self.is_stringy(&a.ty) || (ty == Ty::String && a.ty == Ty::Null);
                 let cond = |e: GExpr| if is_str { e.clone().bin("!=", GExpr::Null).bin("and", e.bin("!=", GExpr::str(""))) } else { e.bin("!=", GExpr::Null) };
-                if a.e.is_atomic() {
+                // (a call on the left must run once: `Next() ?? fallback`)
+                if a.e.is_cheap() {
                     return Lw::new(GExpr::Ternary { cond: Box::new(cond(a.e.clone())), then: Box::new(a.e), els: Box::new(b.e) }, ty);
                 }
                 let tmp = self.fresh_tmp();
@@ -1511,7 +1553,7 @@ impl<'p> Lowerer<'p> {
                     let valid = GExpr::ident("is_instance_valid").call(vec![obj.e]);
                     return Lw::new(if op == BinOp::Eq { valid.not() } else { valid }, Ty::Bool);
                 }
-                if obj.ty == Ty::String {
+                if self.is_stringy(&obj.ty) {
                     // string fields default to "" in the generated code while array elements are
                     // null: treat both as C# null
                     let e = obj.e.clone().bin("==", GExpr::Null).bin("or", obj.e.bin("==", GExpr::str("")));
@@ -2000,7 +2042,7 @@ impl<'p> Lowerer<'p> {
                     return None;
                 }
                 let (_, p) = self.prog.find_prop(&self.class.name, name)?;
-                if p.decl.is_auto() {
+                if p.is_plain() {
                     return None;
                 }
                 Some((None, p.gd_name.clone()))
@@ -2008,7 +2050,7 @@ impl<'p> Lowerer<'p> {
             Expr::Member { target, name, .. } => {
                 if let Expr::This(_) = target.unparen() {
                     let (_, p) = self.prog.find_prop(&self.class.name, name)?;
-                    if p.decl.is_auto() {
+                    if p.is_plain() {
                         return None;
                     }
                     return Some((None, p.gd_name.clone()));
@@ -2022,7 +2064,7 @@ impl<'p> Lowerer<'p> {
                     return None;
                 }
                 let (_, p) = self.prog.find_prop(&n, name)?;
-                if p.decl.is_auto() {
+                if p.is_plain() {
                     return None;
                 }
                 let gd = p.gd_name.clone();
@@ -2184,4 +2226,12 @@ fn is_assignable_template(t: &str) -> bool {
 #[allow(dead_code)]
 fn local_of(l: &Local) -> GExpr {
     GExpr::ident(&l.gd_name)
+}
+
+/// Can any of the methods be called with `n` arguments?
+fn arity_fits(methods: &[&crate::program::MethodInfo], n: usize) -> bool {
+    methods.iter().any(|m| {
+        let min = m.params.iter().filter(|p| p.default.is_none() && p.mode != ParamMode::Params).count();
+        n >= min && (n <= m.params.len() || m.params.iter().any(|p| p.mode == ParamMode::Params))
+    })
 }

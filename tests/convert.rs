@@ -260,3 +260,34 @@ public class Docs : UdonSharpBehaviour
     }
     assert!(out.source.contains("# of each display name") || out.source.contains("## of each display name"), "{}", out.source);
 }
+
+/// Things the sandbox compiler rejects although the conversion reports no error
+/// (`scripts/compile_check_refs.sh`; run in Godot by tests/coverage/TNulls.cs).
+#[test]
+fn null_in_value_slots_and_members_along_a_class_chain() {
+    let (outs, diags) = convert(&[root().join("tests/coverage/TNulls.cs")]);
+    assert!(!diags.has_errors());
+    let base = &outs.iter().find(|o| o.name == "TNullsBase").unwrap().source;
+    let derived = &outs.iter().find(|o| o.name == "TNulls").unwrap().source;
+    // a `new const` gets a class-qualified name; an abstract property is a getter, not a variable
+    assert!(base.contains("const Order: int = 10"));
+    assert!(derived.contains("const Order_TNulls: int = 10 + 5"), "{}", derived);
+    assert!(base.contains("func get_Kind() -> String:") && !base.contains("var Kind"));
+    assert!(base.contains("var _prop_Sides: int = 0") && !derived.contains("_prop_Sides: int"));
+    // the override takes the name of the base overload with the same parameters
+    assert!(base.contains("func Pick_2(n: int) -> int:"));
+    assert!(derived.contains("func Pick_2(n: int) -> int:\n\treturn super.Pick_2(n) * 10"), "{}", derived);
+    assert!(derived.contains("func Pick_3(a: int, b: int) -> int:"));
+    // null-touched arrays and dictionaries are nullable; strings use ""
+    assert!(derived.contains("var cache: Array? = null"));
+    assert!(derived.contains("@export var shown: Array? = []"));
+    assert!(derived.contains("var info: Dictionary? = null"));
+    assert!(derived.contains("func Give(n: int) -> Array?:"));
+    assert!(derived.contains("func Count(xs: Array? = null) -> int:"));
+    assert!(derived.contains("func TryInfo(ok: bool, result: Dictionary?, list: Array?) -> Array:"));
+    assert!(derived.contains("var note: String = \"\"") && derived.contains("\tnote = \"\"\n"));
+    assert!(derived.contains("\tb = AABB()\n"), "bare `default` takes the target type");
+    assert!(!derived.contains(": String = null") && !derived.contains("return null\n\n# ") && !base.contains(": String = null"));
+    // untouched arrays keep the plain type
+    assert!(derived.contains("@export var failures: Array = U.new_array(64, null)"));
+}
