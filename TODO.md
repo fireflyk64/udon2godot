@@ -422,6 +422,26 @@ scenario, like the pool table.
       button raycast is guarded by its state again). Attribute / editor / exception classes are
       skipped instead of lowered (UdonUtils: 67 warnings and 2 errors -> 4 warnings).
 
+## UdonSharp 0.x scenes (no C# proxy components)
+
+UdonEssentials (2021) is an UdonSharp 0.x package: its prefabs carry only `UdonBehaviour`
+components. Field values are not YAML keys of a proxy MonoBehaviour but live in
+`serializedPublicVariablesBytesString` (base64 of Odin Serializer's binary format holding a
+`UdonVariableTable`), object references are indices into `publicVariablesUnityEngineObjects`.
+The importer attached the scripts ("missing proxies: 5") and every field kept its default.
+
+- [ ] Decoder for the Odin binary entry stream in the unidot plugin: named / unnamed nodes, arrays,
+      primitive arrays, primitives, strings, type names and ids, internal and external references;
+      `UdonVariableTable` -> `{symbol: [type, value]}`. Prototype verified against UdonEssentials
+      (floats, bools, `Text` / `Transform` / `GameObject` references by index).
+- [ ] Behaviours without a proxy get their exported fields from the decoded table through the same
+      conversion as proxy fields (values, structs, arrays, references, resources).
+- [ ] Prefab-instance overrides of `serializedPublicVariablesBytesString` and of
+      `publicVariablesUnityEngineObjects.Array.data[i]`.
+- [ ] Fixture: a proxy-less behaviour in `tests/unity_fixture` whose table is produced by
+      `tools/odin_encode.py` (float, int, bool, string, Vector3, reference, array).
+- [ ] UdonEssentials scenario: player list entry, player settings, groups, event dispatcher.
+
 ## Next
 
 - VR on real OpenXR hardware (the player and per-hand pointers exist and pass with simulated

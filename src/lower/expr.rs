@@ -1930,14 +1930,18 @@ impl<'p> Lowerer<'p> {
         }
         // Catalog indexer setter: `sb[i] = c` → the `set this[int]` template (`$1` index, `$v` value).
         if let Expr::Index { target: obj, indices, null_cond: false, .. } = lhs.unparen() {
-            if indices.len() == 1 {
+            if indices.len() == 1 || indices.len() == 2 {
+                let key = if indices.len() == 2 { "this[int, int]" } else { "this[int]" };
                 let o = self.lower_expr(obj);
                 if let Ty::Named(n) = &o.ty {
-                    let setter = self.prog.catalog.members(n, "this[int]").iter().find_map(|m| m.set.clone());
+                    let setter = self.prog.catalog.members(n, key).iter().find_map(|m| m.set.clone());
                     if let Some(tmpl) = setter {
-                        let i = self.lower_expr(&indices[0]);
-                        let i = self.coerce(i, &Ty::Int);
-                        let e = self.expand_template(&tmpl, Some(&o.e), &[i.e], Some(&value), &[], &[], "this[int]");
+                        let mut idx: Vec<GExpr> = Vec::new();
+                        for ix in indices {
+                            let i = self.lower_expr(ix);
+                            idx.push(self.coerce(i, &Ty::Int).e);
+                        }
+                        let e = self.expand_template(&tmpl, Some(&o.e), &idx, Some(&value), &[], &[], key);
                         let mut out = self.take_pre();
                         match e {
                             GExpr::Raw(s) => out.push(GStmt::Raw(s)),

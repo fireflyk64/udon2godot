@@ -111,6 +111,19 @@ func _ui_checks(r, fx: Node) -> void:
 		r.check(int(inner.get("number")) == 9, "value override made in the outer prefab: " + str(inner.get("number")))
 		r.check(inner.get("target") != null and inner.get("target") == r.find("Anchor"), "reference override made in the outer prefab points at its Anchor: " + str(inner.get("target")))
 		r.check(inner.get("holderRoot") == r.find("InnerHolder"), "and the nested prefab's own reference is kept: " + str(inner.get("holderRoot")))
+	# UdonSharp 0.x: no C# proxy component, the field values come from the Udon variable table
+	# (Odin binary, base64) and object references from publicVariablesUnityEngineObjects.
+	var legacy: Node = r.behaviour("Legacy")
+	r.check(legacy != null, "proxy-less UdonBehaviour gets its script from the program asset: " + str(legacy))
+	if legacy != null:
+		r.check(is_equal_approx(float(legacy.get("speed")), 1.5) and int(legacy.get("count")) == 7 and legacy.get("flag") == true and str(legacy.get("title")) == "legacy", "variable table primitives: %s %s %s %s" % [str(legacy.get("speed")), str(legacy.get("count")), str(legacy.get("flag")), str(legacy.get("title"))])
+		r.check(legacy.get("offset") is Vector3 and legacy.get("offset").is_equal_approx(Vector3(1, 2, 3)) and legacy.get("tint") is Color and legacy.get("tint").is_equal_approx(Color(0.25, 0.5, 0.75, 1)), "variable table structs: %s %s" % [str(legacy.get("offset")), str(legacy.get("tint"))])
+		r.check(legacy.get("target") == r.find("Target") and legacy.get("missing") == null, "variable table reference by index: " + str(legacy.get("target")))
+		var lt = legacy.get("targets")
+		r.check(lt is Array and lt.size() == 2 and lt[0] == r.find("Floor") and lt[1] == r.find("Target"), "variable table reference array: " + str(lt))
+		var lw = legacy.get("weights")
+		var ln = legacy.get("names")
+		r.check(lw is Array and lw.size() == 2 and is_equal_approx(float(lw[0]), 0.5) and is_equal_approx(float(lw[1]), 2.0) and ln is Array and ln == ["a", "b"], "variable table arrays: %s %s" % [str(lw), str(ln)])
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)

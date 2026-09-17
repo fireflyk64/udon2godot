@@ -512,7 +512,23 @@ type TextureFormat kind=enum extern=UnityEngineTextureFormat
   enum RFloat = 18
   enum RGFloat = 19
   enum RGBAFloat = 20
+  enum RG16 = 62
   enum R8 = 63
+  enum BC4 = 26
+  enum BC5 = 27
+  enum BC6H = 24
+  enum BC7 = 25
+  enum DXT1Crunched = 28
+  enum DXT5Crunched = 29
+  enum ETC_RGB4 = 34
+  enum ETC2_RGB = 45
+  enum ETC2_RGBA8 = 47
+  enum ASTC_4x4 = 48
+  enum ASTC_6x6 = 50
+  enum ASTC_8x8 = 51
+  enum RG32 = 72
+  enum RGB48 = 73
+  enum RGBA64 = 74
 
 type VRCCustomAction : Behaviour kind=component gd=Node extern=VRCSDKBaseVRCCustomAction
   Execute(): void => U.send_custom_event($0, "Execute")

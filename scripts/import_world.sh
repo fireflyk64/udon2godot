@@ -22,8 +22,9 @@ cp -r refs/unidot_importer "$OUT/addons/unidot_importer"
 rm -rf "$OUT/addons/unidot_importer/.git"
 [ -d "$OUT/addons/godot_sandbox" ] || cp -r godot_project/addons/godot_sandbox "$OUT/addons/"
 # 1. scripts
-FILES=$(find "$SRC" -name "*.cs" -not -path "*/Editor/*" -not -path "*/editor/*")
-"$BIN" --report --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted "$@" $FILES > "$OUT/udon2godot_report.txt" 2>&1
+# (an array: asset folders often have spaces in their names, "Udon Prefabs/...")
+mapfile -d '' FILES < <(find "$SRC" -name "*.cs" -not -path "*/Editor/*" -not -path "*/editor/*" -print0)
+"$BIN" --report --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted "$@" "${FILES[@]}" > "$OUT/udon2godot_report.txt" 2>&1
 CONV=$?
 grep -E "class\(es\)|== totals" "$OUT/udon2godot_report.txt"
 if [ $CONV -ne 0 ]; then echo "udon2godot failed; see $OUT/udon2godot_report.txt"; grep "error:" "$OUT/udon2godot_report.txt" | head; fi
@@ -48,6 +49,8 @@ except Exception as e:
     print("no udon import report:", e); sys.exit(0)
 print("scripts attached: %d, ui nodes: %d, events wired: %d, components: %s" % (r["scripts_attached"], r["ui_nodes"], r["events_wired"], r["components"]))
 print("unknown scripts: %d, missing proxies: %d, unresolved refs: %d, missing resources: %d, unsupported fields: %d" % (len(r["unknown_scripts"]), len(r["missing_proxies"]), len(r["unresolved_references"]), len(r["missing_resources"]), len(r["unsupported_fields"])))
+if r.get("legacy_tables"):
+    print("UdonSharp 0.x behaviours (fields from the Udon variable table): %d, fields set: %d" % (r["legacy_tables"], r.get("legacy_fields", 0)))
 PY
 echo "run:  $GODOT --headless --path $OUT -s world_runner.gd -- --scene res://<scene>.tscn --frames 120 --debug-scripts --dump-refs"
 echo "shot: $GODOT --display-driver x11 --rendering-method gl_compatibility --path $OUT -s world_runner.gd -- --scene res://<scene>.tscn --frame . --shot out.png"

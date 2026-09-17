@@ -8,7 +8,7 @@ OUT=${1:-/tmp/udon2godot_worlds/billiards}
 . scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 SCENE=res://MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn
 # a world imported before the importer changed is stale
-STALE=$(find refs/unidot_importer/udon_integration.gd -newer "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" -type f 2>/dev/null | head -1)
+STALE=$(find refs/unidot_importer -maxdepth 1 -name "*.gd" -newer "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" -type f 2>/dev/null | head -1)
 if [ ! -f "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" ] || [ -n "$STALE" ] || [ "${REIMPORT:-0}" = 1 ]; then
   [ -n "$STALE" ] && echo "re-importing: $STALE is newer than the imported scene"
   rm -rf "$OUT"

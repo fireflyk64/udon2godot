@@ -4101,3 +4101,8 @@ type Camera
 
 type VRCRenderTexture
   static GetTemporary(RenderTextureDescriptor): RenderTexture => U.new_render_texture(int($1.get("width", 256)), int($1.get("height", 256)))
+
+# Matrix4x4 element assignment (`matrices[m][5] = v` in the GLB loader): the value type is rebuilt
+type Matrix4x4
+  set this[int]: float => $0 = U.matrix_set($0, $1 % 4, $1 >> 2, $v)
+  set this[int, int]: float => $0 = U.matrix_set($0, $1, $2, $v)

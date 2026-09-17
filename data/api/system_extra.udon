@@ -896,6 +896,8 @@ type Array
   Insert(int, object): Array => U.arr_inserted($0, $1, $2)
   Remove(object): Array => U.arr_removed($0, $1)
   RemoveAt(int): Array => U.arr_removed_at($0, $1)
+  InsertRange(int, Array): Array => ($0.slice(0, $1) + $2 + $0.slice($1))
+  RemoveRange(int, int): Array => ($0.slice(0, $1) + $0.slice($1 + $2))
   IndexOf(object): int => $0.find($1)
   LastIndexOf(object): int => $0.rfind($1)
   FirstOrDefault(): object => ($0[0] if $0.size() > 0 else null)

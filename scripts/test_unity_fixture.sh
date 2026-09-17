@@ -8,7 +8,7 @@ OUT=${1:-/tmp/udon2godot_worlds/fixture}
 SCENE=res://unity_fixture/Fixture/Fixture.tscn
 mkdir -p "$(dirname "$OUT")"   # the import log sits next to the world folder
 # a world imported before the Unity sources or the importer changed is stale
-STALE=$(find tests/unity_fixture refs/unidot_importer/udon_integration.gd -newer "$OUT/unity_fixture/Fixture/Fixture.tscn" -type f 2>/dev/null | head -1)
+STALE=$(find tests/unity_fixture refs/unidot_importer/*.gd -newer "$OUT/unity_fixture/Fixture/Fixture.tscn" -type f 2>/dev/null | head -1)
 if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ -n "$STALE" ] || [ "${REIMPORT:-0}" = 1 ]; then
   [ -n "$STALE" ] && echo "re-importing: $STALE is newer than the imported scene"
   rm -rf "$OUT"

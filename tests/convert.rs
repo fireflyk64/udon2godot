@@ -224,3 +224,39 @@ namespace Demo
     assert!(code.contains("Add") || code.contains("append") || code.contains("list_add"), "collection initializer lowered:\n{}", code);
     assert!(!code.contains("$init"), "initializer target placeholder must not leak:\n{}", code);
 }
+
+/// Doc comments that span several lines stay comments on constants, fields and methods
+/// (UdonEssentials' Groups and EventDispatcher did not parse: only the first line had its `#`).
+#[test]
+fn multi_line_doc_comments_stay_comments() {
+    let out = convert_source(
+        r#"
+using UdonSharp;
+public class Docs : UdonSharpBehaviour
+{
+    /// <summary>
+    /// Template for the padding
+    /// of each display name
+    /// </summary>
+    private const string Template = "x";
+
+    /// <summary>
+    /// A counted
+    /// value
+    /// </summary>
+    public int count;
+
+    /// <summary>
+    /// Does
+    /// things
+    /// </summary>
+    public void Work() { count++; }
+}
+"#,
+    );
+    for line in out.source.lines() {
+        let t = line.trim();
+        assert!(!(t == "Template for the padding" || t == "of each display name" || t == "A counted" || t == "value" || t == "Does" || t == "things" || t.starts_with("</summary>")), "doc text leaked as code: `{}`\n{}", line, out.source);
+    }
+    assert!(out.source.contains("# of each display name") || out.source.contains("## of each display name"), "{}", out.source);
+}

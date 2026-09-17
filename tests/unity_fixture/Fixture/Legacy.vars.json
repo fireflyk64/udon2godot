@@ -1,0 +1,13 @@
+[
+  ["speed", "System.Single", 1.5],
+  ["count", "System.Int32", 7],
+  ["flag", "System.Boolean", true],
+  ["title", "System.String", "legacy"],
+  ["offset", "UnityEngine.Vector3", [1, 2, 3]],
+  ["tint", "UnityEngine.Color", [0.25, 0.5, 0.75, 1]],
+  ["target", "UnityEngine.Transform", {"ref": 0}],
+  ["targets", "UnityEngine.Transform[]", [{"ref": 1}, {"ref": 0}]],
+  ["weights", "System.Single[]", [0.5, 2]],
+  ["names", "System.String[]", ["a", "b"]],
+  ["missing", "UnityEngine.Transform", null]
+]

@@ -513,7 +513,10 @@ impl Printer {
         }
         for c in &s.consts {
             if let Some(cm) = &c.comment {
-                self.line(&format!("# {}", cm));
+                // a doc comment may span lines: every one needs its own marker
+                for l in cm.lines() {
+                    self.line(&format!("# {}", l.trim()));
+                }
             }
             match &c.ty {
                 Some(t) => self.line(&format!("const {}: {} = {}", c.name, t, c.value.render())),
@@ -551,7 +554,9 @@ impl Printer {
             }
         }
         if let Some(c) = &v.comment {
-            self.line(&format!("# {}", c));
+            for l in c.lines() {
+                self.line(&format!("# {}", l.trim()));
+            }
         }
         let mut s = String::new();
         if v.export_storage {
@@ -598,7 +603,9 @@ impl Printer {
             }
         }
         if let Some(c) = &f.comment {
-            self.line(&format!("# {}", c));
+            for l in c.lines() {
+                self.line(&format!("# {}", l.trim()));
+            }
         }
         let params: Vec<String> = f
             .params

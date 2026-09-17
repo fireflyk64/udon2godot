@@ -18,7 +18,7 @@ world() {
   if [ ! -d "$src" ]; then echo "skipped: $src is not cloned (scripts/setup_deps.sh --community)"; return 0; fi
   local tscn="$out/${scene#res://}"
   local stale=""
-  [ -f "$tscn" ] && stale=$(find refs/unidot_importer/udon_integration.gd refs/unidot_importer/convert_scene.gd -newer "$tscn" -type f 2>/dev/null | head -1)
+  [ -f "$tscn" ] && stale=$(find refs/unidot_importer -maxdepth 1 -name "*.gd" -newer "$tscn" -type f 2>/dev/null | head -1)
   if [ ! -f "$tscn" ] || [ -n "$stale" ] || [ "${REIMPORT:-0}" = 1 ]; then
     [ -n "$stale" ] && echo "re-importing: $stale is newer than the imported scene"
     rm -rf "$out"
@@ -28,7 +28,9 @@ world() {
     rm -rf "$out/addons/udon_runtime"; cp -r runtime/addons/udon_runtime "$out/addons/"
     cp godot_project/addons/godot_sandbox/bin/*.so "$out/addons/godot_sandbox/bin/" 2>/dev/null || true
     cp godot_world_template/world_runner.gd "$out/"; cp godot_world_template/scenarios/*.gd "$out/scenarios/"
-    cargo build --release -q && target/release/udon2godot -q --manifest "$out/converted/udon_manifest.json" -o "$out/converted" --res-prefix res://converted $(find "$src" -name "*.cs" -not -path "*/Editor/*" -not -path "*/editor/*") > /dev/null 2>&1
+    local files=()
+    mapfile -d '' files < <(find "$src" -name "*.cs" -not -path "*/Editor/*" -not -path "*/editor/*" -print0)
+    cargo build --release -q && target/release/udon2godot -q --manifest "$out/converted/udon_manifest.json" -o "$out/converted" --res-prefix res://converted "${files[@]}" > /dev/null 2>&1
   fi
   timeout 600 "$GODOT" --headless --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --debug-scripts --scenario "$scenario" > "$out/scenario.log" 2>&1
   local code=$?
@@ -46,7 +48,8 @@ world() {
 }
 
 world emychess refs/EmyChess/Packages/com.emymin.emychess/Runtime res://Runtime/ExampleScene.tscn res://scenarios/emychess.gd
-world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs/Essentials" res://Examples/UdonEssentials_ExampleScene.tscn res://scenarios/udon_essentials.gd
+# (unidot keeps paths relative to the Unity project: the folder above "Assets")
+world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs/Essentials" "res://Assets/Varneon/Udon Prefabs/Essentials/Examples/UdonEssentials_ExampleScene.tscn" res://scenarios/udon_essentials.gd
 
 echo
 if [ ${#FAILED[@]} -eq 0 ]; then echo "COMMUNITY WORLDS PASSED"; exit 0; fi
