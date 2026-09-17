@@ -8,6 +8,11 @@ extends ScrollContainer
 signal scrolled(normalized: Vector2)
 
 var _content: Control = null
+## Unity Scrollbar objects linked to this ScrollRect (m_VerticalScrollbar / m_HorizontalScrollbar):
+## their value is the normalized position (vertical: 1 = top), in both directions.
+var _vbar: Range = null
+var _hbar: Range = null
+var _syncing: bool = false
 
 
 func _ready() -> void:
@@ -17,9 +22,45 @@ func _ready() -> void:
 		var cfg: Dictionary = get_meta("udon_scroll")
 		if cfg.get("content") is NodePath:
 			_content = get_node_or_null(cfg["content"]) as Control
+		if cfg.get("vbar") is NodePath:
+			_vbar = get_node_or_null(cfg["vbar"]) as Range
+		if cfg.get("hbar") is NodePath:
+			_hbar = get_node_or_null(cfg["hbar"]) as Range
+	if _vbar != null:
+		_vbar.value_changed.connect(_on_unity_bar)
+	if _hbar != null:
+		_hbar.value_changed.connect(_on_unity_bar)
 	if _content != null and not _content.resized.is_connected(_fit):
 		_content.resized.connect(_fit)
 	call_deferred("_fit")
+	call_deferred("_push_to_unity_bars")
+
+
+## A Unity Scrollbar moved (by the pointer or by a script: `scrollbar.value = 0` scrolls down).
+func _on_unity_bar(_value: float) -> void:
+	if _syncing:
+		return
+	_syncing = true
+	if _vbar != null:
+		var v := get_v_scroll_bar()
+		v.value = (1.0 - _vbar.value) * (v.max_value - v.page)
+	if _hbar != null:
+		var h := get_h_scroll_bar()
+		h.value = _hbar.value * (h.max_value - h.page)
+	_syncing = false
+	_emit_scrolled()
+
+
+func _push_to_unity_bars() -> void:
+	if _syncing:
+		return
+	_syncing = true
+	var n: Vector2 = _normalized()
+	if _vbar != null:
+		_vbar.set_value_no_signal(n.y)
+	if _hbar != null:
+		_hbar.set_value_no_signal(n.x)
+	_syncing = false
 
 
 func _fit() -> void:
@@ -38,9 +79,18 @@ func _fit() -> void:
 		first.custom_minimum_size = m
 
 
-func _on_bar(_value: float) -> void:
+func _normalized() -> Vector2:
 	var v := get_v_scroll_bar()
 	var h := get_h_scroll_bar()
 	var vr: float = v.max_value - v.page
 	var hr: float = h.max_value - h.page
-	scrolled.emit(Vector2(h.value / hr if hr > 0.0 else 0.0, 1.0 - (v.value / vr if vr > 0.0 else 0.0)))
+	return Vector2(h.value / hr if hr > 0.0 else 0.0, 1.0 - (v.value / vr if vr > 0.0 else 0.0))
+
+
+func _emit_scrolled() -> void:
+	scrolled.emit(_normalized())
+
+
+func _on_bar(_value: float) -> void:
+	_push_to_unity_bars()
+	_emit_scrolled()

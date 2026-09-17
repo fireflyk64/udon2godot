@@ -502,12 +502,12 @@ type TextMeshProUGUI
 type TMP_Dropdown
   ClearOptions(): void => $0.clear()
   Hide(): void => $0.get_popup().hide()
-  RefreshShownValue(): void => pass
-  SetValueWithoutNotify(int): void => $0.select($1)
+  RefreshShownValue(): void => U.dd_refresh($0)
+  SetValueWithoutNotify(int): void => U.dd_set_value($0, $1, false)
   Show(): void => $0.show_popup()
   IsExpanded: bool => $0.get_popup().visible
   value: int => $0.selected
-  set value: int => $0.select($v)
+  set value: int => U.dd_set_value($0, $v, true)
 
 type ToggleGroup
   ActiveToggles(): IEnumerableUnityEngineUIToggle => U.toggle_group_active($0)

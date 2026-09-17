@@ -155,6 +155,33 @@ func _ui_checks(r, fx: Node) -> void:
 	var dll_audio: Node = r.find("DllAudio")
 	r.check(dll_pickup != null and dll_pickup.is_in_group("udon_pickup") and dll_pickup.has_meta("udon_pickup"), "DLL-referenced VRC_Pickup is a pickup")
 	r.check(dll_audio != null and not dll_audio.is_in_group("udon_pickup") and dll_audio.has_meta("udon_spatial_audio") and is_equal_approx(float(dll_audio.get_meta("udon_spatial_audio").get("far", 0.0)), 12.0), "DLL-referenced VRCSpatialAudioSource is not a pickup and keeps its settings: " + str(dll_audio.get_meta("udon_spatial_audio") if dll_audio != null and dll_audio.has_meta("udon_spatial_audio") else null))
+	# A Unity Scrollbar linked to the ScrollRect (m_VerticalScrollbar): a real scroll bar whose value
+	# is the normalized position, in both directions (consoles scroll down with `scrollbar.value = 0`)
+	var sbar: Node = r.find("ScrollVBar")
+	var srect: Node = r.find("Scroll")
+	r.check(sbar is VScrollBar and srect is ScrollContainer, "Unity Scrollbar (BottomToTop) imported as a VScrollBar: " + str(sbar))
+	if sbar is VScrollBar and srect is ScrollContainer:
+		await r.wait(3)
+		r.check(is_equal_approx(sbar.value, 1.0) and is_equal_approx(u.scrollbar_get_size(sbar), 0.4), "the bar starts at the top (1) and keeps Unity's handle size: %s %s" % [str(sbar.value), str(u.scrollbar_get_size(sbar))])
+		sbar.value = 0.0
+		await r.wait(3)
+		r.check(u.scroll_get_v(srect) < 0.05, "scrollbar.value = 0 scrolls the rect to the bottom: " + str(u.scroll_get_v(srect)))
+		u.scroll_set_v(srect, 1.0)
+		await r.wait(3)
+		r.check(sbar.value > 0.95, "scrolling the rect to the top moves the bar to 1: " + str(sbar.value))
+	# Dropdown caption: Unity's own Text child shows the selection (the OptionButton's text is made
+	# invisible), and `dropdown.value = i` raises onValueChanged like Unity
+	var ddn: Node = r.find("Dropdown")
+	var cap: Node = r.find("DropCaption")
+	r.check(ddn is OptionButton and cap is Label and str(cap.text) == ddn.get_item_text(ddn.selected), "dropdown caption label shows the selected option: " + str(cap.text if cap is Label else null))
+	if ddn is OptionButton and cap is Label:
+		var dchanged: int = int(fx.get("dropdownChanged"))
+		u.dd_set_value(ddn, 1, true)
+		await r.wait(3)
+		r.check(str(cap.text) == "Green" and int(fx.get("dropdownChanged")) == dchanged + 1 and int(fx.get("dropdownValue")) == 1, "value = 1: caption %s, onValueChanged raised (%d -> %d)" % [str(cap.text), dchanged, int(fx.get("dropdownChanged"))])
+		u.dd_set_value(ddn, 0, false)
+		await r.wait(3)
+		r.check(str(cap.text) == ddn.get_item_text(0) and int(fx.get("dropdownChanged")) == dchanged + 1, "SetValueWithoutNotify updates the caption only")
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)
@@ -234,6 +261,7 @@ func _ui_checks(r, fx: Node) -> void:
 		await r.shot("scrolled")
 	# dropdown: a click opens the popup inside the canvas viewport, a second click picks "Blue"
 	var dd: Node = r.find("Dropdown")
+	var dd_changed_before: int = int(fx.get("dropdownChanged"))
 	r.check(dd is OptionButton and dd.item_count == 3 and dd.selected == 0, "Dropdown imported as OptionButton with 3 options: " + str(dd))
 	if dd is OptionButton:
 		await r.click(r.project(r.control_world(dd)))
@@ -247,7 +275,7 @@ func _ui_checks(r, fx: Node) -> void:
 			var ppx: Vector2 = Vector2(pop.position) + Vector2(pop.size.x * 0.5, row * 2.5)
 			await r.click(r.project(u.to_gd_v(u.ui_viewport_to_world(cvn, ppx))))
 			await r.wait(5)
-		r.check(dd.selected == 2 and int(fx.get("dropdownChanged")) == 1 and int(fx.get("dropdownValue")) == 2, "picked the third option through the pointer: selected=%d, script saw %d" % [dd.selected, int(fx.get("dropdownValue"))])
+		r.check(dd.selected == 2 and int(fx.get("dropdownChanged")) == dd_changed_before + 1 and int(fx.get("dropdownValue")) == 2, "picked the third option through the pointer: selected=%d, script saw %d" % [dd.selected, int(fx.get("dropdownValue"))])
 	# screen-space overlay canvas: Godot's own GUI handles the click at the control's window rect
 	var ob: Node = r.find("OverlayBtn")
 	r.check(ob is BaseButton and ob.is_visible_in_tree(), "overlay button imported: " + str(ob))

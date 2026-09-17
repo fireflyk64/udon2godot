@@ -3857,6 +3857,20 @@ func scroll_set_h(s: ScrollContainer, v: float) -> void:
 	var bar := s.get_h_scroll_bar()
 	bar.value = v * (bar.max_value - bar.page)
 
+## Unity's Scrollbar.size (handle size 0..1). The imported bar keeps page = 0 so that `value`
+## spans 0..1 as in Unity; the size is only remembered.
+func scrollbar_get_size(bar: Range) -> float:
+	if bar != null and bar.has_meta("udon_scrollbar"):
+		return float(bar.get_meta("udon_scrollbar").get("size", 1.0))
+	return 1.0
+
+func scrollbar_set_size(bar: Range, v: float) -> void:
+	if bar == null:
+		return
+	var cfg: Dictionary = bar.get_meta("udon_scrollbar") if bar.has_meta("udon_scrollbar") else {}
+	cfg["size"] = clampf(v, 0.0, 1.0)
+	bar.set_meta("udon_scrollbar", cfg)
+
 func scroll_content(s: ScrollContainer) -> Control:
 	return s.get_child(0) if s.get_child_count() > 0 else null
 
@@ -6704,6 +6718,23 @@ func ui_aspect_set(n: Node, key: String, value) -> void:
 				n.position = (ps - n.size) * 0.5
 
 ## Dropdown options as OptionData dictionaries {text, image}.
+## `dropdown.value = i` (Unity raises onValueChanged when the value changes) and
+## SetValueWithoutNotify; the caption that the imported Unity label shows follows.
+func dd_set_value(n: Node, i: int, notify: bool) -> void:
+	if not (n is OptionButton):
+		return
+	var o: OptionButton = n
+	var clamped: int = clampi(i, 0, maxi(o.item_count - 1, 0)) if o.item_count > 0 else -1
+	var changed: bool = o.selected != clamped
+	o.select(clamped)
+	dd_refresh(o)
+	if notify and changed:
+		o.item_selected.emit(clamped)
+
+func dd_refresh(n: Node) -> void:
+	if n != null and n.has_method("udon_refresh_caption"):
+		n.udon_refresh_caption()
+
 func dd_options(n: Node) -> Array:
 	var out: Array = []
 	if n is OptionButton:

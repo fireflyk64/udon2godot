@@ -542,7 +542,7 @@ type VRCRenderTexture kind=class gd=Variant extern=VRCSDKBaseVRCRenderTexture
 type VRCTMPDropdownExtension : Behaviour kind=component gd=OptionButton extern=VRCSDK3ComponentsVRCTMPDropdownExtension
   Show(): void => $0.show_popup()
   Hide(): void => $0.get_popup().hide()
-  RefreshShownValue(): void => pass
+  RefreshShownValue(): void => U.dd_refresh($0)
 
 type VRCOpenMenu : Behaviour kind=component gd=Node extern=VRCSDK3ComponentsVRCOpenMenu
   OpenMenu(): void => Udon.open_menu($0)

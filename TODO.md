@@ -286,9 +286,13 @@ MS-VRCSA-Billiards import on 2026-09-15 (`scenarios/canvas_dump.gd` on the impor
       `udon_scroll_rect.gd` (Unity's stretched Viewport child expands and takes the content's size
       as its minimum, `scrolled` = ScrollRect.onValueChanged with the normalized position), the
       pointer forwards the mouse wheel, a hidden item is scrolled into view and clicked, and masks
-      and scroll rects clip what they hold when the canvas plane is fitted. Open: Unity's own
-      Scrollbar objects are not linked to the container, a Dropdown's caption Label child is drawn
-      on top of the OptionButton's own text.
+      and scroll rects clip what they hold when the canvas plane is fitted. Unity's own Scrollbar
+      objects are real scroll bars now (VScrollBar / HScrollBar by direction, value 0..1,
+      `GetComponent<Scrollbar>` finds them) and a ScrollRect's `m_VerticalScrollbar` /
+      `m_HorizontalScrollbar` are linked both ways (`scrollbar.value = 0` scrolls a console to
+      the bottom); a Dropdown's caption is Unity's own Text child, kept up to date by
+      `udon_dropdown.gd` (the OptionButton's own text and arrow are invisible), and
+      `dropdown.value = i` raises onValueChanged (fixture 84 / 117).
 - [x] Desktop player controller: done as `udon_desktop_player.gd` (`world_runner.gd --play`,
       `scripts/play_world.sh`), `scenarios/player.gd` on the fixture (walk, strafe, jump, tracking
       data, Esc frees the mouse, clicks through the player camera). Stations: the pointer offers

@@ -612,12 +612,12 @@ type TMP_InputField : Graphic kind=component gd=LineEdit extern=TMProTMP_InputFi
 
 type TMP_Dropdown : Graphic kind=component gd=OptionButton extern=TMProTMP_Dropdown
   value: int => $0.selected
-  set value: int => $0.select($v)
+  set value: int => U.dd_set_value($0, $v, true)
   interactable: bool => not $0.disabled
   set interactable: bool => $0.disabled = not $v
-  SetValueWithoutNotify(int): void => $0.select($1)
+  SetValueWithoutNotify(int): void => U.dd_set_value($0, $1, false)
   ClearOptions(): void => $0.clear()
-  RefreshShownValue(): void => pass
+  RefreshShownValue(): void => U.dd_refresh($0)
 
 type Image : Graphic kind=component gd=Control extern=UnityEngineUIImage
   sprite: Sprite => U.ui_get_texture($0)
@@ -690,8 +690,8 @@ type Slider : Selectable kind=component gd=Range extern=UnityEngineUISlider
 type Scrollbar : Selectable kind=component gd=ScrollBar extern=UnityEngineUIScrollbar
   value: float => $0.value
   set value: float => $0.value = $v
-  size: float => $0.page
-  set size: float => $0.page = $v
+  size: float => U.scrollbar_get_size($0)
+  set size: float => U.scrollbar_set_size($0, $v)
 
 type ScrollRect : Behaviour kind=component gd=ScrollContainer extern=UnityEngineUIScrollRect
   verticalNormalizedPosition: float => U.scroll_get_v($0)
@@ -704,10 +704,10 @@ type ScrollRect : Behaviour kind=component gd=ScrollContainer extern=UnityEngine
 
 type Dropdown : Selectable kind=component gd=OptionButton extern=UnityEngineUIDropdown
   value: int => $0.selected
-  set value: int => $0.select($v)
-  SetValueWithoutNotify(int): void => $0.select($1)
+  set value: int => U.dd_set_value($0, $v, true)
+  SetValueWithoutNotify(int): void => U.dd_set_value($0, $1, false)
   ClearOptions(): void => $0.clear()
-  RefreshShownValue(): void => pass
+  RefreshShownValue(): void => U.dd_refresh($0)
 
 type InputField : Selectable kind=component gd=LineEdit extern=UnityEngineUIInputField
   text: string => $0.text
