@@ -10,6 +10,11 @@ using VRC.Udon.Common;
 public class Fixture : UdonSharpBehaviour
 {
     public Transform target;
+    // A UI prefab (its root is a RectTransform) used as a template: instantiated under the canvas
+    // the way a player list adds its entries.
+    public GameObject itemTemplate;
+    public Transform itemParent;
+    public int itemsSpawned;
     // [HideInInspector] hides a public field, Unity still serializes it (EmyChess keeps each piece's
     // type and board like this): the values written in the scene must arrive.
     [HideInInspector] public int hiddenNumber;
@@ -187,6 +192,19 @@ public class Fixture : UdonSharpBehaviour
     public void OnToggle() { toggled++; toggleOn = toggle.isOn; }
     public void OnInput() { inputEnded++; inputText = input.text; }
     public void OnOverlay() { overlayPressed++; }
+    public void SpawnItem()
+    {
+        GameObject item = VRCInstantiate(itemTemplate);
+        item.SetActive(true);
+        Transform t = item.transform;
+        t.SetParent(itemParent);
+        t.localPosition = Vector3.zero;
+        t.localScale = Vector3.one;
+        UnityEngine.UI.Text[] texts = t.GetComponentsInChildren<UnityEngine.UI.Text>(true);
+        itemsSpawned++;
+        if (texts.Length > 0) { texts[0].text = "item " + itemsSpawned; }
+        item.name = "SpawnedItem" + itemsSpawned;
+    }
     public void OnScreenBtn() { screenPressed++; }
 
     public override void InputUse(bool value, UdonInputEventArgs args)

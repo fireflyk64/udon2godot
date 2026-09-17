@@ -49,7 +49,7 @@ world() {
 
 world emychess refs/EmyChess/Packages/com.emymin.emychess/Runtime res://Runtime/ExampleScene.tscn res://scenarios/emychess.gd
 # (unidot keeps paths relative to the Unity project: the folder above "Assets")
-world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs/Essentials" "res://Assets/Varneon/Udon Prefabs/Essentials/Examples/UdonEssentials_ExampleScene.tscn" res://scenarios/udon_essentials.gd
+world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs" "res://Assets/Varneon/Udon Prefabs/Essentials/Examples/UdonEssentials_ExampleScene.tscn" res://scenarios/udon_essentials.gd
 
 echo
 if [ ${#FAILED[@]} -eq 0 ]; then echo "COMMUNITY WORLDS PASSED"; exit 0; fi

@@ -66,8 +66,18 @@ func run(r) -> void:
 		print("[scenario] groups of the local player: ", idx)
 		r.check(idx is Array, "_GetGroupIndicesOfPlayer answers: " + str(idx))
 	# --- event dispatcher --------------------------------------------------------------------
+	# the example scene has no dispatcher: instantiate the package's prefab
 	var ed: Node = r.behaviour("EventDispatcher")
-	r.check(ed != null, "EventDispatcher behaviour present")
+	if ed == null:
+		var ps = load("res://Assets/Varneon/Udon Prefabs/Essentials/Event Dispatcher/EventDispatcher.prefab.tscn")
+		if ps != null:
+			var inst: Node = ps.instantiate()
+			r.root.get_child(r.root.get_child_count() - 1).add_child(inst)
+			await r.wait(5)
+			for n in r._all(inst):
+				if n.has_meta("udon_class") and str(n.get_meta("udon_class")) == "EventDispatcher":
+					ed = n
+	r.check(ed != null, "EventDispatcher prefab instantiated with its behaviour")
 	if ed != null:
 		var probe := Probe.new()
 		probe.name = "DispatcherProbe"

@@ -430,16 +430,22 @@ components. Field values are not YAML keys of a proxy MonoBehaviour but live in
 `UdonVariableTable`), object references are indices into `publicVariablesUnityEngineObjects`.
 The importer attached the scripts ("missing proxies: 5") and every field kept its default.
 
-- [ ] Decoder for the Odin binary entry stream in the unidot plugin: named / unnamed nodes, arrays,
-      primitive arrays, primitives, strings, type names and ids, internal and external references;
-      `UdonVariableTable` -> `{symbol: [type, value]}`. Prototype verified against UdonEssentials
-      (floats, bools, `Text` / `Transform` / `GameObject` references by index).
-- [ ] Behaviours without a proxy get their exported fields from the decoded table through the same
-      conversion as proxy fields (values, structs, arrays, references, resources).
-- [ ] Prefab-instance overrides of `serializedPublicVariablesBytesString` and of
-      `publicVariablesUnityEngineObjects.Array.data[i]`.
-- [ ] Fixture: a proxy-less behaviour in `tests/unity_fixture` whose table is produced by
-      `tools/odin_encode.py` (float, int, bool, string, Vector3, reference, array).
+- [x] Decoder for the Odin binary entry stream in the unidot plugin (`udon_odin.gd`): named /
+      unnamed nodes, arrays, primitive arrays, primitives, strings, type names and ids, internal
+      and external references; `UdonVariableTable` -> `{symbol: {type, value}}`. Structs come as
+      positional floats, primitive arrays as one packed block (checked against UdonEssentials).
+- [x] Behaviours without a proxy get their exported fields from the decoded table through the same
+      conversion as proxy fields (values, structs, arrays, references): UdonEssentials 72 fields
+      on 4 behaviours.
+- [x] Prefab-instance overrides of `serializedPublicVariablesBytesString` and of
+      `publicVariablesUnityEngineObjects.Array.data[i]` (the node keeps which object index each
+      reference field uses). An override that re-points a field at another object *of the source
+      prefab* is reported as unsupported.
+- [x] Fixture: proxy-less `Legacy` behaviour in the scene and `LegacyBox.prefab` with instance
+      overrides; tables written by `tools/odin_encode.py` (float, int, bool, string, Vector3,
+      Color, reference, reference array, float and string arrays, null). Also `Item.prefab`, a UI
+      prefab with a RectTransform root used as an instantiation template (unidot typed prefab
+      roots as Node3D and dropped such prefabs). Fixture 74 / 107 / 25 / 16.
 - [ ] UdonEssentials scenario: player list entry, player settings, groups, event dispatcher.
 
 ## Next

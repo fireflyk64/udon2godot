@@ -113,7 +113,14 @@ func _ui_checks(r, fx: Node) -> void:
 		r.check(inner.get("holderRoot") == r.find("InnerHolder"), "and the nested prefab's own reference is kept: " + str(inner.get("holderRoot")))
 	# UdonSharp 0.x: no C# proxy component, the field values come from the Udon variable table
 	# (Odin binary, base64) and object references from publicVariablesUnityEngineObjects.
-	var legacy: Node = r.behaviour("Legacy")
+	# ... and inside a prefab whose scene instance overrides the table (count 3 -> 11) and entry 0
+	# of the object list (the prefab's own transform -> the scene's Target)
+	var lbox: Node = r.find("LegacyBox")
+	r.check(lbox != null and lbox.has_meta("udon_class") and str(lbox.get_meta("udon_class")) == "Legacy", "proxy-less behaviour inside a prefab instance: " + str(lbox))
+	if lbox != null:
+		r.check(int(lbox.get("count")) == 11 and is_equal_approx(float(lbox.get("speed")), 2.0), "the instance's variable table wins: count %s speed %s" % [str(lbox.get("count")), str(lbox.get("speed"))])
+		r.check(lbox.get("target") == r.find("Target"), "the instance's object entry wins: " + str(lbox.get("target")))
+	var legacy: Node = r.find("Legacy")
 	r.check(legacy != null, "proxy-less UdonBehaviour gets its script from the program asset: " + str(legacy))
 	if legacy != null:
 		r.check(is_equal_approx(float(legacy.get("speed")), 1.5) and int(legacy.get("count")) == 7 and legacy.get("flag") == true and str(legacy.get("title")) == "legacy", "variable table primitives: %s %s %s %s" % [str(legacy.get("speed")), str(legacy.get("count")), str(legacy.get("flag")), str(legacy.get("title"))])
@@ -124,6 +131,22 @@ func _ui_checks(r, fx: Node) -> void:
 		var lw = legacy.get("weights")
 		var ln = legacy.get("names")
 		r.check(lw is Array and lw.size() == 2 and is_equal_approx(float(lw[0]), 0.5) and is_equal_approx(float(lw[1]), 2.0) and ln is Array and ln == ["a", "b"], "variable table arrays: %s %s" % [str(lw), str(ln)])
+	# A UI prefab whose root is a RectTransform, referenced as a template and instantiated under the
+	# canvas by the script (UdonEssentials' player list entries): unidot typed the prefab root as
+	# Node3D and dropped such prefabs.
+	r.check(fx.get("itemTemplate") != null, "UI prefab template resolved: " + str(fx.get("itemTemplate")))
+	if fx.get("itemTemplate") != null:
+		fx.SpawnItem()
+		fx.SpawnItem()
+		await r.wait(3)
+		var spawned: Node = r.find("SpawnedItem2")
+		var slabel: Node = null
+		if spawned != null:
+			for n in r._all(spawned):
+				if n is Label:
+					slabel = n
+		r.check(int(fx.get("itemsSpawned")) == 2 and spawned is Control and cv.is_ancestor_of(spawned), "two items instantiated under the canvas: %s" % str(spawned))
+		r.check(slabel != null and str(slabel.text) == "item 2", "the instance's Text was found and set: " + str(slabel.text if slabel else null))
 	var nested: Node = r.find("NestedText")
 	r.check(nested is Control and nested.get_global_rect().size.x > 0 and vp != null and Rect2(Vector2.ZERO, Vector2(vp.size)).encloses(nested.get_global_rect()), "nested canvas text lies inside the viewport: " + str(nested.get_global_rect() if nested is Control else null))
 	# a text stays inside the plane; a control outside the rect would have grown the plane (checked above)
