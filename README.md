@@ -27,8 +27,10 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 
 `SaccAirVehicle` (2,657 lines in one class) needed the upstream godot-sandbox fix for the RISC-V
 direct-jump range ("J-type jump out of reach" beyond 1 MB of code); the `udon2godot` branch of
-[fireflyk64/godot-sandbox](https://github.com/fireflyk64/godot-sandbox) carries that fix plus a
-`MAX_LEVEL = 16` patch, and the library built from it is tracked in
+[fireflyk64/godot-sandbox](https://github.com/fireflyk64/godot-sandbox) carries that fix, a
+`MAX_LEVEL = 16` patch and a SafeGDScript compiler fix (a `break` / `continue` that follows a
+nested `for x in <Array|String>` loop jumped to a label that was never emitted: "Undefined label:
+for_end_N", found with EmyChess), and the library built from it is tracked in
 `godot_project/addons/godot_sandbox/bin/` (`scripts/setup_deps.sh --build-sandbox` rebuilds it).
 
 Across the three corpora the converter maps 20,445 Unity/VRChat API uses with 21 warnings (plain

@@ -96,6 +96,23 @@ namespace Coverage
             return Vector3.zero;
         }
 
+        // A `break` that follows a nested foreach: the sandbox compiler left the inner loop's context
+        // on its stack and the break jumped to a label that was never emitted (the script did not load).
+        private int BreakAfterInner(int[] items)
+        {
+            int n = 0;
+            foreach (int a in items)
+            {
+                if (a == 1)
+                {
+                    foreach (int b in items) { n++; }
+                    if (n != 0) { break; }
+                }
+                n += 100;
+            }
+            return n;
+        }
+
         public void RunTests()
         {
             int[] three = new int[3];
@@ -127,6 +144,7 @@ namespace Coverage
             Check(gameObject.name == "Renamed", "inherited `name` setter without this.");
             name = oldName;
             Check(Mathf.Abs(Single.Parse("1.5") - 1.5f) < 0.001f && Int32.MaxValue == int.MaxValue, "BCL aliases of keyword types");
+            Check(BreakAfterInner(new int[] { 2, 1, 3 }) == 103, "break after a nested foreach leaves the outer loop: " + BreakAfterInner(new int[] { 2, 1, 3 }));
             var d = new DataDictionary { ["ok"] = true, ["n"] = 3 };
             Check(d.Count == 2 && d["n"].Int == 3 && d["ok"].Boolean, "index initializer on DataDictionary");
             var l = new DataList { 1, 2, 3 };

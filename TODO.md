@@ -398,7 +398,13 @@ scenario, like the pool table.
       Transform children there (fork 3de6a94: 74 UI nodes, 13 events, 0 unresolved). The Unity
       fixture now has a prefab (`Holder.prefab`), an instance of it and a canvas under the
       instance's child (4 checks; fixture 54 / 87 / 25 / 16). The fixture scene and `Chair.cs`
-      shared a GUID; the scene has its own now.
+      shared a GUID; the scene has its own now. EmyChess' `Board` and `DefaultRules` did not
+      load: "Undefined label: for_end_N" from the sandbox's SafeGDScript compiler. Its generic
+      `for x in <iterable>` path pushed a loop context and a scope, then returned into the batched
+      array / string walk without popping them, so a `break` after a nested loop targeted the
+      inner loop's never-emitted end label (still so in upstream main). Fixed in the fork
+      (godot-sandbox e649bf2, compiler regression test), library rebuilt and tracked, coverage
+      check in `TExt.cs` (921 checks); world test scripts refresh the library of a reused world.
 
 ## Next
 
