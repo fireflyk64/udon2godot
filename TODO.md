@@ -401,10 +401,32 @@ scenario, like the pool table.
       Groups answers; the EventDispatcher prefab dispatches Update / LateUpdate / FixedUpdate to
       a registered receiver and stops after removal. 84 fields on 5 proxy-less behaviours, 2
       variable-table overrides of the scene.
-- [ ] UdonUtils `RuntimeTestingExample.unity`: the package's own `TestController` runs its test
-      cases in the imported world; the scenario reports its pass / fail counts.
-- [~] `scripts/test_world_community.sh` runs them (skips what is not cloned, re-imports when the
-      importer changed); EmyChess so far. Not part of `ci.sh` yet.
+- [x] UdonUtils `RuntimeTestingExample.unity` (2026-09-17): the whole `Runtime` folder imports
+      (148 classes, 1234 scripts attached over its scenes) and the package's own two
+      `TestController`s run their 17 test cases inside the world; `scenarios/udonutils_tests.gd`
+      holds each verdict against what one player can expect: the 7 single-player cases pass
+      (sanity, game time vs delta time, PlayerData round trips up to 100 kB, persistence across
+      visits on the second controller), the 10 that say "requires 2 players" fail with exactly
+      that message; a revisit (`--player-data <file>`, kept between runs) also passes the first
+      persistence case (8). Headless only: 148 sandboxes plus the GL driver do not fit the 8 GB
+      address-space cap of `scripts/godot.sh`, and the caps stay where the user set them.
+      What the run exposed and fixed at the source (coverage checks in `TNulls.cs` / `TVRC.cs`):
+      `OnPlayerRestored` was never raised by the default provider, `OnPlayerDataUpdated` was not
+      raised for local writes (now once per frame with `PlayerData.Info` states Added / Changed /
+      Removed); `PlayerData.Info`, `PlayerData.State` and other nested C# type names had no
+      catalog alias; `GetComponent<T>()` / `typeof(T)` / `x is T` inside a generic method used
+      the literal "T" (type arguments now travel in hidden leading `_T_<name>: String`
+      parameters, inferred from `out` / `ref` arguments too, `GetUdonTypeName<T>()` is the
+      generic form); `base.OnPlayerRestored(p)` with no converted base defining it became
+      `super.OnPlayerRestored(p)`, which the sandbox dispatches back to the override until the
+      VM depth limit (such calls into UdonSharpBehaviour are empty, `base.SendCustomEvent`
+      goes to the catalog); and a SafeGDScript compiler bug: `var n: Node3D = null` followed by
+      `n = items[0]` left the register typed NIL, so `n == self` folded to false at compile time
+      (godot-sandbox fork 4d58be8, regression test). PlayerData can now be kept between sessions
+      (`UdonWorldProvider.player_data_file`, typed variant storage; the network provider's server
+      store used JSON, which turned Vector3 into text and ints into floats).
+- [x] `scripts/test_world_community.sh` runs them (skips what is not cloned, re-imports when the
+      importer or the converter's manifest changed); part of `ci.sh`.
 - [~] Whatever the imports expose in the converter, importer or runtime is fixed at the source and
       covered by a fixture check (not patched in the scenario). So far: EmyChess lost its menus
       (3 UI nodes, 27 unresolved references): a Canvas parented to a node of a model / prefab
@@ -543,7 +565,8 @@ The importer attached the scripts ("missing proxies: 5") and every field kept it
   - Video and network backends: video adapters are placeholders; VRCStringDownloader/VRCImageDownloader
     need real HTTP with allow-lists.
   - Networking beyond the two-process test: late joiners, 3+ peers, packet loss, dedicated server mode,
-    server-side validation, persistent PlayerData storage, ENet vs WebRTC.
+    server-side validation, ENet vs WebRTC (PlayerData persists per player on the server since
+    2026-09-17, in the same typed file format as single-player `--player-data`).
   - Sandbox policy: restricted mode profile with `U.*`/`Udon.*` as the security boundary.
   - Exception policy: Udon halts a behaviour after an exception; the sandbox aborts the call and
     continues.

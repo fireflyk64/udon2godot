@@ -30,11 +30,11 @@ type UdonBehaviour : Behaviour kind=behaviour gd=Node extern=VRCUdonUdonBehaviou
 
 type UdonSharpBehaviour : UdonBehaviour kind=behaviour gd=Node extern=UdonSharpUdonSharpBehaviour
   static VRCInstantiate(GameObject): GameObject => Udon.instantiate($1)
-  static GetUdonTypeID(): long => 0
-  static GetUdonTypeName(): string => ""
+  # GetUdonTypeName<T>() / GetUdonTypeID<T>(): the statics are the generic forms
+  static GetUdonTypeID(): long => hash($T1)
+  static GetUdonTypeName(): string => $T1
   GetUdonTypeName(): string => $0.udon_class()
   GetUdonTypeID(): long => hash($0.udon_class())
-  static GetUdonTypeID(): long => 0
   RequestSerialization(): void => U.request_serialization($0)
 
 type EventTiming kind=enum extern=VRCUdonCommonEnumsEventTiming

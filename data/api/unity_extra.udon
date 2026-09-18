@@ -4106,3 +4106,12 @@ type VRCRenderTexture
 type Matrix4x4
   set this[int]: float => $0 = U.matrix_set($0, $1 % 4, $1 >> 2, $v)
   set this[int, int]: float => $0 = U.matrix_set($0, $1, $2, $v)
+
+# C# names of nested types (the extern names flatten them)
+alias AimConstraint.WorldUpType = AimConstraintWorldUpType
+alias Camera.GateFitParameters = CameraGateFitParameters
+alias Button.ButtonClickedEvent = ButtonButtonClickedEvent
+alias Slider.SliderEvent = SliderSliderEvent
+alias Toggle.ToggleEvent = ToggleToggleEvent
+alias ScrollRect.ScrollRectEvent = ScrollRectScrollRectEvent
+alias Scrollbar.ScrollEvent = ScrollbarScrollEvent

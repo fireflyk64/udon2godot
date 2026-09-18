@@ -28,7 +28,7 @@ var local_display_name: String = "Player"
 ## Variable / transform replication rate for continuous sync and object sync.
 var sync_rate_hz: float = 10.0
 ## File used by the server for PlayerData persistence.
-var player_data_path: String = "user://udon_player_data.json"
+var player_data_path: String = "user://udon_player_data.dat"
 
 var peer: ENetMultiplayerPeer = null
 var _is_server: bool = false
@@ -55,6 +55,9 @@ var _persist: Dictionary = {}          # display name → {key: value} (server)
 
 func _world_ready(udon: Node) -> void:
 	super._world_ready(udon)
+	# data changes are reported when the server has them, restores when its data has arrived
+	raise_player_data_events = false
+	restore_on_join = false
 	# placeholder id until connected; replaced in place by `_setup_local_player`
 	_local_player.display_name = local_display_name
 
@@ -763,16 +766,10 @@ func _persist_store(name_: String, key: String, value) -> void:
 	_save_persist()
 
 func _load_persist() -> void:
-	if FileAccess.file_exists(player_data_path):
-		var f := FileAccess.open(player_data_path, FileAccess.READ)
-		var d = JSON.parse_string(f.get_as_text())
-		if d is Dictionary:
-			_persist = d
+	_persist = load_variant_file(player_data_path)
 
 func _save_persist() -> void:
-	var f := FileAccess.open(player_data_path, FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify(_persist))
+	save_variant_file(player_data_path, _persist)
 
 # ---------------------------------------------------------------------------
 # Per-frame work

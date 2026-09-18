@@ -95,18 +95,18 @@ impl<'p> Lowerer<'p> {
             Expr::Is { expr, ty, .. } => {
                 let v = self.lower_expr(expr);
                 let t = self.prog.resolve_type_ref(ty);
-                let name = self.prog.runtime_type_name(&t);
                 if matches!(t, Ty::Null) {
                     return Lw::new(v.e.bin("==", GExpr::Null), Ty::Bool);
                 }
-                Lw::new(GExpr::ident("U").method("is_type", vec![v.e, GExpr::str(&name)]), Ty::Bool)
+                let name = self.type_name_expr(&t);
+                Lw::new(GExpr::ident("U").method("is_type", vec![v.e, name]), Ty::Bool)
             }
             Expr::As { expr, ty, .. } => {
                 let v = self.lower_expr(expr);
                 let t = self.prog.resolve_type_ref(ty);
-                if self.prog.is_unity_object(&t) {
-                    let name = self.prog.runtime_type_name(&t);
-                    Lw::new(GExpr::ident("U").method("as_type", vec![v.e, GExpr::str(&name)]), t)
+                if self.prog.is_unity_object(&t) || self.type_param_var(&t).is_some() {
+                    let name = self.type_name_expr(&t);
+                    Lw::new(GExpr::ident("U").method("as_type", vec![v.e, name]), t)
                 } else {
                     Lw::new(v.e, t)
                 }
@@ -119,7 +119,7 @@ impl<'p> Lowerer<'p> {
             }
             Expr::Typeof(t, _) => {
                 let ty = self.prog.resolve_type_ref(t);
-                Lw::new(GExpr::str(&self.prog.runtime_type_name(&ty)), Ty::Named("Type".into()))
+                Lw::new(self.type_name_expr(&ty), Ty::Named("Type".into()))
             }
             Expr::Nameof(inner, _) => {
                 let n = inner.as_dotted_name().map(|d| d.rsplit('.').next().unwrap().to_string()).unwrap_or_default();
@@ -166,6 +166,32 @@ impl<'p> Lowerer<'p> {
             return GExpr::ident("Udon").method("is_valid", vec![lw.e]);
         }
         lw.e
+    }
+
+    /// The hidden parameter that carries a type parameter of the generic method being lowered
+    /// (`T` of `static T Find<T>(string name)` arrives as `_T_T: String`).
+    pub(crate) fn type_param_var(&self, ty: &Ty) -> Option<String> {
+        let Ty::Named(n) = ty else { return None };
+        let m = self.cur_method?;
+        m.decl.type_params.iter().any(|p| p == n).then(|| format!("_T_{}", n))
+    }
+
+    /// The run-time name of a type as an expression: a string literal, or the hidden parameter
+    /// when the type is a type parameter of the current generic method.
+    pub(crate) fn type_name_expr(&self, ty: &Ty) -> GExpr {
+        match self.type_param_var(ty) {
+            Some(v) => GExpr::ident(&v),
+            None => GExpr::str(&self.prog.runtime_type_name(ty)),
+        }
+    }
+
+    /// The same for catalog templates (`$T1`): type parameters are marked so the template emits
+    /// the hidden parameter instead of a quoted name.
+    pub(crate) fn type_arg_name(&self, ty: &Ty) -> String {
+        match self.type_param_var(ty) {
+            Some(v) => format!("{}{}", crate::template::RUNTIME_TYPE_ARG, v),
+            None => self.prog.runtime_type_name(ty),
+        }
     }
 
     /// `string`, and classes that are a `String` on the Godot side (`System.Type`, `VRCUrl`): null is
@@ -758,7 +784,7 @@ impl<'p> Lowerer<'p> {
                     .iter()
                     .map(|t| {
                         let ty = self.prog.resolve_type_ref(t);
-                        (self.prog.runtime_type_name(&ty), ty)
+                        (self.type_arg_name(&ty), ty)
                     })
                     .collect();
                 (name.as_ref(), names)
@@ -806,6 +832,25 @@ impl<'p> Lowerer<'p> {
                     // the base implementation, under the name the base scripts give that overload
                     let own = self.class.name.clone();
                     let methods: Vec<&crate::program::MethodInfo> = self.prog.class_chain(&own).into_iter().skip(1).flat_map(|c| c.methods_named(name)).collect();
+                    if methods.is_empty() && !self.has_missing_base() {
+                        // No converted base declares it: the target is UdonSharpBehaviour itself.
+                        // Its API goes through the catalog; its event methods (`base.Start()`,
+                        // `base.OnPlayerRestored(p)`) are empty, and `super.X()` without an X in
+                        // a base script would dispatch back to this override, forever.
+                        // (`base.Interact()` inside the Interact override is such an empty event too)
+                        let overridden_here = !self.class.methods_named(name).is_empty();
+                        if let Some(base) = self.prog.catalog_base_of_class(&own).filter(|_| !overridden_here) {
+                            let base_name = base.name.clone();
+                            if !self.prog.catalog.members(&base_name, name).is_empty() {
+                                let target = Lw::new(GExpr::ident("self"), Ty::Named(own.clone()));
+                                return self.call_catalog(&base_name, name, Some(target), args, &type_args, span);
+                            }
+                        }
+                        for a in args {
+                            let _ = self.lower_expr(&a.expr);
+                        }
+                        return Lw::new(GExpr::raw("pass"), Ty::Void);
+                    }
                     let picked = if methods.is_empty() { None } else { Some(self.pick_user_method(&methods, args)) };
                     let a = self.lower_args_plain(args);
                     let (gd, ret) = match picked {
@@ -924,6 +969,10 @@ impl<'p> Lowerer<'p> {
                 }
                 if let Some(r) = self.try_extension_call(&t, name, args, type_args, span) {
                     return r;
+                }
+                // a value of a type parameter has the members of System.Object (`item.Equals(x)`)
+                if self.type_param_var(&t.ty).is_some() && self.prog.catalog.members("object", name).iter().any(|m| m.is_method() && !m.is_static) {
+                    return self.call_catalog("object", name, Some(t), args, type_args, span);
                 }
                 self.warn(span, format!("method `{}` on unknown type `{}`; emitted as dynamic call", name, n));
                 let a = self.lower_args_plain(args);
@@ -1138,9 +1187,13 @@ impl<'p> Lowerer<'p> {
         let mut bound: Vec<(String, Ty)> = names.iter().zip(type_args.iter()).map(|(n, (_, t))| (n.clone(), t.clone())).collect();
         if bound.len() < names.len() {
             for (p, a) in m.params.iter().zip(args.iter()) {
-                if a.out_decl.is_some() || p.mode == ParamMode::Out {
-                    continue;
-                }
+                // `out var x` takes its type from the binding; a declared or existing variable
+                // gives one (`TryGet(out cached)` with `T cached`)
+                let declared = match &a.out_decl {
+                    Some((t, _)) if t.is_var() => continue,
+                    Some((t, _)) => Some(self.prog.resolve_type_ref(t)),
+                    None => None,
+                };
                 let name = match &p.ty {
                     Ty::Named(n) => Some((n.clone(), false)),
                     Ty::Array(inner) => match &**inner {
@@ -1153,7 +1206,10 @@ impl<'p> Lowerer<'p> {
                 if !names.contains(&n) || bound.iter().any(|(b, _)| *b == n) {
                     continue;
                 }
-                let at = self.peek_type(&a.expr);
+                let at = match declared {
+                    Some(t) => t,
+                    None => self.peek_type(&a.expr),
+                };
                 let t = match (is_array, at) {
                     (true, Ty::Array(e)) => *e,
                     (false, t) if !matches!(t, Ty::Unknown | Ty::Null) => t,
@@ -1182,6 +1238,13 @@ impl<'p> Lowerer<'p> {
         };
         let ret = subst(&m.ret);
         let mut gargs = Vec::new();
+        // generic methods take the run-time names of their type arguments first
+        for tp in &m.decl.type_params {
+            gargs.push(match bound.iter().find(|(b, _)| b == tp) {
+                Some((_, t)) => self.type_name_expr(t),
+                None => GExpr::str(""),
+            });
+        }
         let mut byref_targets: Vec<(Expr, Option<(TypeRef, String)>)> = Vec::new();
         let has_params = m.params.last().map_or(false, |p| p.mode == ParamMode::Params);
         let fixed = if has_params { m.params.len() - 1 } else { m.params.len() };
@@ -1248,7 +1311,11 @@ impl<'p> Lowerer<'p> {
         let mut cands: Vec<MemberInfo> = self.prog.catalog.members(type_name, name).into_iter().filter(|m| m.is_method() && (target.is_some() || m.is_static)).cloned().collect();
         // With a target, instance members win over static ones of the same name
         // (`behaviour.GetUdonTypeName()` vs `UdonSharpBehaviour.GetUdonTypeName<T>()`).
-        if target.is_some() && cands.iter().any(|m| !m.is_static) {
+        // ... unless the call has type arguments and only the static form is generic
+        // (`GetUdonTypeName<T>()` inside a behaviour).
+        if !type_args.is_empty() && cands.iter().any(|m| m.is_static && m.get.as_deref().map_or(false, |t| t.contains("$T1"))) {
+            cands.retain(|m| m.is_static);
+        } else if target.is_some() && cands.iter().any(|m| !m.is_static) {
             cands.retain(|m| !m.is_static);
         }
         if cands.is_empty() && target.is_some() && type_name != "object" && self.prog.catalog.members("object", name).iter().any(|m| m.is_method() && !m.is_static) {
@@ -1551,6 +1618,12 @@ impl<'p> Lowerer<'p> {
                 let (obj, _) = if b_null { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) };
                 if self.prog.is_unity_object(&obj.ty) {
                     let valid = GExpr::ident("is_instance_valid").call(vec![obj.e]);
+                    return Lw::new(if op == BinOp::Eq { valid.not() } else { valid }, Ty::Bool);
+                }
+                if self.type_param_var(&obj.ty).is_some() {
+                    // a value of a type parameter: usually an object, and a null object that came
+                    // out of a typed variable is not `== null` in an untyped slot
+                    let valid = GExpr::ident("Udon").method("is_valid", vec![obj.e]);
                     return Lw::new(if op == BinOp::Eq { valid.not() } else { valid }, Ty::Bool);
                 }
                 if self.is_stringy(&obj.ty) {

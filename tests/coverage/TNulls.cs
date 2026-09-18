@@ -54,6 +54,25 @@ namespace Coverage
             if (!ok) { failures[failCount] = what; failCount++; }
         }
 
+        // generic methods that need T at run time
+        private static T OnSame<T>(Component c) where T : Component { return c.GetComponent<T>(); }
+        private static T Relay<T>(Component c) where T : Component { return OnSame<T>(c); }
+        private static string TypeName<T>() { return typeof(T).Name; }
+        private static bool TryOnSame<T>(Component c, out T found) where T : Component { found = c.GetComponent<T>(); return found != null; }
+        private static T Cached<T>(Component c, ref T cached) where T : Component
+        {
+            if (cached != null) return cached;
+            TryOnSame(c, out cached);
+            return cached;
+        }
+        private static int CountEqual<T>(T[] items, T probe) { int n = 0; foreach (T i in items) if (i.Equals(probe)) n++; return n; }
+
+        // base calls into UdonSharpBehaviour's own (empty) events
+        private int interacts;
+        private int restoredCalls;
+        public override void Interact() { base.Interact(); interacts++; }
+        public override void OnPlayerRestored(VRCPlayerApi player) { base.OnPlayerRestored(player); restoredCalls++; }
+
         private int[] Cache()
         {
             if (cache == null) cache = new int[3];
@@ -149,6 +168,20 @@ namespace Coverage
             Sides = 4;
             Check(Sides == 4 && Describe() == "derived:4:True", "virtual properties dispatch to the override: " + Describe());
             Check(Pick() == 20 && Pick(3) == 30 && Pick(1, 2) == 3, "an override of the second base overload: " + Pick() + " / " + Pick(3));
+
+            // generics
+            Check(OnSame<Transform>(this) == transform && Relay<Transform>(this) == transform, "GetComponent<T>() inside a generic method");
+            Check(OnSame<TNulls>(this) == this && OnSame<TNullsBase>(this) == this, "GetComponent<T>() of a behaviour and of its base class");
+            Check(TypeName<Light>() == typeof(Light).Name && GetUdonTypeName<TNulls>() == "TNulls", "typeof(T) and GetUdonTypeName<T>()");
+            Transform tf = null;
+            Check(Cached(this, ref tf) == transform && tf == transform, "T inferred from a ref argument and passed on through out");
+            Check(CountEqual(new int[] { 1, 2, 1 }, 1) == 2 && CountEqual(new string[] { "a", "b" }, "b") == 1, "Equals on values of a type parameter");
+
+            // base calls that end in UdonSharpBehaviour
+            int before = restoredCalls;
+            OnPlayerRestored(Networking.LocalPlayer);
+            Interact();
+            Check(restoredCalls == before + 1 && interacts == 1, "base.OnPlayerRestored() / base.Interact() run the override once: " + (restoredCalls - before) + " / " + interacts);
             done = true;
         }
     }

@@ -20,7 +20,8 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 | [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break (9 checks), then played through window input (17 checks) |
 | [EmyChess](https://github.com/emymin/EmyChess) (example scene) | 13 | 2.2k | 0 | 13/13 | imported world: a game is played, 20/20 scenario checks (`scripts/test_world_community.sh`) |
 | [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | 1.9k | 0 | 6/6 | imported world, fields decoded from the Udon variable table: player list, player settings, groups, event dispatcher, 16/16 scenario checks |
-| [UdonUtils](https://github.com/Guribo/UdonUtils), [VUdon-Udonity](https://github.com/Varneon/VUdon-Udonity), [UdonCombatSystem](https://github.com/Toly65/UdonCombatSystem), [vrchat-glb-loader](https://github.com/vr-voyage/vrchat-glb-loader), [3d-model-loader-tablet](https://github.com/vr-voyage/vrchat-3d-model-loader-tablet), [UdonZip](https://github.com/Foorack/UdonZip) (no example scene, or one that needs packages that are not in the repository) | 317 | 44.5k | 0 | 317/317 (`scripts/compile_check_refs.sh`) | — |
+| [UdonUtils](https://github.com/Guribo/UdonUtils) (TLP runtime-testing example scene) | 148 | 19.4k | 0 | 148/148 | imported world; the package's own TestController runs its 17 test cases: the 7 single-player ones pass, 10 report "requires 2 players" (`scenarios/udonutils_tests.gd`, 6 checks) |
+| [VUdon-Udonity](https://github.com/Varneon/VUdon-Udonity), [UdonCombatSystem](https://github.com/Toly65/UdonCombatSystem), [vrchat-glb-loader](https://github.com/vr-voyage/vrchat-glb-loader), [3d-model-loader-tablet](https://github.com/vr-voyage/vrchat-3d-model-loader-tablet), [UdonZip](https://github.com/Foorack/UdonZip) (no example scene, or one that needs packages that are not in the repository) | 169 | 25.1k | 0 | 169/169 (`scripts/compile_check_refs.sh`) | — |
 | [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table) | 21 | 7.1k | 0 | 21/21 | — |
 | [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | — |
 | `tests/coverage/*.cs` API coverage fixtures (18 files) | 21 | 3.0k | 0 | all | 954/954 checks |
@@ -175,7 +176,9 @@ memory passes `GODOT_MEM_MB` (default 6144) or it runs longer than `GODOT_MAX_SE
 3600, unlimited while playing), and termination signals are forwarded so a `timeout` never leaves
 an orphaned instance behind. `GODOT=/path/to/binary` still selects the engine.
 
-Playing: `--play` (what `scripts/play_world.sh` passes) spawns the desktop player
+Playing: `--play` (what `scripts/play_world.sh` passes) keeps the local player's PlayerData in
+`user://udon_player_data.dat` between sessions (`--player-data <file>` picks another file,
+`--player-data ""` none; VRChat keeps it per world and account) and spawns the desktop player
 (`udon_runtime/udon_desktop_player.gd`, a CharacterBody3D with a first-person camera: WASD / arrows,
 Shift run, Space jump, mouse look while the mouse is captured, Esc / Tab frees it) at the scene
 descriptor's spawn and runs until the window closes. It stands in for the VRChat player
@@ -404,11 +407,13 @@ tools/          gen_catalog.py (stub generator), gen_particles.py, gen_ui.py (ca
 runtime/addons/udon_runtime/   Godot addon: udon_behaviour.gd, udon.gd, u.gd, udon_world_provider.gd,
                 udon_network_provider.gd, udon_player.gd, adapters (pickup, station, object sync/pool, video),
                 udon_canvas_plane.gd (world canvases), udon_pointer.gd, udon_desktop_player.gd
+docs/           session notes with hands-on instructions (docs/session-2026-09-17.md)
 tests/          Rust integration tests, C# fixtures and tests/coverage/ API fixtures
 godot_project/  Godot 4.7 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd;
                 addons/godot_sandbox/ (customized plugin scripts + MAX_LEVEL 16 Linux build)
 godot_world_template/  project skeleton for scripts/import_world.sh: world_runner.gd, scenarios/
-                (fixture.gd, player.gd, billiards.gd, billiards_play.gd)
+                (fixture.gd, player.gd, billiards.gd, billiards_play.gd, emychess.gd, udon_essentials.gd,
+                udonutils_tests.gd)
 refs/           reference checkouts made by scripts/setup_deps.sh (ignored)
 scripts/        setup_deps.sh, verify.sh, coverage_test.sh, net_test.sh, import_world.sh, play_world.sh,
                 test_unity_fixture.sh, test_world_billiards.sh, test_world_community.sh,

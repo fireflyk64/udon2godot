@@ -15,6 +15,8 @@
 ##             --vr (OpenXR player: controller rays, trigger / grip / sticks) or --vr-sim (the same
 ##                     player with simulated controllers, for scenarios)
 ##             --scenario res://scenarios/x.gd  (drive the world; see godot_world_template/scenarios)
+##             --player-data <file>  (keep the local player's PlayerData between runs; --play
+##                     uses user://udon_player_data.dat unless told otherwise, "" turns it off)
 extends SceneTree
 
 var _args: Dictionary = {}
@@ -50,6 +52,10 @@ func _init() -> void:
 		return
 	if _args.has("debug-scripts"):
 		_debug_scripts()
+	# persistent PlayerData has to be there before the first OnPlayerRestored
+	var data_file: String = str(_args.get("player-data", "user://udon_player_data.dat" if _args.has("play") else ""))
+	if data_file != "" and data_file != "true":
+		root.get_node("Udon").provider.player_data_file = data_file
 	var ps = load(path)
 	if ps == null:
 		push_error("world_runner: cannot load " + path)

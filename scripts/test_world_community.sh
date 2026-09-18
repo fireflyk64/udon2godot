@@ -10,9 +10,10 @@ WORLDS=${1:-/tmp/udon2godot_worlds}
 mkdir -p "$WORLDS"
 FAILED=()
 
-# name | unity assets folder | scene (res://) | scenario
+# name | unity assets folder | scene (res://) | scenario | extra world_runner arguments
 world() {
   local name=$1 src=$2 scene=$3 scenario=$4 out="$WORLDS/$1"
+  local extra=("${@:5}")
   if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then return 0; fi
   echo; echo "===== $name"
   if [ ! -d "$src" ]; then echo "skipped: $src is not cloned (scripts/setup_deps.sh --community)"; return 0; fi
@@ -40,13 +41,20 @@ world() {
     mapfile -d '' files < <(find "$src" -name "*.cs" -not -path "*/Editor/*" -not -path "*/editor/*" -print0)
     cargo build --release -q && target/release/udon2godot -q --manifest "$out/converted/udon_manifest.json" -o "$out/converted" --res-prefix res://converted "${files[@]}" > /dev/null 2>&1
   fi
-  timeout 600 "$GODOT" --headless --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --debug-scripts --scenario "$scenario" > "$out/scenario.log" 2>&1
+  # the headless pass is a first visit: PlayerData kept with --player-data starts empty, the
+  # display pass then comes back to what the first one stored
+  rm -f "$out/player_data.dat"
+  timeout 600 "$GODOT" --headless --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --debug-scripts --scenario "$scenario" ${extra[@]+"${extra[@]}"} > "$out/scenario.log" 2>&1
   local code=$?
   grep -E "^\[scenario\] [0-9]|FAIL |SCENARIO" "$out/scenario.log"
   echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$out/scenario.log")  (log: $out/scenario.log)"
-  if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ]; then
+  # 148 sandboxes plus the GL driver do not fit the 8 GB address-space cap of scripts/godot.sh
+  # (thread creation fails); the caps are not to be raised, so that world stays headless
+  local headless_only=0
+  case "$name" in udonutils_tests) headless_only=1 ;; esac
+  if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ] && [ $headless_only = 0 ]; then
     mkdir -p "$out/shots"
-    timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --scenario "$scenario" --shot "$out/shots/$name.png" > "$out/scenario_display.log" 2>&1
+    timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --scenario "$scenario" --shot "$out/shots/$name.png" ${extra[@]+"${extra[@]}"} > "$out/scenario_display.log" 2>&1
     local dcode=$?
     grep -E "^\[scenario\] [0-9]|FAIL |SCENARIO" "$out/scenario_display.log"
     echo "screenshots: $out/shots"
@@ -60,6 +68,8 @@ world() {
 
 world emychess refs/EmyChess/Packages/com.emymin.emychess/Runtime res://Runtime/ExampleScene.tscn res://scenarios/emychess.gd
 # (unidot keeps paths relative to the Unity project: the folder above "Assets")
+# the package's own runtime tests, run by its TestController in the imported world
+world udonutils_tests refs/UdonUtils/Packages/tlp.udonutils/Runtime "res://Runtime/Scenes/Examples/RuntimeTesting/RuntimeTestingExample.tscn" res://scenarios/udonutils_tests.gd --player-data "$WORLDS/udonutils_tests/player_data.dat"
 world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs" "res://Assets/Varneon/Udon Prefabs/Essentials/Examples/UdonEssentials_ExampleScene.tscn" res://scenarios/udon_essentials.gd
 
 echo

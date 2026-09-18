@@ -146,8 +146,8 @@ fn subst(t: &str, a: &TemplateArgs<'_>) -> String {
             "params" => format!("[{}]", a.params.iter().map(|e| e.render()).collect::<Vec<_>>().join(", ")),
             "tmp" => a.tmp.to_string(),
             "N" => a.member_name.to_string(),
-            "T1" => a.type_args.first().map(|s| format!("\"{}\"", s)).unwrap_or_else(|| "\"\"".into()),
-            "T2" => a.type_args.get(1).map(|s| format!("\"{}\"", s)).unwrap_or_else(|| "\"\"".into()),
+            "T1" => a.type_args.first().map(|s| type_arg_source(s)).unwrap_or_else(|| "\"\"".into()),
+            "T2" => a.type_args.get(1).map(|s| type_arg_source(s)).unwrap_or_else(|| "\"\"".into()),
             n if n.chars().all(|c| c.is_ascii_digit()) && !n.is_empty() => {
                 let idx: usize = n.parse().unwrap();
                 match a.args.get(idx - 1) {
@@ -199,5 +199,17 @@ mod tests {
         assert!(!is_statement_like("x <= 3"));
         assert!(!is_statement_like("f(x = 3)"));
         assert!(is_statement_like("pass"));
+    }
+}
+
+/// Marks a type argument that is only known at run time: the type parameter of the generic method
+/// being lowered, which arrives in a hidden String parameter. The rest of the text is that
+/// parameter's name and is emitted as an identifier instead of a quoted type name.
+pub const RUNTIME_TYPE_ARG: char = '\u{1}';
+
+fn type_arg_source(name: &str) -> String {
+    match name.strip_prefix(RUNTIME_TYPE_ARG) {
+        Some(ident) => ident.to_string(),
+        None => format!("\"{}\"", name),
     }
 }

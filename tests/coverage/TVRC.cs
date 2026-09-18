@@ -237,6 +237,27 @@ namespace Coverage
         public override void OnStationEntered(VRCPlayerApi player) { stationEnters++; }
         public override void OnPlayerJoined(VRCPlayerApi player) { joins++; joinedName = player.displayName; }
 
+        // persistence events: restore follows the join, data changes of a frame arrive in one call
+        private int restores;
+        private bool restoredAfterJoin;
+        private int dataUpdates;
+        private string dataStates = "";
+        public override void OnPlayerRestored(VRCPlayerApi player)
+        {
+            base.OnPlayerRestored(player);
+            restores++;
+            if (player.isLocal) restoredAfterJoin = joins >= 1;
+        }
+        public override void OnPlayerDataUpdated(VRCPlayerApi player, PlayerData.Info[] infos)
+        {
+            dataUpdates++;
+            foreach (PlayerData.Info info in infos)
+            {
+                if (info.Key == "score") dataStates += "score:" + info.State + ";";
+                if (info.Key == "lives" && info.State == PlayerData.State.Added) dataStates += "lives added;";
+            }
+        }
+
         /// Runner calls this after a few frames and after adding a remote player to the provider.
         public void AfterFrames()
         {
@@ -245,6 +266,9 @@ namespace Coverage
             Check(healthCallbacks >= 2, "FieldChangeCallback invoked by deserialization: " + healthCallbacks);
             Check(joins >= 2 && joinedName == "Remote", "OnPlayerJoined for a joining remote player: " + joins + " " + joinedName);
             Check(VRCPlayerApi.GetPlayerCount() == 2, "player count after join");
+            Check(restores >= 2 && restoredAfterJoin, "OnPlayerRestored after OnPlayerJoined, for the local and the remote player: " + restores);
+            Check(dataUpdates == 1, "PlayerData writes of one frame arrive in one OnPlayerDataUpdated: " + dataUpdates);
+            Check(dataStates.Contains("score:Removed;") && dataStates.Contains("lives added;"), "PlayerData.Info states: " + dataStates);
         }
     }
 }

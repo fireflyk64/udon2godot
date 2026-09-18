@@ -74,13 +74,22 @@ func _on_behaviour_registered(b: Node) -> void:
 		call_deferred("_replay_joins", b)
 
 func _replay_joins(b: Node) -> void:
-	if not is_instance_valid(b) or not b.is_inside_tree() or not b.has_method("OnPlayerJoined"):
+	if not is_instance_valid(b) or not b.is_inside_tree():
+		return
+	var joined: bool = b.has_method("OnPlayerJoined")
+	var restored: bool = b.has_method("OnPlayerRestored")
+	if not joined and not restored:
 		return
 	if b.has_method("_udon_start"):
 		b._udon_start()
 	for p in _players.duplicate():
-		if p._valid:
+		if p._valid and joined:
 			b.OnPlayerJoined(p)
+	# VRChat raises OnPlayerRestored once a player's persistent data has arrived, always after
+	# the join; here the data is local, so it follows at once
+	for p in _players.duplicate():
+		if p._valid and restored and restore_on_join and is_instance_valid(b):
+			b.OnPlayerRestored(p)
 
 # --- players ---------------------------------------------------------------
 
@@ -113,6 +122,8 @@ func add_player(player) -> void:
 	if not _players.has(player):
 		_players.append(player)
 		Udon.broadcast_event("OnPlayerJoined", [player])
+		if restore_on_join:
+			Udon.broadcast_event("OnPlayerRestored", [player])
 
 ## Remove a player; raises OnPlayerLeft, then invalidates the player object.
 func remove_player(player) -> void:
@@ -439,12 +450,73 @@ func enable_object_highlight(_node, _enabled: bool) -> void:
 
 # --- persistence -----------------------------------------------------------
 
+## PlayerData.State of an OnPlayerDataUpdated entry.
+enum PlayerDataState { UNCHANGED, ADDED, REMOVED, CHANGED, RESTORED }
+
+## Keys the local player changed since the last OnPlayerDataUpdated: {key: PlayerDataState}.
+var _player_data_dirty: Dictionary = {}
+
 func player_data_set(key: String, value) -> void:
 	var lp = _local_player
 	var id: int = lp.player_id if lp != null else 0
 	if not _player_data.has(id):
 		_player_data[id] = {}
+	_note_player_data(key, PlayerDataState.CHANGED if _player_data[id].has(key) else PlayerDataState.ADDED)
 	_player_data[id][key] = value
+
+## VRChat reports the writes of a frame in one OnPlayerDataUpdated(player, infos), after the
+## script that made them has returned.
+func _note_player_data(key: String, state: int) -> void:
+	if not raise_player_data_events:
+		return
+	if _player_data_dirty.is_empty():
+		call_deferred("_flush_player_data")
+	if not (_player_data_dirty.get(key, state) == PlayerDataState.ADDED and state == PlayerDataState.CHANGED):
+		_player_data_dirty[key] = state
+
+func _flush_player_data() -> void:
+	_save_player_data()
+	var infos: Array = []
+	for key in _player_data_dirty.keys():
+		infos.append({"Key": key, "State": _player_data_dirty[key], "Owner": _local_player})
+	_player_data_dirty.clear()
+	if _local_player != null and not infos.is_empty():
+		Udon.broadcast_event("OnPlayerDataUpdated", [_local_player, infos])
+
+## Where the local player's PlayerData is kept between sessions (VRChat keeps it per world and
+## account); empty = memory only. Set it before the world's behaviours start: OnPlayerRestored
+## hands out what was loaded.
+var player_data_file: String = "": set = set_player_data_file
+
+func set_player_data_file(path: String) -> void:
+	player_data_file = path
+	var data: Dictionary = load_variant_file(path)
+	if _local_player != null and not data.is_empty():
+		_player_data[_local_player.player_id] = data
+
+func _save_player_data() -> void:
+	if player_data_file != "" and _local_player != null:
+		save_variant_file(player_data_file, _player_data.get(_local_player.player_id, {}))
+
+## Typed storage (JSON would turn a Vector3 into a string and every int into a float).
+static func load_variant_file(path: String) -> Dictionary:
+	if path == "" or not FileAccess.file_exists(path):
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null or f.get_length() == 0:
+		return {}
+	var d = f.get_var(false)
+	return d if d is Dictionary else {}
+
+static func save_variant_file(path: String, data: Dictionary) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f != null:
+		f.store_var(data, false)
+
+## Providers that report data changes and restores themselves (the network provider: the server's
+## echo, and the data it sends to a joining client) turn the local ones off.
+var raise_player_data_events: bool = true
+var restore_on_join: bool = true
 
 func player_data_get(player, key: String, default):
 	if player == null:
@@ -464,4 +536,6 @@ func player_data_keys(player) -> Array:
 func player_data_remove(key: String) -> void:
 	var lp = _local_player
 	if lp != null and _player_data.has(lp.player_id):
+		if _player_data[lp.player_id].has(key):
+			_note_player_data(key, PlayerDataState.REMOVED)
 		_player_data[lp.player_id].erase(key)

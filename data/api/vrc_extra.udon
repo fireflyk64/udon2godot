@@ -547,10 +547,19 @@ type VRCTMPDropdownExtension : Behaviour kind=component gd=OptionButton extern=V
 type VRCOpenMenu : Behaviour kind=component gd=Node extern=VRCSDK3ComponentsVRCOpenMenu
   OpenMenu(): void => Udon.open_menu($0)
 
+type PlayerDataState kind=enum extern=VRCSDK3PersistencePlayerDataState
+  enum Unchanged = 0
+  enum Added = 1
+  enum Removed = 2
+  enum Changed = 3
+  enum Restored = 4
+alias PlayerData.State = PlayerDataState
+
 type PlayerDataInfo kind=struct gd=Dictionary extern=VRCSDK3PersistencePlayerDataInfo
   Key: string => $0.get("Key", "")
-  State: int => $0.get("State", 0)
+  State: PlayerDataState => $0.get("State", 0)
   Owner: VRCPlayerApi => $0.get("Owner", null)
+alias PlayerData.Info = PlayerDataInfo
 
 type PlayerData
   static SetColor32(string, Color32): void => Udon.player_data_set($1, $2)
@@ -1096,7 +1105,7 @@ type PlayerData
   static TryGetVector4(VRCPlayerApi, string, out Vector4): bool => $3 = Udon.player_data_get($1, $2, Vector4.ZERO) ;; Udon.player_data_has($1, $2)
 
 type PlayerDataInfo
-  ctor(string, int) => {"Key": $1, "State": $2}
+  ctor(string, PlayerDataState) => {"Key": $1, "State": $2}
 
 type MidiData
   ctor() => {"tracks": [], "bpm": 120, "total_time": 0.0}
@@ -1195,3 +1204,9 @@ type ScreenUpdateData kind=struct gd=Dictionary extern=VRCSDK3PlatformScreenUpda
 
 type DeserializationResult
   isFromStorage: bool => $0.get("isFromStorage", false)
+
+# C# names of nested types (the extern names flatten them)
+alias VRCConstraintBase.WorldUpType = VRCConstraintBaseWorldUpType
+alias VRCPhysBoneBase.ImmobileType = VRCPhysBoneBaseImmobileType
+alias VRCPhysBoneBase.LimitType = VRCPhysBoneBaseLimitType
+alias VRCCameraDollyPath.Point = VRCCameraDollyPathPoint

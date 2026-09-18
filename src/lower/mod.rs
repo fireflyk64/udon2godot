@@ -656,6 +656,11 @@ impl<'p> Lowerer<'p> {
         self.in_static = m.is_static;
         self.push_scope();
         let mut params = Vec::new();
+        // `GetComponent<T>()`, `typeof(T)`, `x is T` in a generic method need T at run time: the
+        // callers pass the type names in hidden leading parameters
+        for tp in &m.decl.type_params {
+            params.push(GParam { name: format!("_T_{}", tp), ty: Some("String".into()), default: None });
+        }
         for p in &m.params {
             let gd = self.declare_local(&p.name, p.ty.clone());
             let default = p.default.as_ref().map(|e| {
