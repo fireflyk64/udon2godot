@@ -148,6 +148,14 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       a child label as high as the content, placed by the vertical alignment
       (`UnidotTextOverflow`, made and removed by `ui_text.gd` as text and rect change; the node
       keeps the Unity rect and the string). Fixture: TmpOverTop / Middle / Bottom, UguiOver.
+- [x] A branch off upstream unidot with only the UI work, for upstreaming:
+      `tools/unidot_ui_branch.py` builds `ui-canvas` in the fork (upstream main + 3 commits: the
+      YAML fix; scene nodes may be any Node, with the plugin hooks for GameObject nodes and
+      component overrides; the UI plugin with its run-time modules and tests: 34 files). The UI
+      files are copied; of `object_adapter.gd` (49 hunks against upstream), `convert_scene.gd`
+      and `scene_node_state.gd` only the hunks the UI needs are applied (no Udon, shader or
+      particle code). `UNIDOT=<worktree> scripts/test_ui.sh` passes on it alone: 312 unit checks,
+      761 of 761 nodes, 2218 pixel points. Local, not pushed.
 - [x] ScrollRect as Unity's own scroller. It was a Godot ScrollContainer: the scrolled object and
       Unity's Scrollbar children were not where Unity puts them, and scripts that read or set
       `content.anchoredPosition` saw nothing. Now the objects stay what they are
@@ -193,8 +201,6 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
         when the nearest one has no control under the pointer.
       * The pixel check does not compare text glyphs, translucent graphics or widgets drawn by
         Godot (LineEdit, OptionButton).
-      * A branch off upstream unidot with only the UI commits (the fork's hooks in
-        `object_adapter.gd` were introduced by earlier, mixed commits).
 - [x] TextMeshPro (3D) outside a canvas (the table's "winner" text) → Label3D (font size in
       tenths of a unit, the object's RectTransform as text box); a RectTransform outside every
       canvas is an ordinary Node3D placed by its anchored position.

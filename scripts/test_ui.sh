@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Unity UI import without any scripting: canvases, RectTransforms and layout groups.
-#   scripts/test_ui.sh [out_dir]        (REIMPORT=1 forces a fresh import)
+#   scripts/test_ui.sh [out_dir]        (REIMPORT=1 forces a fresh import; UNIDOT=<checkout> tests
+#                                        another checkout of unidot, e.g. its UI-only branch)
 # 1. unit tests of unidot's runtime/rect_transform.gd (no importer involved)
 # 2. tests/unity_ui (written by tools/gen_ui_fixture.py: every RectTransform case, every layout
 #    group mode, nested and screen-space canvases, prefab overrides) is imported by unidot alone:
@@ -12,11 +13,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/ui}
+UNIDOT=${UNIDOT:-refs/unidot_importer}
 . scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 SCENE=unity_ui/UiCases/UiCases.tscn
 CODE=0
 python3 tools/gen_ui_fixture.py > /dev/null || exit 1
-STALE=$(find tests/unity_ui refs/unidot_importer -name "*.gd" -newer "$OUT/$SCENE" -type f 2>/dev/null | head -1)
+STALE=$(find tests/unity_ui "$UNIDOT" -name "*.gd" -newer "$OUT/$SCENE" -type f 2>/dev/null | head -1)
 [ -z "$STALE" ] && STALE=$(find tests/unity_ui -newer "$OUT/$SCENE" -type f 2>/dev/null | head -1)
 if [ ! -f "$OUT/$SCENE" ] || [ -n "$STALE" ] || [ "${REIMPORT:-0}" = 1 ]; then
   rm -rf "$OUT"
@@ -38,9 +40,13 @@ enabled=PackedStringArray("res://addons/unidot_importer/plugin.cfg", "res://addo
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 PROJ
-  cp -r refs/unidot_importer "$OUT/addons/unidot_importer"
+  cp -r "$UNIDOT" "$OUT/addons/unidot_importer"
   rm -rf "$OUT/addons/unidot_importer/.git"
+  # the command-line import driver is the fork's (a checkout without it borrows it)
+  [ -d "$OUT/addons/unidot_importer/headless" ] || cp -r refs/unidot_importer/headless "$OUT/addons/unidot_importer/headless"
   "$GODOT" --headless --editor --path "$OUT" --quit > "$OUT/godot_first_import.log" 2>&1
+  # an importer that does not compile would leave the import below waiting for its timeout
+  if grep -q "Parse Error" "$OUT/godot_first_import.log"; then echo "UI IMPORT FAILED: the importer does not compile"; grep -m3 -A1 "Parse Error" "$OUT/godot_first_import.log" | cut -c1-240; exit 1; fi
   for ATTEMPT in 1 2 3; do
     timeout "${IMPORT_TIMEOUT:-1800}" "$GODOT" --headless --editor --path "$OUT" -- --unidot-import "$(realpath tests/unity_ui)" --unidot-text-scenes --unidot-text-resources --unidot-log "$OUT/unidot_import.log" > "$OUT/unidot_stdout.log" 2>&1
     if grep -q "^\[unidot headless\] import finished" "$OUT/unidot_stdout.log" || ! grep -q "Program crashed with signal" "$OUT/unidot_stdout.log"; then break; fi
@@ -52,7 +58,7 @@ PROJ
   if [ "${N:-0}" -gt 0 ]; then echo "!! $N GDScript error(s) during the import: $(grep -m1 -A1 '^SCRIPT ERROR' "$OUT/unidot_stdout.log" | tr '\n' ' ' | cut -c1-200)"; CODE=1; fi
 else
   rm -rf "$OUT/addons/unidot_importer/runtime" "$OUT/addons/unidot_importer/test"
-  cp -r refs/unidot_importer/runtime refs/unidot_importer/test "$OUT/addons/unidot_importer/"
+  cp -r "$UNIDOT/runtime" "$UNIDOT/test" "$OUT/addons/unidot_importer/"
 fi
 echo "== rect_transform.gd unit tests"
 timeout 300 "$GODOT" --headless --path "$OUT" -s addons/unidot_importer/test/rect_transform_test.gd > "$OUT/unit.log" 2>&1 || CODE=1

@@ -181,6 +181,10 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
 `canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `ui_sprite.gd`,
 `selectable.gd`, `scroll_rect.gd` (run time).
 
+* **Separate from Udon.** Nothing of this needs the scripting layer: `scripts/test_ui.sh`
+  imports with unidot alone, and `tools/unidot_ui_branch.py` builds the branch `ui-canvas` of
+  the fork, upstream unidot plus only the UI work in three commits, which passes the same test
+  (`UNIDOT=<checkout> scripts/test_ui.sh`).
 * **One implementation.** `rect_transform.gd` holds Unity's RectTransform rules (anchors,
   anchored position, size delta, pivot, offsets, rotation, scale, world matrices through nested
   canvases). The importer builds every Control with it and the catalog maps every script-side
