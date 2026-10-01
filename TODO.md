@@ -2,6 +2,58 @@
 
 Status legend: [x] done and verified, [~] implemented but needs more coverage, [ ] open.
 
+## RectTransform and canvas positioning (pool table UI) — current work
+
+The pool table's canvases are much better than they were but still show positioning errors.
+Starting point (2026-09-30): the importer converts a RectTransform in `_configure_rect`
+(`udon_integration.gd`), while scripts go through separate catalog mappings that do not agree with
+it (`anchoredPosition => $0.position`, `sizeDelta => $0.size`, `anchorMin` reads `anchor_top`
+unflipped, `rect => get_rect()`, `localRotation` of a Control is always identity,
+`SetInsetAndSizeFromParentEdge` is a stub, `LayoutRebuilder.ForceRebuildLayoutImmediate` does
+nothing); `udon_canvas_plane.gd` repeats the anchor maths a third time for nested canvases.
+
+- [ ] Survey: every Canvas, RectTransform and UI component in the pool table's prefabs and scene
+      (`MS-VRCSA_Table-Original.prefab` 144 RectTransforms, `Table.prefab` 18,
+      `BilliardsLoadMenu.prefab` 8) and every script line that reads or writes a UI transform.
+      A tool prints them with the rectangle Unity computes (anchors, offsets, pivot, scale,
+      rotation, render mode, scaler, layout components), so the distinct cases are listed here.
+- [ ] Reference rectangles: for each surveyed canvas, the expected rectangle of every node in canvas
+      units, computed from the Unity data alone (independent of the importer), compared with the
+      imported world's laid-out Controls. Acceptance: every pool table UI node within 0.5 unit /
+      1 % of the reference, hidden menus included; the list of mismatches is the work queue.
+- [ ] Observe the broken cases on the imported table (screenshots of each canvas next to the
+      reference rectangles) and note each one here before fixing it.
+- [ ] Tests first for each case found: a minimal Unity fixture (scene or prefab) that reproduces
+      it and a check that fails before the fix. Cases known so far: stretched anchors with
+      offsets, non-centre pivots, scaled and rotated rects, negative sizes, zero-size parents with
+      overflowing children, nested canvases, world canvas scale chains, canvas scaler modes.
+- [ ] Layout groups: a test for each kind — Horizontal, Vertical, Grid — and for the components
+      that work with them (ContentSizeFitter, LayoutElement, AspectRatioFitter), covering padding,
+      spacing, child alignment (9 values), control size / force expand on both axes, reverse
+      arrangement, grid start corner / start axis / constraints, nested groups, inactive and
+      `ignoreLayout` children, groups driven by a fitter on the same object and on the parent.
+- [ ] One implementation for import and runtime: a RectTransform module (anchors, offsets, pivot,
+      size delta, anchored position, local position / rotation / scale, rect, corners) used by the
+      importer when it builds a Control and by every script-side property (`anchoredPosition`,
+      `sizeDelta`, `anchorMin/Max`, `offsetMin/Max`, `pivot`, `rect`, `localPosition`,
+      `localRotation`, `localScale`, `SetSizeWithCurrentAnchors`, `SetInsetAndSizeFromParentEdge`,
+      `GetLocalCorners`, `GetWorldCorners`, `SetParent(worldPositionStays)`). Acceptance: a test
+      sets each property from a converted script and reads back Unity's numbers, and the same
+      values written at import give the same Control.
+- [ ] Separate the UI code from the Udon code in unidot: RectTransform / Canvas / UI component
+      conversion and its runtime scripts (canvas plane, layout groups, scroll rect, dropdown) live
+      in unidot without any reference to Udon; `udon_integration.gd` keeps script attachment,
+      field assignment and UnityEvent → `SendCustomEvent` wiring and calls the UI module through a
+      plugin seam. Acceptance: a canvas-only Unity scene imports with the Udon plugin disabled and
+      its rectangles pass the same checks; the UI part is a commit series that applies to
+      upstream unidot on its own.
+- [ ] Unit tests for the RectTransform module and canvas import that run without scripting
+      (no sandbox, no converted scripts): property round trips, layout groups, canvas fit.
+- [ ] Pool table verification: every canvas of the imported table matches the reference
+      rectangles and the screenshots; `scripts/test_world_billiards.sh` checks it.
+- [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts /
+      sprites / 9-slice, Dropdown templates; Animator; constraints components; ...).
+
 - [x] Upstream fixed the 1MB direct-jump limit. Update the upstream godot-sandbox tooling to get the fixes.
       `refs/godot-sandbox` is at upstream main + the `MAX_LEVEL = 16` patch; the rebuilt library is in
       `tools/sandbox_build/` and `godot_project/addons/godot_sandbox/bin/`. All 108 corpus scripts compile
