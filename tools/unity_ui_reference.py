@@ -449,6 +449,7 @@ class Node:
         self.renderer_color = [1.0, 1.0, 1.0, 1.0]   # CanvasRenderer colour (Selectable tint, Toggle fade)
         self.field_text = False   # the text or placeholder object of an input field
         self.scroll_value = None  # value and size a ScrollRect gave its scrollbar
+        self.text_override = None # the caption a Dropdown shows (the selected option's text)
         self.scroll_size = None
         d = tobj.data
         self.local_position = _vec(d.get("m_LocalPosition"), "xyz", (0, 0, 0))
@@ -1139,6 +1140,14 @@ def apply_selectables(nodes):
                     part = owner.get(_ref_id(d.get(key)))
                     if part is not None:
                         part.field_text = True
+            if name in ("Dropdown", "TMP_Dropdown"):
+                # Dropdown.RefreshShownValue: the caption shows the selected option, or nothing
+                caption = owner.get(_ref_id(d.get("m_CaptionText")))
+                options = (d.get("m_Options") or {}).get("m_Options") or []
+                value = int(_num(d.get("m_Value", 0)))
+                if caption is not None:
+                    opt = options[value] if 0 <= value < len(options) else None
+                    caption.text_override = str(opt.get("m_Text") or "") if isinstance(opt, dict) else ""
             if name == "Scrollbar":
                 scrollbar_visuals(n, nodes)
             if name == "Slider":
@@ -1231,6 +1240,8 @@ def shown_text(n):
     else:
         return None
     raw = "" if raw is None else str(raw)
+    if n.text_override is not None:
+        raw = n.text_override
     case = [1 if style & (16 | 32) else 0, 1 if style & 8 else 0]   # upper, lower
 
     def cased(t):

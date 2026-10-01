@@ -27,6 +27,12 @@ timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCE
 CODE=$?
 grep -E "^\[scenario\]|^\[fixture\]|FAIL |SCENARIO|unbound" "$OUT/scenario.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario.log")  (log: $OUT/scenario.log)"
+# the scene's UI as imported (scripts not running) against what Unity shows, computed from the
+# Unity files (tools/unity_ui_reference.py): rectangles, drawn colours, texts
+echo "== UI against the Unity reference"
+timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 10 --static --scenario res://scenarios/canvas_dump.gd --dump-out "$OUT/ui_dump.json" > "$OUT/ui_dump.log" 2>&1
+python3 tools/unity_ui_reference.py tests/unity_fixture tests/unity_fixture/Fixture/Fixture.unity --compare "$OUT/ui_dump.json" --active > "$OUT/ui_compare.log" 2>/dev/null || CODE=1
+tail -8 "$OUT/ui_compare.log" | cut -c1-240
 if [ -n "${DISPLAY:-}" ]; then
   # on a display the scenario also samples the rendered UI canvas and clicks it through the window
   # (pointer raycast → SubViewport input); screenshots land in $OUT/shots

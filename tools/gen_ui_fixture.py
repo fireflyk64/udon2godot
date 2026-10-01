@@ -1186,6 +1186,10 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     make_slider("SliderNoHandle", (-300, 60), 0.8, 1, handle=False)
     make_slider("SliderDisabled", (-300, 20), 1, 0, interactable=False)
     make_slider("SliderBTT", (-160, 180), 0.6, 2)
+    # an Image on the Slider's own object (its background)
+    own = f.node("SliderOwnImage", c, {"pos": (-300, -20), "size": (160, 20)}, [renderer(), image((0.5, 0.3, 0.6, 1))])
+    own_fill = b.img("Fill", own, {"amin": (0, 0.25), "amax": (0.5, 0.75), "size": (0, 0)}, color=(0.3, 0.8, 0.4, 1))
+    f.add(own, slider(0.5, 0, own_fill.t, 0))
     make_slider("SliderTTB", (-120, 180), 0.6, 3)
 
     def make_toggle(name, pos, on, **sel):

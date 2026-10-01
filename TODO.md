@@ -161,7 +161,10 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       also takes the pointer on a Scrollbar as Unity does), the wheel and dragging scroll,
       `onValueChanged` is the helper's `scrolled` signal. The reference tool models the same
       (independently, from the Unity files); `tests/unity_ui` has a "Scroll" canvas with 13
-      scroll views and 5 scrollbars (174 nodes).
+      scroll views and 5 scrollbars (174 nodes). `scripts/test_unity_fixture.sh` compares the
+      fixture world's UI with the reference too (40 of 40 nodes; it had two ScrollRect
+      mismatches, and the comparison of what is drawn found an Image on a Slider's own object
+      that was not drawn and a reference that did not know Dropdown.RefreshShownValue).
       Left: inertia and the elastic spring (the content snaps back), `Scrollbar.numberOfSteps`.
 - [x] UI component overrides on prefab instances: text, font size / style, colour (by member:
       `m_Color.r`), `m_Enabled` (it used to hide the object), sprite, Selectable colours /
