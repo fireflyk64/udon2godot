@@ -21,6 +21,9 @@ The scene (`UiCases.unity`) holds one canvas per group of cases:
              small rect, with a multiplier, without centre, on a Button), tiled, filled, sprites
              of a sheet, Unity's built-in sprites, and their preferred sizes in a layout group.
              The textures (Frame.png, Sheet.png, Bar.png) are written here too.
+  Scroll     ScrollRects: content larger and smaller than the view on each axis, scrolled,
+             outside the view (pulled back), scrollbars that stay, hide and make the viewport
+             give way, a list laid out by a group with a fitter, scrollbars on their own
   Widgets    what one object does to another and what is drawn: Slider fill and handle rects by
              value and direction, Toggle check marks, Selectable colour tints, disabled graphics,
              masks, canvas groups, rich text (TextMeshPro and uGUI), an input field's text objects
@@ -56,6 +59,9 @@ GUID = {
     "AspectRatioFitter": "86710e43de46f6f4bac7c8e50813a599",
     "Mask": "31a19414c41e5ae4aae2af33fee712f6",
     "TextMeshProUGUI": "f4688fdb7df04437aeb418b961361dc5",
+    "ScrollRect": "1aa08ab6e0800fa44ae55d278d1423e3",
+    "Scrollbar": "2a4db7a114972834c8e4117be1d82ba3",
+    "RectMask2D": "3312d7739989d2b4e91e6319e9a96d76",
 }
 
 SCENE_SETTINGS = """--- !u!29 &1
@@ -627,6 +633,23 @@ def input_field(value="", text_component=0, placeholder=0, **sel):
         text_component, placeholder, value))
 
 
+def scroll_rect(content, viewport=0, hbar=0, vbar=0, horizontal=True, vertical=True, movement=1, visibility=(2, 2), spacing=(-3, -3)):
+    """content / viewport: RectTransform file ids; hbar / vbar: Scrollbar component file ids;
+    movement 0 unrestricted, 1 elastic, 2 clamped; visibility 0 permanent, 1 auto hide,
+    2 auto hide and expand the viewport."""
+    return ("ScrollRect", "  m_Content: {fileID: %d}\n  m_Horizontal: %d\n  m_Vertical: %d\n  m_MovementType: %d\n  m_Elasticity: 0.1\n  m_Inertia: 1\n  m_DecelerationRate: 0.135\n  m_ScrollSensitivity: 1\n  m_Viewport: {fileID: %d}\n  m_HorizontalScrollbar: {fileID: %d}\n  m_VerticalScrollbar: {fileID: %d}\n  m_HorizontalScrollbarVisibility: %d\n  m_VerticalScrollbarVisibility: %d\n  m_HorizontalScrollbarSpacing: %s\n  m_VerticalScrollbarSpacing: %s\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (
+        content, horizontal, vertical, movement, viewport, hbar, vbar, visibility[0], visibility[1], num(spacing[0]), num(spacing[1])))
+
+
+def scrollbar(handle=0, direction=0, value=0, size=0.2, **sel):
+    """direction 0 left to right, 1 right to left, 2 bottom to top, 3 top to bottom."""
+    return ("Scrollbar", selectable(**sel) + "  m_HandleRect: {fileID: %d}\n  m_Direction: %d\n  m_Value: %s\n  m_Size: %s\n  m_NumberOfSteps: 0\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (handle, direction, num(value), num(size)))
+
+
+def rect_mask():
+    return ("RectMask2D", "  m_Padding: {x: 0, y: 0, z: 0, w: 0}\n  m_Softness: {x: 0, y: 0}\n")
+
+
 def mask(show=True):
     return ("Mask", "  m_ShowMaskGraphic: %d\n" % show)
 
@@ -1058,7 +1081,9 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("Label", sliced_button, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("sliced", 14, (0, 0, 0, 1))])
     f.add(sliced_button, button(target=sliced_button.components[1][0]))
     sprite("SlicedNoBorder", (-380, 130), (64, 100), kind=1, sprite=BAR)                   # sliced without borders: stretched
-    sprite("Tiled", (-300, -20), (160, 96), kind=2, sprite=FRAME)                          # 2.5 x 1.5 tiles from the bottom-left
+    sprite("Tiled", (-300, -20), (150, 90), kind=2, sprite=FRAME)                          # borders, the centre tiled 3.7 x 1.8 times from the bottom-left
+    sprite("TiledPlain", (-300, -95), (160, 40), kind=2, sprite=BAR)                       # no borders: 2.5 x 2.5 copies
+    sprite("TiledHollow", (-180, -95), (60, 40), kind=2, sprite=FRAME, center=False)       # only the border pieces
     sprite("FillLeft", (-100, 10), (128, 32), kind=3, sprite=BAR, fill=(0, 0.25, 0))       # the left quarter
     sprite("FillRight", (-100, -40), (128, 32), kind=3, sprite=BAR, fill=(0, 0.75, 1))     # the right three quarters
     sprite("FillBottom", (20, -20), (64, 96), kind=3, sprite=FRAME, fill=(1, 0.5, 0))      # the lower half
@@ -1079,6 +1104,58 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("Knob", row, {"size": (10, 10)}, [renderer(), image(sprite=KNOB)])                    # 20 x 20
     f.node("SheetHalf", row, {"size": (10, 10)}, [renderer(), image(sprite=SHEET_LEFT)])         # 32 x 32
     f.node("NoSprite", row, {"size": (10, 10)}, [renderer(), image()])                           # 0 x 0
+
+    # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
+    c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1000, 640))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.13, 0.12, 0.15, 1))
+
+    def make_bar(parent, name, vertical, direction=None, value=0, size=0.2, rect=None):
+        """A Scrollbar as Unity's menu builds it: 20 thick along an edge, a sliding area with
+        insets of 10 and a handle that overhangs them by 10 (so it spans the bar)."""
+        if rect is None:
+            rect = {"amin": (1, 0), "amax": (1, 1), "pivot": (1, 1), "size": (20, 0)} if vertical else {"amin": (0, 0), "amax": (1, 0), "pivot": (0, 0), "size": (0, 20)}
+        bar = f.node(name, parent, rect, [renderer(), image((0.25, 0.25, 0.3, 1))])
+        area = b.box("Sliding Area", bar, {"amin": (0, 0), "amax": (1, 1), "size": (-20, -20)})
+        handle = b.img("Handle", area, {"amin": (0, 0), "amax": (0.2, 1) if not vertical else (1, 0.2), "size": (20, 20)}, color=(0.8, 0.8, 0.85, 1))
+        comp = f.add(bar, scrollbar(handle.t, (2 if vertical else 0) if direction is None else direction, value, size, target=handle.components[1][0]))
+        return bar, comp
+
+    def make_scroll(name, pos, size, content_size, content_pos=(0, 0), content_pivot=(0, 1), bars=(True, True), items=0, group=False, **kw):
+        """Unity's Scroll View: the ScrollRect, a masked viewport stretched over it (pivot top-left),
+        the content anchored to the viewport's top (stretched along x unless it has a width)."""
+        root = f.node(name, c, {"pos": pos, "size": size}, [renderer(), image((0.2, 0.2, 0.24, 1))])
+        view = f.node("Viewport", root, {"amin": (0, 0), "amax": (1, 1), "pivot": (0, 1), "size": (0, 0)}, [rect_mask()])
+        if content_size[0] is None:
+            crect = {"amin": (0, 1), "amax": (1, 1), "pivot": content_pivot, "pos": content_pos, "size": (0, content_size[1])}
+        else:
+            crect = {"amin": (0, 1), "amax": (0, 1), "pivot": content_pivot, "pos": content_pos, "size": content_size}
+        comps = [vgroup(padding=(4, 4, 4, 4), spacing=4, control=(True, False), expand=(True, False)), fitter(0, 2)] if group else []
+        content = b.box("Content", view, crect, comps)
+        for i in range(items):
+            b.img("Item%d" % i, content, {"amin": (0, 1), "amax": (1, 1), "pivot": (0.5, 1), "pos": (0, -8 - i * 44), "size": (-16, 36)} if not group else {"size": (10, 36)})
+        hbar = make_bar(root, "Scrollbar Horizontal", False) if bars[0] else (None, 0)
+        vbar = make_bar(root, "Scrollbar Vertical", True) if bars[1] else (None, 0)
+        f.add(root, scroll_rect(content.t, view.t, hbar[1], vbar[1], **kw))
+        return root
+    make_scroll("Tall", (-380, 190), (200, 200), (None, 500), items=6)                                     # scrolls vertically: the view gives way to the bar
+    make_scroll("TallScrolled", (-160, 190), (200, 200), (None, 500), content_pos=(0, 150), items=6)       # half way down
+    make_scroll("Short", (60, 190), (200, 200), (None, 120), items=2)                                      # fits: no bars, no scrolling
+    make_scroll("Wide", (280, 190), (200, 200), (500, 120), items=0)                                       # scrolls horizontally
+    make_scroll("Both", (-380, -30), (200, 200), (500, 500), items=0)                                      # both bars: each leaves the corner free
+    make_scroll("Outside", (-160, -30), (200, 200), (None, 500), content_pos=(0, 700), items=6)            # scrolled past the end: pulled back
+    make_scroll("OutsideFree", (60, -30), (200, 200), (None, 500), content_pos=(0, 700), items=6, movement=0)   # unrestricted: stays
+    make_scroll("Permanent", (280, -30), (200, 200), (None, 120), items=2, visibility=(0, 0))              # bars stay, the view keeps its size
+    make_scroll("AutoHide", (-380, -250), (200, 200), (None, 120), items=2, visibility=(1, 1))             # bars hide, the view keeps its size
+    make_scroll("AutoHideNeeded", (-160, -250), (200, 200), (None, 500), items=6, visibility=(1, 1))
+    make_scroll("List", (60, -250), (200, 200), (None, 10), items=7, group=True)                           # the content's height comes from its group
+    make_scroll("ListShort", (280, -250), (200, 200), (None, 10), items=2, group=True)
+    make_scroll("BottomPivot", (-600, 190), (200, 200), (None, 120), content_pivot=(0, 0), items=0, bars=(False, False))   # smaller content: padded by its pivot
+    # scrollbars on their own: the handle spans `size` of the sliding area, moved by the value
+    make_bar(c, "BarLeftToRight", False, 0, 0.5, 0.4, {"pos": (-600, -40), "size": (160, 20)})
+    make_bar(c, "BarRightToLeft", False, 1, 0.25, 0.4, {"pos": (-600, -80), "size": (160, 20)})
+    make_bar(c, "BarBottomToTop", True, 2, 1, 0.25, {"pos": (-660, -220), "size": (20, 160)})
+    make_bar(c, "BarTopToBottom", True, 3, 0.25, 0.5, {"pos": (-620, -220), "size": (20, 160)})
+    make_bar(c, "BarFull", True, 2, 0.3, 1, {"pos": (-580, -220), "size": (20, 160)})
 
     # ---- Widgets: what one object does to another, and what is drawn ---------------------------
     c = b.world_canvas("Widgets", (3.5, 3.0, 2), (800, 600))

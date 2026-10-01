@@ -1788,41 +1788,41 @@ type Image
   static defaultETC1GraphicMaterial: Material => null
 
 type ScrollRect
-  horizontal: bool => $0.horizontal_scroll_mode != 0
-  set horizontal: bool => $0.horizontal_scroll_mode = (1 if $v else 0)
-  vertical: bool => $0.vertical_scroll_mode != 0
-  set vertical: bool => $0.vertical_scroll_mode = (1 if $v else 0)
-  movementType: int => 1
-  set movementType: int => pass
+  horizontal: bool => bool(U.scroll_get($0, "horizontal", true))
+  set horizontal: bool => U.scroll_set($0, "horizontal", $v)
+  vertical: bool => bool(U.scroll_get($0, "vertical", true))
+  set vertical: bool => U.scroll_set($0, "vertical", $v)
+  movementType: int => int(U.scroll_get($0, "movement", 1))
+  set movementType: int => U.scroll_set($0, "movement", $v)
   elasticity: float => 0.1
   set elasticity: float => pass
   inertia: bool => true
   set inertia: bool => pass
   decelerationRate: float => 0.135
   set decelerationRate: float => pass
-  scrollSensitivity: float => 1.0
-  set scrollSensitivity: float => pass
-  viewport: RectTransform => $0
-  set viewport: RectTransform => pass
-  horizontalScrollbar: Scrollbar => $0.get_h_scroll_bar()
-  set horizontalScrollbar: Scrollbar => pass
-  verticalScrollbar: Scrollbar => $0.get_v_scroll_bar()
-  set verticalScrollbar: Scrollbar => pass
-  horizontalScrollbarVisibility: int => 0
-  set horizontalScrollbarVisibility: int => pass
-  verticalScrollbarVisibility: int => 0
-  set verticalScrollbarVisibility: int => pass
-  horizontalScrollbarSpacing: float => 0.0
-  set horizontalScrollbarSpacing: float => pass
-  verticalScrollbarSpacing: float => 0.0
-  set verticalScrollbarSpacing: float => pass
+  scrollSensitivity: float => float(U.scroll_get($0, "sensitivity", 1.0))
+  set scrollSensitivity: float => U.scroll_set($0, "sensitivity", $v)
+  viewport: RectTransform => U.scroll_part($0, "viewport")
+  set viewport: RectTransform => U.scroll_set_part($0, "viewport", $v)
+  horizontalScrollbar: Scrollbar => U.scroll_part($0, "hbar")
+  set horizontalScrollbar: Scrollbar => U.scroll_set_part($0, "hbar", $v)
+  verticalScrollbar: Scrollbar => U.scroll_part($0, "vbar")
+  set verticalScrollbar: Scrollbar => U.scroll_set_part($0, "vbar", $v)
+  horizontalScrollbarVisibility: int => int(U.scroll_get_axis($0, "visibility", 0, 0))
+  set horizontalScrollbarVisibility: int => U.scroll_set_axis($0, "visibility", 0, $v)
+  verticalScrollbarVisibility: int => int(U.scroll_get_axis($0, "visibility", 1, 0))
+  set verticalScrollbarVisibility: int => U.scroll_set_axis($0, "visibility", 1, $v)
+  horizontalScrollbarSpacing: float => float(U.scroll_get_axis($0, "spacing", 0, 0.0))
+  set horizontalScrollbarSpacing: float => U.scroll_set_axis($0, "spacing", 0, $v)
+  verticalScrollbarSpacing: float => float(U.scroll_get_axis($0, "spacing", 1, 0.0))
+  set verticalScrollbarSpacing: float => U.scroll_set_axis($0, "spacing", 1, $v)
   normalizedPosition: Vector2 => Vector2(U.scroll_get_h($0), U.scroll_get_v($0))
   set normalizedPosition: Vector2 => U.scroll_set_h($0, $v.x) ;; U.scroll_set_v($0, $v.y)
-  onValueChanged: UnityEvent => $0.get_v_scroll_bar().value_changed
-  minWidth: float => $0.get_combined_minimum_size().x
-  minHeight: float => $0.get_combined_minimum_size().y
-  preferredWidth: float => $0.get_combined_minimum_size().x
-  preferredHeight: float => $0.get_combined_minimum_size().y
+  onValueChanged: UnityEvent => U.scroll_signal($0)
+  minWidth: float => -1.0
+  minHeight: float => -1.0
+  preferredWidth: float => -1.0
+  preferredHeight: float => -1.0
   flexibleWidth: float => -1.0
   flexibleHeight: float => -1.0
   layoutPriority: int => -1

@@ -95,11 +95,11 @@ type Slider
 
 type Scrollbar
   SetDirection(Scrollbar.Direction, bool): void => pass
-  SetValueWithoutNotify(float): void => $0.set_value_no_signal($1)
-  handleRect: RectTransform => null
-  interactable: bool => $0.editable
-  set handleRect: RectTransform => pass
-  set interactable: bool => $0.editable = $v
+  SetValueWithoutNotify(float): void => U.slider_set_silent($0, $1)
+  handleRect: RectTransform => U.ui_selectable_part($0, "handle", null)
+  interactable: bool => U.ui_get_interactable($0)
+  set handleRect: RectTransform => U.ui_selectable_set_part($0, "handle", $v)
+  set interactable: bool => U.ui_set_interactable($0, $v)
 
 type Dropdown
   AddOptions(ListSystemString): void => U.dd_add_options($0, $1)
@@ -424,20 +424,20 @@ type ScrollRect
   StopMovement(): void => pass
   flexibleHeight: float => -1.0
   flexibleWidth: float => -1.0
-  horizontalScrollbar: Scrollbar => $0.get_h_scroll_bar()
+  horizontalScrollbar: Scrollbar => U.scroll_part($0, "hbar")
   layoutPriority: int => -1
   minHeight: float => U.ui_min_size($0, "y")
   minWidth: float => U.ui_min_size($0, "x")
   normalizedPosition: Vector2 => Vector2(U.scroll_get_h($0), U.scroll_get_v($0))
   preferredHeight: float => U.ui_preferred_size($0, "y")
   preferredWidth: float => U.ui_preferred_size($0, "x")
-  verticalScrollbar: Scrollbar => $0.get_v_scroll_bar()
-  viewport: RectTransform => $0
-  set content: RectTransform => pass
-  set horizontalScrollbar: Scrollbar => pass
+  verticalScrollbar: Scrollbar => U.scroll_part($0, "vbar")
+  viewport: RectTransform => U.scroll_part($0, "viewport")
+  set content: RectTransform => U.scroll_set_part($0, "content", $v)
+  set horizontalScrollbar: Scrollbar => U.scroll_set_part($0, "hbar", $v)
   set normalizedPosition: Vector2 => U.scroll_set_h($0, $v.x) ;; U.scroll_set_v($0, $v.y)
-  set verticalScrollbar: Scrollbar => pass
-  set viewport: RectTransform => pass
+  set verticalScrollbar: Scrollbar => U.scroll_set_part($0, "vbar", $v)
+  set viewport: RectTransform => U.scroll_set_part($0, "viewport", $v)
 
 type TMP_Text
   alignment: TextAlignmentOptions => U.ui_alignment_get($0)

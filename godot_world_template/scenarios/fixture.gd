@@ -164,20 +164,29 @@ func _ui_checks(r, fx: Node) -> void:
 	var dll_audio: Node = r.find("DllAudio")
 	r.check(dll_pickup != null and dll_pickup.is_in_group("udon_pickup") and dll_pickup.has_meta("udon_pickup"), "DLL-referenced VRC_Pickup is a pickup")
 	r.check(dll_audio != null and not dll_audio.is_in_group("udon_pickup") and dll_audio.has_meta("udon_spatial_audio") and is_equal_approx(float(dll_audio.get_meta("udon_spatial_audio").get("far", 0.0)), 12.0), "DLL-referenced VRCSpatialAudioSource is not a pickup and keeps its settings: " + str(dll_audio.get_meta("udon_spatial_audio") if dll_audio != null and dll_audio.has_meta("udon_spatial_audio") else null))
-	# A Unity Scrollbar linked to the ScrollRect (m_VerticalScrollbar): a real scroll bar whose value
-	# is the normalized position, in both directions (consoles scroll down with `scrollbar.value = 0`)
+	# A Unity ScrollRect scrolls the way Unity does: the content moves inside the viewport object by
+	# its anchored position; the linked Scrollbar (m_VerticalScrollbar) has the normalized position
+	# as its value, in both directions (consoles scroll down with `scrollbar.value = 0`), and the
+	# share of the content that is in view as its size
 	var sbar: Node = r.find("ScrollVBar")
 	var srect: Node = r.find("Scroll")
-	r.check(sbar is VScrollBar and srect is ScrollContainer, "Unity Scrollbar (BottomToTop) imported as a VScrollBar: " + str(sbar))
-	if sbar is VScrollBar and srect is ScrollContainer:
+	var is_scroll: bool = sbar is VScrollBar and srect is Control and srect.has_meta("unidot_scroll")
+	r.check(is_scroll, "Unity Scrollbar (BottomToTop) imported as a VScrollBar, the ScrollRect with its settings: " + str(sbar))
+	if is_scroll:
 		await r.wait(3)
-		r.check(is_equal_approx(sbar.value, 1.0) and is_equal_approx(u.scrollbar_get_size(sbar), 0.4), "the bar starts at the top (1) and keeps Unity's handle size: %s %s" % [str(sbar.value), str(u.scrollbar_get_size(sbar))])
+		var scontent: Control = u.scroll_content(srect)
+		var sview: Control = u.scroll_part(srect, "viewport")
+		r.check(scontent != null and sview != null and scontent.get_parent() == sview, "content and viewport are the Unity objects: %s in %s" % [str(scontent), str(sview)])
+		var share: float = u.RT.rect_size(sview).y / maxf(u.RT.rect_size(scontent).y, 1.0)
+		r.check(is_equal_approx(sbar.value, 1.0) and absf(u.scrollbar_get_size(sbar) - share) < 0.001 and share < 0.9, "the bar starts at the top (1), its size is the share of the content in view: %s %s (%.3f)" % [str(sbar.value), str(u.scrollbar_get_size(sbar)), share])
+		r.check(u.RT.anchored_position(scontent).is_zero_approx(), "the content starts at the top of the view: " + str(u.RT.anchored_position(scontent)))
 		sbar.value = 0.0
 		await r.wait(3)
-		r.check(u.scroll_get_v(srect) < 0.05, "scrollbar.value = 0 scrolls the rect to the bottom: " + str(u.scroll_get_v(srect)))
+		var hidden: float = u.RT.rect_size(scontent).y - u.RT.rect_size(sview).y
+		r.check(u.scroll_get_v(srect) < 0.05 and absf(u.RT.anchored_position(scontent).y - hidden) < 0.5, "scrollbar.value = 0 scrolls the rect to the bottom: %s, content at %s of %.0f" % [str(u.scroll_get_v(srect)), str(u.RT.anchored_position(scontent)), hidden])
 		u.scroll_set_v(srect, 1.0)
 		await r.wait(3)
-		r.check(sbar.value > 0.95, "scrolling the rect to the top moves the bar to 1: " + str(sbar.value))
+		r.check(sbar.value > 0.95 and u.RT.anchored_position(scontent).is_zero_approx(), "scrolling the rect to the top moves the bar to 1: " + str(sbar.value))
 	# Dropdown caption: Unity's own Text child shows the selection (the OptionButton's text is made
 	# invisible), and `dropdown.value = i` raises onValueChanged like Unity
 	var ddn: Node = r.find("Dropdown")
@@ -275,15 +284,21 @@ func _ui_checks(r, fx: Node) -> void:
 	# scroll rect: Item2 starts below the visible part; the wheel scrolls it into view, then it is clicked
 	var sc: Node = r.find("Scroll")
 	var item2: Node = r.find("Item2")
-	r.check(sc is ScrollContainer and item2 is BaseButton, "ScrollRect imported as ScrollContainer with its items: " + str(sc))
-	if sc is ScrollContainer and item2 is BaseButton:
+	var scrolls: bool = sc is Control and sc.has_meta("unidot_scroll") and item2 is BaseButton
+	r.check(scrolls, "ScrollRect imported with its items: " + str(sc))
+	if scrolls:
 		await r.wait(3)
-		r.check(sc.get_v_scroll_bar().max_value - sc.get_v_scroll_bar().page > 200.0, "content is taller than the viewport: range %.0f" % (sc.get_v_scroll_bar().max_value - sc.get_v_scroll_bar().page))
-		r.check(not sc.get_global_rect().encloses(Rect2(item2.get_global_transform() * Vector2.ZERO, Vector2.ONE)), "Item2 starts outside the visible part")
+		var content2: Control = u.scroll_content(sc)
+		var view2: Control = u.scroll_part(sc, "viewport")
+		var range2: float = u.RT.rect_size(content2).y - u.RT.rect_size(view2).y
+		r.check(range2 > 200.0, "content is taller than the viewport: range %.0f" % range2)
+		r.check(not view2.get_global_rect().encloses(Rect2(item2.get_global_transform() * Vector2.ZERO, Vector2.ONE)), "Item2 starts outside the visible part")
 		await r.mouse_move(r.project(r.control_world(sc)))
 		await r.wheel(-12)
 		await r.wait(5)
-		r.check(sc.scroll_vertical > 150, "wheel scrolled the rect through the pointer: scroll_vertical=%d" % sc.scroll_vertical)
+		# 12 notches at a scroll sensitivity of 20: 240 units, the content moves up
+		r.check(absf(u.RT.anchored_position(content2).y - minf(240.0, range2)) < 1.0, "wheel scrolled the rect through the pointer: content at %s" % str(u.RT.anchored_position(content2)))
+		r.check(view2.get_global_rect().has_point(item2.get_global_transform() * (item2.size * 0.5)), "Item2 is in view now")
 		r.check(int(fx.get("scrollEvents")) >= 1 and float(fx.get("scrollY")) < 0.5, "ScrollRect.onValueChanged reached the script: %d event(s), normalized y %.2f" % [int(fx.get("scrollEvents")), float(fx.get("scrollY"))])
 		await r.click(r.project(r.control_world(item2)))
 		await r.wait(3)

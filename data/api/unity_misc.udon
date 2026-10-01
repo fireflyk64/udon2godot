@@ -693,7 +693,7 @@ type Scrollbar : Selectable kind=component gd=ScrollBar extern=UnityEngineUIScro
   size: float => U.scrollbar_get_size($0)
   set size: float => U.scrollbar_set_size($0, $v)
 
-type ScrollRect : Behaviour kind=component gd=ScrollContainer extern=UnityEngineUIScrollRect
+type ScrollRect : Behaviour kind=component gd=Control extern=UnityEngineUIScrollRect
   verticalNormalizedPosition: float => U.scroll_get_v($0)
   set verticalNormalizedPosition: float => U.scroll_set_v($0, $v)
   horizontalNormalizedPosition: float => U.scroll_get_h($0)

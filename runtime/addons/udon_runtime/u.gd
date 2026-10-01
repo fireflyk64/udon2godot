@@ -1090,7 +1090,7 @@ const _TYPE_ALIASES: Dictionary = {
 	"Selectable": ["BaseButton", "Range", "LineEdit", "OptionButton", "TextEdit"], "Button": ["BaseButton"], "Toggle": ["BaseButton"],
 	"Slider": ["Range"], "Scrollbar": ["ScrollBar"], "Dropdown": ["OptionButton"], "TMP_Dropdown": ["OptionButton"],
 	"InputField": ["LineEdit", "TextEdit"], "TMP_InputField": ["LineEdit", "TextEdit"], "VRCUrlInputField": ["LineEdit", "TextEdit"],
-	"ScrollRect": ["ScrollContainer"], "Mask": ["@clip", "Control"], "RectMask2D": ["@clip", "Control"],
+	"ScrollRect": ["@meta:unidot_scroll", "ScrollContainer"], "Mask": ["@clip", "Control"], "RectMask2D": ["@clip", "Control"],
 	"CanvasGroup": ["@meta:unidot_canvas_group", "Control"], "Outline": ["@meta:unidot_effect_outline", "Label", "RichTextLabel", "Button"],
 	"Shadow": ["@meta:unidot_effect_shadow", "Label", "RichTextLabel", "Button"], "BaseMeshEffect": ["Label", "RichTextLabel", "Button"],
 	"Canvas": ["@meta:unidot_canvas", "@meta:unidot_canvas_nested", "CanvasLayer"], "CanvasScaler": ["@meta:unidot_canvas", "CanvasLayer"], "GraphicRaycaster": ["@meta:unidot_canvas", "@meta:unidot_canvas_nested", "CanvasLayer"],
@@ -4093,26 +4093,148 @@ func _ui_selectable_helper(c: Control) -> void:
 	helper.set_script(UiSelectable)
 	c.add_child(helper)
 
-func scroll_get_v(s: ScrollContainer) -> float:
-	var bar := s.get_v_scroll_bar()
-	var range_: float = bar.max_value - bar.page
-	return 1.0 - (bar.value / range_ if range_ > 0.0 else 0.0)
+# Unity's ScrollRect: unidot's runtime/scroll_rect.gd moves the content inside the viewport object
+# as Unity does (`unidot_scroll` metadata of the ScrollRect's Control); a hand-built
+# ScrollContainer is driven through its bars.
+const _UiScroll := preload("res://addons/unidot_importer/runtime/scroll_rect.gd")
 
-func scroll_set_v(s: ScrollContainer, v: float) -> void:
-	var bar := s.get_v_scroll_bar()
-	bar.value = (1.0 - v) * (bar.max_value - bar.page)
+func _scroll_host(s) -> Control:
+	var c: Control = _ui_ctl(s)
+	return c if c != null and c.has_meta(_UiScroll.META) else null
 
-func scroll_get_h(s: ScrollContainer) -> float:
-	var bar := s.get_h_scroll_bar()
-	var range_: float = bar.max_value - bar.page
-	return bar.value / range_ if range_ > 0.0 else 0.0
+func scroll_get_v(s) -> float:
+	if s is ScrollContainer:
+		var bar: VScrollBar = s.get_v_scroll_bar()
+		var range_: float = bar.max_value - bar.page
+		return 1.0 - (bar.value / range_ if range_ > 0.0 else 0.0)
+	var h: Control = _scroll_host(s)
+	return _UiScroll.normalized(h).y if h != null else 0.0
 
-func scroll_set_h(s: ScrollContainer, v: float) -> void:
-	var bar := s.get_h_scroll_bar()
-	bar.value = v * (bar.max_value - bar.page)
+func scroll_set_v(s, v: float) -> void:
+	if s is ScrollContainer:
+		var bar: VScrollBar = s.get_v_scroll_bar()
+		bar.value = (1.0 - v) * (bar.max_value - bar.page)
+		return
+	var h: Control = _scroll_host(s)
+	if h != null:
+		_UiScroll.set_normalized(h, v, 1)
+		_UiScroll.update(h)
+
+func scroll_get_h(s) -> float:
+	if s is ScrollContainer:
+		var bar: HScrollBar = s.get_h_scroll_bar()
+		var range_: float = bar.max_value - bar.page
+		return bar.value / range_ if range_ > 0.0 else 0.0
+	var h: Control = _scroll_host(s)
+	return _UiScroll.normalized(h).x if h != null else 0.0
+
+func scroll_set_h(s, v: float) -> void:
+	if s is ScrollContainer:
+		var bar: HScrollBar = s.get_h_scroll_bar()
+		bar.value = v * (bar.max_value - bar.page)
+		return
+	var h: Control = _scroll_host(s)
+	if h != null:
+		_UiScroll.set_normalized(h, v, 0)
+		_UiScroll.update(h)
+
+## A setting of the ScrollRect: horizontal, vertical, movement, sensitivity.
+func scroll_get(s, key: String, default):
+	if s is ScrollContainer:
+		match key:
+			"horizontal":
+				return s.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED
+			"vertical":
+				return s.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED
+		return default
+	var h: Control = _scroll_host(s)
+	return _UiScroll.config(h).get(key, default) if h != null else default
+
+func scroll_set(s, key: String, value) -> void:
+	if s is ScrollContainer:
+		match key:
+			"horizontal":
+				s.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if value else ScrollContainer.SCROLL_MODE_DISABLED
+			"vertical":
+				s.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if value else ScrollContainer.SCROLL_MODE_DISABLED
+		return
+	var h: Control = _scroll_host(s)
+	if h == null:
+		return
+	var cfg: Dictionary = _UiScroll.config(h).duplicate(true)
+	cfg[key] = value
+	h.set_meta(_UiScroll.META, cfg)
+
+## Scrollbar visibility / spacing of an axis (0 horizontal, 1 vertical).
+func scroll_get_axis(s, key: String, axis: int, default):
+	var h: Control = _scroll_host(s)
+	if h == null:
+		return default
+	var arr = _UiScroll.config(h).get(key)
+	return arr[axis] if arr is Array and arr.size() > axis else default
+
+func scroll_set_axis(s, key: String, axis: int, value) -> void:
+	var h: Control = _scroll_host(s)
+	if h == null:
+		return
+	var cfg: Dictionary = _UiScroll.config(h).duplicate(true)
+	var arr: Array = (cfg.get(key, [0, 0]) as Array).duplicate()
+	arr[axis] = value
+	cfg[key] = arr
+	h.set_meta(_UiScroll.META, cfg)
+
+## content, viewport, hbar, vbar of a ScrollRect.
+func scroll_part(s, key: String):
+	if s is ScrollContainer:
+		match key:
+			"content":
+				return s.get_child(0) if s.get_child_count() > 0 else null
+			"viewport":
+				return s
+			"hbar":
+				return s.get_h_scroll_bar()
+			"vbar":
+				return s.get_v_scroll_bar()
+		return null
+	var h: Control = _scroll_host(s)
+	if h == null:
+		return null
+	var n: Node = _UiScroll.part(h, key)
+	return n if n != null else (h if key == "viewport" else null)
+
+func scroll_set_part(s, key: String, value) -> void:
+	var h: Control = _scroll_host(s)
+	if h == null:
+		return
+	var cfg: Dictionary = _UiScroll.config(h).duplicate(true)
+	var target: Control = _ui_ctl(value)
+	if target != null:
+		cfg[key] = h.get_path_to(target)
+	else:
+		cfg.erase(key)
+	h.set_meta(_UiScroll.META, cfg)
+
+func scroll_content(s) -> Control:
+	return scroll_part(s, "content") as Control
+
+## ScrollRect.onValueChanged
+func scroll_signal(s) -> Signal:
+	if s is ScrollContainer:
+		return s.get_v_scroll_bar().value_changed
+	var h: Control = _scroll_host(s)
+	if h == null:
+		return Signal()
+	var helper: Node = h.get_node_or_null(_UiScroll.HELPER)
+	if helper == null:
+		helper = Node.new()
+		helper.name = _UiScroll.HELPER
+		helper.set_meta(RT.META_HELPER, true)
+		helper.set_script(_UiScroll)
+		h.add_child(helper)
+	return Signal(helper, "scrolled")
 
 ## Unity's Scrollbar.size (handle size 0..1). The imported bar keeps page = 0 so that `value`
-## spans 0..1 as in Unity; the size is only remembered.
+## spans 0..1 as in Unity; the size is kept in its metadata and the handle object follows.
 func scrollbar_get_size(bar: Range) -> float:
 	if bar != null and bar.has_meta("unidot_scrollbar"):
 		return float(bar.get_meta("unidot_scrollbar").get("size", 1.0))
@@ -4121,12 +4243,10 @@ func scrollbar_get_size(bar: Range) -> float:
 func scrollbar_set_size(bar: Range, v: float) -> void:
 	if bar == null:
 		return
-	var cfg: Dictionary = bar.get_meta("unidot_scrollbar") if bar.has_meta("unidot_scrollbar") else {}
+	var cfg: Dictionary = (bar.get_meta("unidot_scrollbar") as Dictionary).duplicate() if bar.has_meta("unidot_scrollbar") else {}
 	cfg["size"] = clampf(v, 0.0, 1.0)
 	bar.set_meta("unidot_scrollbar", cfg)
-
-func scroll_content(s: ScrollContainer) -> Control:
-	return s.get_child(0) if s.get_child_count() > 0 else null
+	UiSelectable.refresh_host(bar)
 
 # RectTransform properties: unidot's rect_transform.gd (the importer's own code) does the work.
 func rect_get_pivot(c: Node) -> Vector2:

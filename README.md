@@ -179,7 +179,7 @@ viewport pixels per metre, `unidot/ui/pixels_per_metre`) or, in a screen-space r
 CanvasLayer scaled like Unity's CanvasScaler. The code lives in the unidot fork and is independent
 of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_plane.gd`,
 `canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `ui_sprite.gd`,
-`selectable.gd` (run time).
+`selectable.gd`, `scroll_rect.gd` (run time).
 
 * **One implementation.** `rect_transform.gd` holds Unity's RectTransform rules (anchors,
   anchored position, size delta, pivot, offsets, rotation, scale, world matrices through nested
@@ -206,6 +206,11 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   `unidot_selectable` (`selectable.gd`): the colour tint of the target graphic by selection
   state (a button whose normal colour has alpha 0 is invisible until hovered), the Toggle's
   check mark, the Slider's fill and handle rects (Slider.UpdateVisuals).
+* **ScrollRect** is Unity's scroller on the objects as they are (`scroll_rect.gd`): the content
+  moves inside the viewport object by its anchored position, the viewport makes room for
+  scrollbars that hide themselves, the Scrollbar objects get size, value and visibility and
+  their handles follow; `content.anchoredPosition`, `verticalNormalizedPosition`,
+  `scrollbar.value` and `onValueChanged` of a script mean what they mean in Unity.
 * **Sprites.** Border, pixels per unit and the rect of a sprite in a sheet come from the
   texture's import settings. A sliced Image is drawn as nine patches with borders of Unity's
   size (they shrink in a rect smaller than them), tiled and filled Images likewise by a helper
@@ -219,7 +224,7 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   does this for `tests/unity_ui` (written by `tools/gen_ui_fixture.py`: every anchor / pivot
   case, 3D placement, 43 layout group panels, nested and screen canvases, prefab overrides,
   sliders / toggles / tinted and disabled graphics / rich text, component overrides on prefab
-  instances, sliced / tiled / filled sprites) imported by unidot alone, after the unit tests of the run-time modules. For an
+  instances, sliced / tiled / filled sprites, scroll views) imported by unidot alone, after the unit tests of the run-time modules. For an
   imported world:
   `world_runner.gd --static --scenario res://scenarios/canvas_dump.gd --dump-out d.json`, then
   `tools/unity_ui_reference.py <assets> <scene.unity> --compare d.json`.

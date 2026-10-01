@@ -448,6 +448,8 @@ class Node:
         self.component_ids = []   # file ids, parallel to components
         self.renderer_color = [1.0, 1.0, 1.0, 1.0]   # CanvasRenderer colour (Selectable tint, Toggle fade)
         self.field_text = False   # the text or placeholder object of an input field
+        self.scroll_value = None  # value and size a ScrollRect gave its scrollbar
+        self.scroll_size = None
         d = tobj.data
         self.local_position = _vec(d.get("m_LocalPosition"), "xyz", (0, 0, 0))
         self.local_rotation = _vec(d.get("m_LocalRotation"), "xyzw", (0, 0, 0, 1))
@@ -576,6 +578,19 @@ def mat_trs(t, q, s):
     return m
 
 
+def mat_inverse(m):
+    """Inverse of an affine 4x4 (rotation, scale, translation)."""
+    a = [[m[i][j] for j in range(3)] for i in range(3)]
+    det = (a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
+    if abs(det) < 1e-30:
+        return mat_identity()
+    inv = [[(a[(j + 1) % 3][(i + 1) % 3] * a[(j + 2) % 3][(i + 2) % 3] - a[(j + 1) % 3][(i + 2) % 3] * a[(j + 2) % 3][(i + 1) % 3]) / det for j in range(3)] for i in range(3)]
+    t = [m[i][3] for i in range(3)]
+    out = [[inv[i][0], inv[i][1], inv[i][2], -sum(inv[i][k] * t[k] for k in range(3))] for i in range(3)]
+    out.append([0.0, 0.0, 0.0, 1.0])
+    return out
+
+
 def mat_point(m, p):
     return [m[i][0] * p[0] + m[i][1] * p[1] + m[i][2] * p[2] + m[i][3] for i in range(3)]
 
@@ -608,9 +623,14 @@ class Layout:
     Layout groups write their children's anchors, anchored position and size delta, as in Unity,
     and every rect is then computed from those values."""
 
-    def __init__(self, sprite_size=None):
+    def __init__(self, sprite_size=None, nodes=None):
         # (node, Image data) → the size the Image asks for (Image.preferredWidth / Height), or None
         self.sprite_size = sprite_size or (lambda n, img: None)
+        self.nodes = nodes or {}                 # transform file id → node
+        self.owner = {}                          # component file id → node
+        for n in self.nodes.values():
+            for cid in n.component_ids:
+                self.owner[cid] = n
         self._inputs = {}  # (node id, axis) → (min, preferred, flexible)
 
     # --- plain RectTransform geometry -------------------------------------------------------
@@ -923,6 +943,135 @@ class Layout:
                 self.aspect(c, arf)
             self.set_axis(c, axis, shown and c.active)
 
+    # --- ScrollRect ---------------------------------------------------------------------------
+    def relayout(self, n):
+        """A rect's values changed: place it and everything below it again."""
+        for axis in (0, 1):
+            self._inputs = {}
+            self.place(n, axis)
+            self.set_axis(n, axis, True)
+
+    @staticmethod
+    def _to_ancestor(n, ancestor):
+        """Matrix from n's local space to the local space of `ancestor` (any node of the tree)."""
+        def up(x):
+            m = mat_identity()
+            chain = []
+            while x is not None:
+                chain.append(x)
+                x = x.parent
+            for c in reversed(chain):
+                m = mat_mul(m, local_matrix(c))
+            return m
+        return mat_mul(mat_inverse(up(ancestor)), up(n))
+
+    def scroll_bounds(self, view, content):
+        """(view min, view max, content min, content max) in the view's local space, the content
+        bounds padded to the view size by the content's pivot (ScrollRect.UpdateBounds)."""
+        vmin = [-view.pivot[0] * view.size[0], -view.pivot[1] * view.size[1]]
+        vmax = [vmin[0] + view.size[0], vmin[1] + view.size[1]]
+        pts = corners_of(content, self._to_ancestor(content, view))
+        cmin = [min(p[i] for p in pts) for i in range(2)]
+        cmax = [max(p[i] for p in pts) for i in range(2)]
+        for i in range(2):
+            excess = (vmax[i] - vmin[i]) - (cmax[i] - cmin[i])
+            if excess > 0:
+                centre = (cmin[i] + cmax[i]) * 0.5 - excess * (content.pivot[i] - 0.5)
+                half = (vmax[i] - vmin[i]) * 0.5
+                cmin[i], cmax[i] = centre - half, centre + half
+        return vmin, vmax, cmin, cmax
+
+    def scroll_rects(self, canvas):
+        """What every ScrollRect of the canvas does at rest (SetLayoutHorizontal / Vertical and
+        LateUpdate): the viewport makes room for scrollbars that hide themselves, the content
+        is pulled back into the view, the scrollbars take size and value, their handles follow
+        (Scrollbar.UpdateVisuals)."""
+        def walk(n, shown):
+            sr = n.comp("ScrollRect")
+            if shown and enabled(sr):
+                self.scroll_rect(n, sr)
+            for c in n.children:
+                if c.is_rect:
+                    walk(c, shown and c.active)
+        walk(canvas, canvas.active)
+
+    def scroll_rect(self, n, d):
+        content = self.nodes.get(_ref_id(d.get("m_Content")))
+        if content is None:
+            return
+        view = self.nodes.get(_ref_id(d.get("m_Viewport"))) or n
+        bars = [self.owner.get(_ref_id(d.get("m_HorizontalScrollbar"))), self.owner.get(_ref_id(d.get("m_VerticalScrollbar")))]
+        enabled_axis = [_num(d.get("m_Horizontal", 1), 1) != 0, _num(d.get("m_Vertical", 1), 1) != 0]
+        movement = int(_num(d.get("m_MovementType", 1), 1))
+        visibility = [int(_num(d.get("m_HorizontalScrollbarVisibility", 0))), int(_num(d.get("m_VerticalScrollbarVisibility", 0)))]
+        spacing = [_num(d.get("m_HorizontalScrollbarSpacing", 0)), _num(d.get("m_VerticalScrollbarSpacing", 0))]
+        children = view.parent is n and all(b is None or b.parent is n for b in bars)
+        expand = [children and bars[i] is not None and visibility[i] == 2 for i in range(2)]
+        thickness = [bars[0].size[1] if bars[0] is not None else 0.0, bars[1].size[0] if bars[1] is not None else 0.0]
+
+        def needed(axis):
+            vmin, vmax, cmin, cmax = self.scroll_bounds(view, content)
+            return (cmax[axis] - cmin[axis]) > (vmax[axis] - vmin[axis]) + 0.01
+        if expand[0] or expand[1]:
+            # the view at full size first: does the content fit without scrollbars?
+            view.anchor_min, view.anchor_max = [0.0, 0.0], [1.0, 1.0]
+            view.size_delta, view.anchored_position = [0.0, 0.0], [0.0, 0.0]
+            self.relayout(view)
+            if expand[1] and needed(1):
+                view.size_delta[0] = -(thickness[1] + spacing[1])
+                self.relayout(view)
+            if expand[0] and needed(0):
+                view.size_delta[1] = -(thickness[0] + spacing[0])
+                self.relayout(view)
+            if expand[1] and needed(1) and view.size_delta[0] == 0 and view.size_delta[1] < 0:
+                view.size_delta[0] = -(thickness[1] + spacing[1])
+                self.relayout(view)
+        # the scrollbars along the edges leave the corner free when both are shown
+        if expand[1] and bars[0] is not None:
+            b = bars[0]
+            b.anchor_min[0], b.anchor_max[0], b.anchored_position[0] = 0.0, 1.0, 0.0
+            b.size_delta[0] = -(thickness[1] + spacing[1]) if needed(1) else 0.0
+            self.relayout(b)
+        if expand[0] and bars[1] is not None:
+            b = bars[1]
+            b.anchor_min[1], b.anchor_max[1], b.anchored_position[1] = 0.0, 1.0, 0.0
+            b.size_delta[1] = -(thickness[0] + spacing[0]) if needed(0) else 0.0
+            self.relayout(b)
+        # content that lies outside the view is pulled back (clamped and elastic movement)
+        vmin, vmax, cmin, cmax = self.scroll_bounds(view, content)
+        offset = [0.0, 0.0]
+        if movement != 0:
+            if enabled_axis[0]:
+                if vmin[0] - cmin[0] < -0.001:
+                    offset[0] = vmin[0] - cmin[0]
+                elif vmax[0] - cmax[0] > 0.001:
+                    offset[0] = vmax[0] - cmax[0]
+            if enabled_axis[1]:
+                if vmax[1] - cmax[1] > 0.001:
+                    offset[1] = vmax[1] - cmax[1]
+                elif vmin[1] - cmin[1] < -0.001:
+                    offset[1] = vmin[1] - cmin[1]
+        if offset != [0.0, 0.0]:
+            content.anchored_position = [content.anchored_position[0] + offset[0], content.anchored_position[1] + offset[1]]
+            self.relayout(content)
+            vmin, vmax, cmin, cmax = self.scroll_bounds(view, content)
+        for axis in range(2):
+            bar = bars[axis]
+            if bar is None:
+                continue
+            csize, vsize = cmax[axis] - cmin[axis], vmax[axis] - vmin[axis]
+            bar.scroll_size = min(max(vsize / csize, 0.0), 1.0) if csize > 0 else 1.0
+            if csize <= vsize or abs(csize - vsize) < 1e-5 * max(abs(csize), 1.0):
+                bar.scroll_value = 1.0 if vmin[axis] > cmin[axis] else 0.0
+            else:
+                bar.scroll_value = (vmin[axis] - cmin[axis]) / (csize - vsize)
+            # Permanent: shown while the axis scrolls at all; the auto-hide modes: while needed
+            bar.active = enabled_axis[axis] if visibility[axis] == 0 else (csize > vsize + 0.01)
+            scrollbar_visuals(bar, self.nodes)
+            handle = self.nodes.get(_ref_id((bar.comp("Scrollbar") or {}).get("m_HandleRect")))
+            if handle is not None and handle.parent is not None:
+                self.relayout(handle)
+
     # --- driver -----------------------------------------------------------------------------
     def layout_canvas(self, canvas, screen):
         cv = canvas.comp("Canvas")
@@ -945,6 +1094,7 @@ class Layout:
                 else:
                     self.place(canvas, axis)
                 self.set_axis(canvas, axis, canvas.active)
+            self.scroll_rects(canvas)
 
 
 # --------------------------------------------------------------------------------------------
@@ -989,6 +1139,8 @@ def apply_selectables(nodes):
                     part = owner.get(_ref_id(d.get(key)))
                     if part is not None:
                         part.field_text = True
+            if name == "Scrollbar":
+                scrollbar_visuals(n, nodes)
             if name == "Slider":
                 lo, hi = _num(d.get("m_MinValue", 0)), _num(d.get("m_MaxValue", 1), 1)
                 value = min(max(_num(d.get("m_Value", 0)), lo), hi)
@@ -1013,6 +1165,28 @@ def apply_selectables(nodes):
                     amin, amax = [0.0, 0.0], [1.0, 1.0]
                     amin[axis] = amax[axis] = (1.0 - t) if reverse else t
                     handle.anchor_min, handle.anchor_max = amin, amax
+
+
+def scrollbar_visuals(n, nodes):
+    """Scrollbar.UpdateVisuals: the handle spans `size` of the bar, moved by the value."""
+    d = n.comp("Scrollbar")
+    if d is None:
+        return
+    handle = nodes.get(_ref_id(d.get("m_HandleRect")))
+    if handle is None or handle.parent is None or not handle.parent.is_rect:
+        return
+    value = n.scroll_value if n.scroll_value is not None else _num(d.get("m_Value", 0))
+    size = n.scroll_size if n.scroll_size is not None else _num(d.get("m_Size", 0.2), 0.2)
+    size = min(max(size, 0.0), 1.0)
+    direction = int(_num(d.get("m_Direction", 0)))
+    axis = 0 if direction < 2 else 1
+    movement = min(max(value, 0.0), 1.0) * (1.0 - size)
+    amin, amax = [0.0, 0.0], [1.0, 1.0]
+    if direction in (1, 3):
+        amin[axis], amax[axis] = 1.0 - movement - size, 1.0 - movement
+    else:
+        amin[axis], amax[axis] = movement, movement + size
+    handle.anchor_min, handle.anchor_max = amin, amax
 
 
 def graphic_of(n):
@@ -1325,7 +1499,7 @@ def reference(assets_dir, target, screen=(1152.0, 648.0)):
     assets = Assets(assets_dir)
     model = assets.flatten(target)
     nodes, roots = build_graph(model, assets)
-    layout = Layout(Sprites(assets).preferred)
+    layout = Layout(Sprites(assets).preferred, nodes)
     apply_selectables(nodes)
     out = [describe_canvas(c, layout, screen) for c in find_canvases(roots)]
     return out, assets.warnings, nodes

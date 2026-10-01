@@ -136,8 +136,8 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
         renders each canvas and compares the pixel at the centre of every solid graphic with
         renders each canvas and compares pixels with the transforms: five points of every
         solid graphic and nine of every sprite (where its texture is opaque and even), through
-        text drawn over them (1942 points on 395 of 420 graphics in `tests/unity_ui`, 233 on
-        40 of 46 in the pool table with every menu shown; with the snapping left on it reports
+        text drawn over them (2211 points on 449 of 497 graphics in `tests/unity_ui`, 329 on
+        41 of 48 in the pool table with every menu shown; with the snapping left on it reports
         the START and PLAY buttons and the fixture's menu items). `scripts/test_ui.sh` and
         `scripts/test_world_billiards.sh` run it when a display is there.
       * unidot's YAML reader kept the closing quote of single-quoted scalars and dropped doubled
@@ -148,6 +148,21 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       a child label as high as the content, placed by the vertical alignment
       (`UnidotTextOverflow`, made and removed by `ui_text.gd` as text and rect change; the node
       keeps the Unity rect and the string). Fixture: TmpOverTop / Middle / Bottom, UguiOver.
+- [x] ScrollRect as Unity's own scroller. It was a Godot ScrollContainer: the scrolled object and
+      Unity's Scrollbar children were not where Unity puts them, and scripts that read or set
+      `content.anchoredPosition` saw nothing. Now the objects stay what they are
+      (`runtime/scroll_rect.gd`, helper child `UnidotScroll`, metadata `unidot_scroll`): the
+      content moves inside the viewport object by its anchored position (ScrollRect.UpdateBounds
+      / CalculateOffset / SetNormalizedPosition ported: content smaller than the view is padded
+      by its pivot, content outside is brought back unless the movement is unrestricted), the
+      viewport makes room for scrollbars that hide themselves (visibility 2,
+      SetLayoutHorizontal / UpdateScrollbarLayout), the Scrollbars get size, value and
+      visibility and their handles follow (Scrollbar.UpdateVisuals in `selectable.gd`, which
+      also takes the pointer on a Scrollbar as Unity does), the wheel and dragging scroll,
+      `onValueChanged` is the helper's `scrolled` signal. The reference tool models the same
+      (independently, from the Unity files); `tests/unity_ui` has a "Scroll" canvas with 13
+      scroll views and 5 scrollbars (174 nodes).
+      Left: inertia and the elastic spring (the content snaps back), `Scrollbar.numberOfSteps`.
 - [x] UI component overrides on prefab instances: text, font size / style, colour (by member:
       `m_Color.r`), `m_Enabled` (it used to hide the object), sprite, Selectable colours /
       interactable, `m_IsOn`, Slider value / range / direction, layout group / element / fitter
@@ -166,10 +181,6 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       * Selectable transitions other than colour tint (sprite swap, animation); tints are
         applied at once (no fade); `CanvasGroup.interactable` does not disable the selectables
         below it; CanvasGroup overrides on prefab instances.
-      * ScrollRect is a Godot ScrollContainer: the scrolled object and Unity's Scrollbar children
-        are not where Unity puts them (2 known mismatches in `tests/unity_fixture`); a Unity-style
-        scroller (content moved by its anchored position, Scrollbar.UpdateVisuals for the handle)
-        would fix both and make `content.anchoredPosition` scripts work.
       * A rect with a negative size (stretched with insets larger than the parent): a Control
         cannot be negative; children anchored to it are off (flagged, not compared).
       * An InputField smaller than one line of its font keeps Godot's minimum height.
@@ -195,7 +206,8 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
             behind the control), border size as Unity (sprite pixels × canvas reference pixels
             per unit / sprite pixels per unit / multiplier), borders shrink on an axis where the
             rect is smaller than both (Image.GetAdjustedBorders), fill centre.
-      - [x] Tiled (from the bottom-left, the last tiles cut) and Filled, horizontal and vertical
+      - [x] Tiled (Image.GenerateTiledSprite: the borders stay, the centre and the edges repeat
+            from the bottom-left, the last tiles cut) and Filled, horizontal and vertical
             with origin; `fillAmount` / `fillMethod` / `fillOrigin` / `type` / `SetNativeSize`
             of a script. Radial fills are drawn whole.
       - [x] Built-in sprites: stand-ins with Unity's sizes (200 pixels per unit) and 10 pixel
@@ -204,11 +216,10 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       - [x] An Image's preferred size in a layout is its sprite's size in canvas units, or the
             sum of its borders when sliced or tiled (`preferred` of the graphic metadata;
             the reference reads PNG / PSD headers and the .meta).
-      - [x] Tests: slice and fill geometry by hand-computed Unity numbers (276 unit checks);
+      - [x] Tests: slice, tile and fill geometry by hand-computed Unity numbers;
             `Frame.png`, `Bar.png`, `Sheet.png` written by the fixture generator and a "Sprites"
             canvas (27 Images); the pixel check maps 25 points of every such Image through the
-            slices and checks that holes show what is behind (1942 points on 395 of 420
-            graphics); `TWidgets` drives a filled Image.
+            slices and checks that holes show what is behind; `TWidgets` drives a filled Image.
 - [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts,
       Dropdown templates; Animator; constraints components; ...).
 
@@ -236,8 +247,9 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       (Button/Toggle/Slider/LineEdit/OptionButton/Label/RichTextLabel/TextureRect), world-space canvases
       become SubViewport + quad (sized to the union of their content, nested canvases are containers),
       overlay canvases a CanvasLayer; `Button.onClick`/`Toggle`/`Slider`/`InputField` persistent calls
-      connect to `SendCustomEvent` (26 wired in the billiards table). Open: TMP fonts/sprites/9-slice
-      fidelity, layout groups, Dropdown item templates, ScrollRect contents.
+      connect to `SendCustomEvent` (26 wired in the billiards table). Layout groups, sprites
+      (9-slice), ScrollRect and text are done (see the first section). Open: TMP font assets,
+      Dropdown item templates.
 - [x] Test hooks: `U.ui_press(node, value)`, `U.ui_click_world(canvas, point)`, `Udon.simulate_key/axis/
       button/mouse_*`, `Udon.input_event("InputJump", ...)`; `world_runner.gd --scenario` drives a world
       (`godot_world_template/scenarios/billiards.gd` opens the lobby, joins, starts 8-ball and plays a
