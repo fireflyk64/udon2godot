@@ -8,7 +8,8 @@ namespace Coverage
     /// What a script changes on texts, graphics and selectables is drawn by the code that draws
     /// the imported scene (unidot's ui_text.gd, ui_graphic.gd, selectable.gd). The runner builds
     /// a canvas the way the importer does: `label` (TextMeshProUGUI "<b>Start</b>", size 20),
-    /// `fitted` (auto-sized between 8 and 60 in 200 x 30), `image` with a child `kid`, `button`
+    /// `fitted` (auto-sized between 8 and 60 in 200 x 30), `image` with a child `kid`, `bar` (a
+    /// horizontally filled Image of 128 x 32), `button`
     /// (its own Image as target graphic, normal colour with alpha 0), `toggle` (off, check mark
     /// `check`), `slider` (0..1 at 0.5, left to right, `fill` and `handle`) and `text3d`, a
     /// TextMeshPro outside the canvas.
@@ -31,6 +32,7 @@ namespace Coverage
         public RectTransform fill;
         public RectTransform handle;
         public TextMeshPro text3d;
+        public Image bar;
 
         private void Check(bool ok, string what)
         {
@@ -72,6 +74,13 @@ namespace Coverage
             Check(!image.enabled && image.gameObject.activeSelf && kid.gameObject.activeInHierarchy, "a disabled Image leaves its object and children active");
             image.canvasRenderer.SetAlpha(0.25f);
             Check(Near(image.canvasRenderer.GetAlpha(), 0.25f) && Near(image.color.a, 1f), "CanvasRenderer alpha is apart from the colour");
+
+            // a filled Image (the runner made `bar` one, at 1): the amount is drawn, the rect stays
+            Check(bar.type == Image.Type.Filled && Near(bar.fillAmount, 1f), "filled Image as imported: " + bar.fillAmount);
+            bar.fillAmount = 0.25f;
+            Check(Near(bar.fillAmount, 0.25f) && Near(bar.rectTransform.rect.width, 128f), "fillAmount changes what is drawn, not the rect: " + bar.rectTransform.rect.width);
+            bar.fillOrigin = 1;
+            Check(bar.fillOrigin == 1 && bar.fillMethod == Image.FillMethod.Horizontal, "fill origin and method");
 
             // selectables
             ColorBlock block = button.colors;

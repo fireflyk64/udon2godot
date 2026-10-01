@@ -17,6 +17,10 @@ The scene (`UiCases.unity`) holds one canvas per group of cases:
   Nested     canvases inside canvases: in place, as prefab instances, coplanar and tilted
   Placed     a canvas with an off-centre pivot under rotated and scaled plain Transforms
   Screen*    screen-space canvases with each CanvasScaler mode
+  Sprites    Images that are not simply stretched: sliced (borders at their size, shrunk in a
+             small rect, with a multiplier, without centre, on a Button), tiled, filled, sprites
+             of a sheet, Unity's built-in sprites, and their preferred sizes in a layout group.
+             The textures (Frame.png, Sheet.png, Bar.png) are written here too.
   Widgets    what one object does to another and what is drawn: Slider fill and handle rects by
              value and direction, Toggle check marks, Selectable colour tints, disabled graphics,
              masks, canvas groups, rich text (TextMeshPro and uGUI), an input field's text objects
@@ -31,7 +35,9 @@ from these files, and the imported scene is compared with that (scripts/test_ui.
 import hashlib
 import math
 import os
+import struct
 import sys
+import zlib
 
 GUID = {
     "Image": "fe87c0e1cc204ed48ad3b37840f39efc",
@@ -396,9 +402,185 @@ def quoted(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def image(color=(1, 1, 1, 1), kind=0):
-    """kind: Image.Type (0 simple, 3 filled)."""
-    return ("Image", _GRAPHIC % vec(color, "rgba") + "  m_Sprite: {fileID: 0}\n  m_Type: %d\n  m_PreserveAspect: 0\n  m_FillCenter: 1\n  m_FillMethod: 4\n  m_FillAmount: 1\n  m_FillClockwise: 1\n  m_FillOrigin: 0\n  m_UseSpriteMesh: 0\n  m_PixelsPerUnitMultiplier: 1\n" % kind)
+def image(color=(1, 1, 1, 1), kind=0, sprite=None, center=True, fill=(4, 1, 0), multiplier=1):
+    """kind: Image.Type (0 simple, 1 sliced, 2 tiled, 3 filled); sprite: (file id, guid) or None;
+    fill: (method 0 horizontal / 1 vertical, amount, origin)."""
+    ref = "{fileID: 0}" if sprite is None else "{fileID: %d, guid: %s, type: %d}" % (sprite[0], sprite[1], 0 if sprite[1] == BUILTIN else 3)
+    return ("Image", _GRAPHIC % vec(color, "rgba") + "  m_Sprite: %s\n  m_Type: %d\n  m_PreserveAspect: 0\n  m_FillCenter: %d\n  m_FillMethod: %d\n  m_FillAmount: %s\n  m_FillClockwise: 1\n  m_FillOrigin: %d\n  m_UseSpriteMesh: 0\n  m_PixelsPerUnitMultiplier: %s\n" % (
+        ref, kind, center, fill[0], num(fill[1]), fill[2], num(multiplier)))
+
+
+# ---- sprite textures ------------------------------------------------------------------------------
+
+BUILTIN = "0000000000000000f000000000000000"          # Unity's built-in resources
+UI_SPRITE, BACKGROUND, INPUT_BACKGROUND, KNOB, CHECKMARK = ((i, BUILTIN) for i in (10905, 10907, 10911, 10913, 10901))
+FRAME = (21300000, "0c11ca5e0000000000000000000000a1")   # 64 x 64, border 16
+BAR = (21300000, "0c11ca5e0000000000000000000000a2")     # 64 x 16, two halves
+SHEET_GUID = "0c11ca5e0000000000000000000000a3"          # 64 x 32, two sprites
+SHEET_LEFT = (7482667652216324301, SHEET_GUID)
+SHEET_RIGHT = (-3219062469524436042, SHEET_GUID)
+
+RED, GREEN, BLUE, YELLOW = (230, 60, 60, 255), (60, 200, 80, 255), (60, 90, 230, 255), (240, 220, 60, 255)
+ORANGE, PURPLE, MAGENTA, CYAN = (240, 150, 40, 255), (150, 70, 200, 255), (220, 60, 200, 255), (60, 210, 220, 255)
+
+
+def png(width, height, pixel):
+    """An RGBA PNG; pixel(x, y) with y down → (r, g, b, a)."""
+    raw = b"".join(b"\x00" + bytes(c for x in range(width) for c in pixel(x, y)) for y in range(height))
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+
+def frame_pixel(x, y):
+    """Corners red, top and bottom edges green, left and right edges blue, centre yellow."""
+    ex, ey = x < 16 or x >= 48, y < 16 or y >= 48
+    return RED if ex and ey else (BLUE if ex else (GREEN if ey else YELLOW))
+
+
+TEXTURE_META = """fileFormatVersion: 2
+guid: %(guid)s
+TextureImporter:
+  internalIDToNameTable:%(names)s
+  externalObjects: {}
+  serializedVersion: 12
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 0
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 0
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: %(mode)d
+  spriteExtrude: 1
+  spriteMeshType: 0
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: %(ppu)s
+  spriteBorder: %(border)s
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:%(sprites)s
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable: {}
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+"""
+
+SHEET_SPRITE = """
+    - serializedVersion: 2
+      name: %(name)s
+      rect:
+        serializedVersion: 2
+        x: %(x)d
+        y: %(y)d
+        width: %(w)d
+        height: %(h)d
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: %(b)d, y: %(b)d, z: %(b)d, w: %(b)d}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: %(id)s
+      internalID: %(internal)d
+      vertices: []
+      indices: 
+      edges: []
+      weights: []"""
+
+
+def write_textures(out):
+    """Frame.png (sliced), Bar.png (filled), Sheet.png (two sprites) and their import settings."""
+    def write(name, data, meta):
+        with open(os.path.join(out, name), "wb") as fh:
+            fh.write(data)
+        with open(os.path.join(out, name + ".meta"), "w") as fh:
+            fh.write(meta)
+    write("Frame.png", png(64, 64, frame_pixel), TEXTURE_META % {"guid": FRAME[1], "names": " []", "mode": 1, "ppu": 100, "border": "{x: 16, y: 16, z: 16, w: 16}", "sprites": " []"})
+    write("Bar.png", png(64, 16, lambda x, y: ORANGE if x < 32 else PURPLE), TEXTURE_META % {"guid": BAR[1], "names": " []", "mode": 1, "ppu": 100, "border": "{x: 0, y: 0, z: 0, w: 0}", "sprites": " []"})
+    names = "".join("\n  - first:\n      213: %d\n    second: %s" % (sp[0], nm) for sp, nm in ((SHEET_LEFT, "Sheet_0"), (SHEET_RIGHT, "Sheet_1")))
+    # Unity's sprite rects have their origin at the bottom-left: the upper half of the left
+    # sprite is magenta, its lower half cyan; the right sprite is the other way round
+    sprites = "".join(SHEET_SPRITE % {"name": nm, "x": x, "y": 0, "w": 32, "h": 32, "b": 0, "id": "%032x" % (i + 1), "internal": sp[0]}
+                      for i, (sp, nm, x) in enumerate(((SHEET_LEFT, "Sheet_0", 0), (SHEET_RIGHT, "Sheet_1", 32))))
+    write("Sheet.png", png(64, 32, lambda x, y: (MAGENTA if (x < 32) == (y < 16) else CYAN)), TEXTURE_META % {"guid": SHEET_GUID, "names": names, "mode": 2, "ppu": 100, "border": "{x: 0, y: 0, z: 0, w: 0}", "sprites": sprites})
 
 
 def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
@@ -858,6 +1040,46 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
         (widget_ids["row"], "m_ChildAlignment", 5), (widget_ids["cell_a"], "m_IgnoreLayout", 1),
     ])
 
+    # ---- Sprites: Images that are not simply stretched ------------------------------------------
+    c = b.world_canvas("Sprites", (6.2, 3.0, 2), (900, 600))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.12, 0.14, 0.12, 1))
+
+    def sprite(name, pos, size, comps=(), **kw):
+        return f.node(name, c, {"pos": pos, "size": size}, [renderer(), image(**kw)] + list(comps))
+    sprite("Simple", (-380, 240), (64, 64), sprite=FRAME)                                  # the whole sprite, stretched
+    sprite("SimpleWide", (-270, 240), (128, 64), sprite=FRAME)
+    sprite("Sliced", (-100, 240), (200, 100), kind=1, sprite=FRAME)                        # 16 unit borders
+    sprite("SlicedSmall", (60, 240), (20, 80), kind=1, sprite=FRAME)                       # the x borders shrink to 10
+    sprite("SlicedTiny", (110, 240), (24, 24), kind=1, sprite=FRAME)                       # both shrink
+    sprite("SlicedMultiplier", (240, 240), (160, 60), kind=1, sprite=FRAME, multiplier=2)  # 8 unit borders
+    sprite("SlicedHollow", (-100, 110), (200, 100), kind=1, sprite=FRAME, center=False)    # no centre
+    sprite("SlicedTinted", (120, 110), (160, 60), kind=1, sprite=FRAME, color=(0.5, 0.5, 1, 1))
+    sliced_button = sprite("SlicedButton", (320, 110), (160, 60), kind=1, sprite=FRAME)
+    f.node("Label", sliced_button, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("sliced", 14, (0, 0, 0, 1))])
+    f.add(sliced_button, button(target=sliced_button.components[1][0]))
+    sprite("SlicedNoBorder", (-380, 130), (64, 100), kind=1, sprite=BAR)                   # sliced without borders: stretched
+    sprite("Tiled", (-300, -20), (160, 96), kind=2, sprite=FRAME)                          # 2.5 x 1.5 tiles from the bottom-left
+    sprite("FillLeft", (-100, 10), (128, 32), kind=3, sprite=BAR, fill=(0, 0.25, 0))       # the left quarter
+    sprite("FillRight", (-100, -40), (128, 32), kind=3, sprite=BAR, fill=(0, 0.75, 1))     # the right three quarters
+    sprite("FillBottom", (20, -20), (64, 96), kind=3, sprite=FRAME, fill=(1, 0.5, 0))      # the lower half
+    sprite("FillTop", (100, -20), (64, 96), kind=3, sprite=FRAME, fill=(1, 0.25, 1))       # the upper quarter
+    sprite("FillFull", (180, -20), (64, 96), kind=3, sprite=FRAME, fill=(0, 1, 0))
+    sprite("SheetLeft", (280, -20), (64, 64), sprite=SHEET_LEFT)
+    sprite("SheetRight", (360, -20), (64, 64), sprite=SHEET_RIGHT)
+    # Unity's built-in sprites, 200 pixels per unit: a 10 pixel border is 5 units
+    sprite("BuiltinButton", (-340, -150), (160, 30), kind=1, sprite=UI_SPRITE)
+    sprite("BuiltinField", (-160, -150), (160, 30), kind=1, sprite=INPUT_BACKGROUND)
+    sprite("BuiltinBox", (-50, -150), (20, 20), kind=1, sprite=BACKGROUND)
+    sprite("BuiltinCheck", (-20, -150), (20, 20), sprite=CHECKMARK)
+    sprite("BuiltinKnob", (10, -150), (20, 20), sprite=KNOB)
+    # what an Image asks for in a layout: its sprite's size in units, its borders when sliced
+    row = b.box("Preferred", c, {"pos": (200, -160), "size": (400, 80)}, [hgroup(padding=(4, 4, 4, 4), spacing=6, control=(True, True), expand=(False, False))])
+    f.node("WholeSprite", row, {"size": (10, 10)}, [renderer(), image(sprite=FRAME)])            # 64 x 64
+    f.node("Borders", row, {"size": (10, 10)}, [renderer(), image(kind=1, sprite=FRAME)])        # 32 x 32
+    f.node("Knob", row, {"size": (10, 10)}, [renderer(), image(sprite=KNOB)])                    # 20 x 20
+    f.node("SheetHalf", row, {"size": (10, 10)}, [renderer(), image(sprite=SHEET_LEFT)])         # 32 x 32
+    f.node("NoSprite", row, {"size": (10, 10)}, [renderer(), image()])                           # 0 x 0
+
     # ---- Widgets: what one object does to another, and what is drawn ---------------------------
     c = b.world_canvas("Widgets", (3.5, 3.0, 2), (800, 600))
     b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.12, 0.12, 0.16, 1))
@@ -943,6 +1165,15 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("UguiBold", c, {"pos": (200, -180), "size": (300, 30)}, [renderer(), text("bold italic", 14, (1, 1, 1, 1), style=3)])
     f.node("UguiBestFit", c, {"pos": (200, -220), "size": (300, 30)}, [renderer(), text("Best fit text that is far too long for its rect at forty", 40, (1, 1, 1, 1), best_fit=True, sizes=(6, 40))])
 
+    # text higher than its rect: Unity draws every line, around the alignment point
+    for name, y, valign in (("TmpOverTop", 0, 256), ("TmpOverMiddle", -60, 512), ("TmpOverBottom", -120, 1024)):
+        frame = b.img(name, c, {"pos": (330, 100 + y), "size": (120, 20)}, color=(0.25, 0.25, 0.35, 1))
+        f.node("Text", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp("first<br>second<br>third", 14, halign=2, valign=valign)])
+    frame = b.img("UguiOver", c, {"pos": (330, -80), "size": (120, 20)}, color=(0.25, 0.25, 0.35, 1))
+    f.node("Text", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("first second third fourth fifth sixth", 14, (1, 1, 1, 1), align=4, overflow=(0, 1))])
+    frame = b.img("UguiCut", c, {"pos": (330, -140), "size": (120, 20)}, color=(0.25, 0.25, 0.35, 1))
+    f.node("Text", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("first second third fourth fifth sixth", 14, (1, 1, 1, 1), align=4)])
+
     # an input field draws its text and placeholder objects itself
     field = f.node("Field", c, {"pos": (200, -265), "size": (200, 30)}, [renderer(), image((1, 1, 1, 1))])
     hint = f.node("Placeholder", field, {"amin": (0, 0), "amax": (1, 1), "size": (-20, -10)}, [renderer(), text("Enter text...", 14, (0.2, 0.2, 0.2, 0.5), style=2)])
@@ -975,6 +1206,7 @@ def main(argv):
     card, card_ids = card_prefab()
     board, board_ids = board_prefab()
     panel, panel_ids = panel_prefab()
+    write_textures(out)
     scene = build_scene(card, card_ids, board, board_ids, panel, panel_ids)
     for name, f, is_scene in (("Card.prefab", card, False), ("Board.prefab", board, False), ("Panel.prefab", panel, False), ("UiCases.unity", scene, True)):
         with open(os.path.join(out, name), "w") as fh:

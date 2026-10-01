@@ -154,6 +154,10 @@ func _godot_checks_late(name: String, target: Node3D, _host: Node3D) -> Array:
 			# right to left at 0.875: the fill covers the right 87.5 % of the 160 wide area, plus its size delta
 			if absf(fill.size.x - 150.0) > 0.01 or absf(fill.position.x - 15.0) > 0.01:
 				out.append("the fill rect follows its anchors: x %s, width %s" % [str(fill.position.x), str(fill.size.x)])
+			var bar: TextureRect = wroot.get_node("Bar")
+			var bar_sprite: Dictionary = bar.get_meta("unidot_graphic").get("sprite", {})
+			if not is_equal_approx(float(bar_sprite.get("amount", -1.0)), 0.25) or int(bar_sprite.get("origin", -1)) != 1 or bar.self_modulate.a != 0.0 or not is_equal_approx(bar.size.x, 128.0):
+				out.append("the filled Image draws a quarter from the right through its helper: %s" % str(bar_sprite))
 			var l3d: Label3D = _host.get_node("Text3D/TextMeshPro")
 			if l3d.text != "Winner" or not l3d.modulate.is_equal_approx(Color(0, 1, 0, 1)):
 				out.append("the 3D text draws what the script set: %s %s" % [l3d.text, str(l3d.modulate)])
@@ -518,6 +522,16 @@ func _build_scene(name: String, target: Node3D, host: Node3D) -> void:
 			var image: Control = mk.call("TextureRect", "Image", croot, {"anchored_position": Vector2(-150, 40), "size_delta": Vector2(60, 40)})
 			_U.UiGraphic.update(image, {"color": Color(1, 0.5, 0.25, 1)})
 			mk.call("TextureRect", "Kid", image, {"size_delta": Vector2(20, 20)})
+			var bar: TextureRect = mk.call("TextureRect", "Bar", croot, {"anchored_position": Vector2(-120, -100), "size_delta": Vector2(128, 32)})
+			bar.texture = GradientTexture2D.new()
+			var bar_draw := Control.new()
+			bar_draw.name = _U._UiSprite.HELPER
+			bar_draw.set_meta(RT.META_HELPER, true)
+			bar_draw.show_behind_parent = true
+			bar_draw.set_script(_U._UiSprite)
+			bar.add_child(bar_draw)
+			bar_draw.set_anchors_preset(Control.PRESET_FULL_RECT)
+			_U.UiGraphic.update(bar, {"color": Color.WHITE, "sprite": {"type": 3, "method": 0, "origin": 0, "amount": 1.0, "clockwise": true}})
 			var button: Button = mk.call("Button", "Button", croot, {"anchored_position": Vector2(0, 40), "size_delta": Vector2(120, 30)})
 			_U.UiGraphic.update(button, {"color": Color.WHITE})
 			button.set_meta(_U.UiSelectable.META, {"transition": 1, "target": NodePath("."), "colors": {"normalColor": Color(1, 1, 1, 0), "highlightedColor": Color(1, 1, 1, 1), "pressedColor": Color(0.8, 0.8, 0.8, 1), "selectedColor": Color(1, 1, 1, 1), "disabledColor": Color(0.8, 0.8, 0.8, 0.5), "colorMultiplier": 1.0, "fadeDuration": 0.1}})
@@ -712,6 +726,7 @@ func _wire(name: String, t: Node3D, host: Node3D, script) -> void:
 			t.set("fill", wroot.get_node("Slider/Fill Area/Fill"))
 			t.set("handle", wroot.get_node("Slider/Fill Area/Handle"))
 			t.set("text3d", host.get_node("Text3D"))
+			t.set("bar", wroot.get_node("Bar"))
 		"TVRC":
 			var other := host.get_node("Other")
 			other.set_script(script)

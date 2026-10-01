@@ -609,7 +609,8 @@ class Layout:
     and every rect is then computed from those values."""
 
     def __init__(self, sprite_size=None):
-        self.sprite_size = sprite_size or (lambda ref: None)
+        # (node, Image data) → the size the Image asks for (Image.preferredWidth / Height), or None
+        self.sprite_size = sprite_size or (lambda n, img: None)
         self._inputs = {}  # (node id, axis) → (min, preferred, flexible)
 
     # --- plain RectTransform geometry -------------------------------------------------------
@@ -668,7 +669,7 @@ class Layout:
                 cands[i].append((0, v))
         img = n.comp("Image")
         if enabled(img):
-            sz = self.sprite_size(img.get("m_Sprite"))
+            sz = self.sprite_size(n, img)
             cands[0].append((0, 0.0))
             cands[1].append((0, sz[axis] if sz else 0.0))
             cands[2].append((0, -1.0))
@@ -1094,6 +1095,99 @@ def font_size(n):
     return None
 
 
+# Unity's built-in UI sprites: file id → (pixel size, border); 200 pixels per unit
+BUILTIN_GUID = "0000000000000000f000000000000000"
+BUILTIN_SPRITES = {10901: (40, 0), 10905: (32, 10), 10907: (32, 10), 10911: (32, 10), 10913: (40, 0), 10915: (40, 0), 10917: (32, 10)}
+
+
+def _image_size(path):
+    """Pixel size of a PNG or PSD file, from its header."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(26)
+    except OSError:
+        return None
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return (int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big"))
+    if head[:4] == b"8BPS":
+        return (int.from_bytes(head[18:22], "big"), int.from_bytes(head[14:18], "big"))
+    return None
+
+
+class Sprites:
+    """What an Image asks for in a layout: the size of its sprite in canvas units (sprite pixels
+    × canvas reference pixels per unit / sprite pixels per unit), or the sum of its borders when
+    it is sliced or tiled (Image.preferredWidth). Read from the texture file and its .meta."""
+
+    def __init__(self, assets):
+        self.assets = assets
+        self._info = {}
+
+    def info(self, ref):
+        """→ (width, height, [left, bottom, right, top], pixels per unit) or None."""
+        if not isinstance(ref, dict) or not _ref_id(ref):
+            return None
+        guid, fid = ref.get("guid", ""), _ref_id(ref)
+        if guid == BUILTIN_GUID:
+            b = BUILTIN_SPRITES.get(fid)
+            return (b[0], b[0], [b[1]] * 4, 200.0) if b else None
+        key = (guid, fid)
+        if key in self._info:
+            return self._info[key]
+        out = None
+        path = self.assets.guid_to_path.get(guid)
+        size = _image_size(path) if path else None
+        if size is not None:
+            try:
+                meta = open(path + ".meta", errors="replace").read()
+            except OSError:
+                meta = ""
+            m = re.search(r"^\s*spritePixelsToUnits:\s*([-\d.e]+)", meta, re.M)
+            ppu = float(m.group(1)) if m else 100.0
+            border = [0.0] * 4
+            m = re.search(r"^  spriteBorder:\s*\{x:\s*([-\d.e]+),\s*y:\s*([-\d.e]+),\s*z:\s*([-\d.e]+),\s*w:\s*([-\d.e]+)\}", meta, re.M)
+            if m:
+                border = [float(x) for x in m.groups()]
+            w, h = size
+            # a sprite of a sheet: its own rect and border
+            for block in re.split(r"\n    - serializedVersion: \d+\n", meta)[1:]:
+                if re.search(r"^\s*internalID:\s*%d\s*$" % fid, block, re.M):
+                    r = re.search(r"rect:\s*\n\s*serializedVersion: \d+\s*\n\s*x:\s*([-\d.e]+)\s*\n\s*y:\s*([-\d.e]+)\s*\n\s*width:\s*([-\d.e]+)\s*\n\s*height:\s*([-\d.e]+)", block)
+                    if r:
+                        w, h = float(r.group(3)), float(r.group(4))
+                    bm = re.search(r"border:\s*\{x:\s*([-\d.e]+),\s*y:\s*([-\d.e]+),\s*z:\s*([-\d.e]+),\s*w:\s*([-\d.e]+)\}", block)
+                    if bm:
+                        border = [float(x) for x in bm.groups()]
+                    break
+            out = (float(w), float(h), border, ppu)
+        self._info[key] = out
+        return out
+
+    def preferred(self, n, img):
+        info = self.info(img.get("m_Sprite"))
+        if info is None:
+            return None
+        w, h, border, ppu = info
+        unit = reference_ppu(n) / max(ppu, 1e-4)
+        if int(_num(img.get("m_Type", 0))) in (1, 2):
+            return ((border[0] + border[2]) * unit, (border[1] + border[3]) * unit)
+        return (w * unit, h * unit)
+
+
+def reference_ppu(n):
+    """CanvasScaler.referencePixelsPerUnit of the canvas a node is on (100 without a scaler)."""
+    cur = n
+    while cur is not None:
+        if cur.has("Canvas"):
+            sc = cur.comp("CanvasScaler")
+            if enabled(sc):
+                return _num(sc.get("m_ReferencePixelsPerUnit", 100), 100)
+            if cur.parent is None or not cur.parent.is_rect:
+                return 100.0
+        cur = cur.parent
+    return 100.0
+
+
 def canvas_scale_factor(canvas, screen):
     scaler = canvas.comp("CanvasScaler")
     if not enabled(scaler):
@@ -1231,7 +1325,7 @@ def reference(assets_dir, target, screen=(1152.0, 648.0)):
     assets = Assets(assets_dir)
     model = assets.flatten(target)
     nodes, roots = build_graph(model, assets)
-    layout = Layout()
+    layout = Layout(Sprites(assets).preferred)
     apply_selectables(nodes)
     out = [describe_canvas(c, layout, screen) for c in find_canvases(roots)]
     return out, assets.warnings, nodes

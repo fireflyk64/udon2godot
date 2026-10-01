@@ -178,7 +178,8 @@ A RectTransform GameObject becomes a Control, a Canvas below a plain Transform a
 viewport pixels per metre, `unidot/ui/pixels_per_metre`) or, in a screen-space render mode, a
 CanvasLayer scaled like Unity's CanvasScaler. The code lives in the unidot fork and is independent
 of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_plane.gd`,
-`canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `selectable.gd` (run time).
+`canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `ui_sprite.gd`,
+`selectable.gd` (run time).
 
 * **One implementation.** `rect_transform.gd` holds Unity's RectTransform rules (anchors,
   anchored position, size delta, pivot, offsets, rotation, scale, world matrices through nested
@@ -197,13 +198,19 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   modules render, so a script's setter and the Unity file take the same path here too.
   `unidot_text` (`ui_text.gd`): the Unity string and its settings; rich text becomes BBCode by
   a tokenizer that knows TextMeshPro's and uGUI's tags (anything else in angle brackets stays
-  text), font styles, small caps, auto-sizing; the font is a system font with the metrics of
-  Liberation Sans (TextMeshPro's default, metric-compatible with uGUI's Arial), since TMP font
-  assets are not converted. `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
+  text), font styles, small caps, auto-sizing, text higher than its rect drawn around the
+  alignment point as TextMeshPro's overflow mode does; the font is a system font with the
+  metrics of Liberation Sans (TextMeshPro's default, metric-compatible with uGUI's Arial),
+  since TMP font assets are not converted. `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
   enabled — `image.enabled = false` hides the graphic, not the object and its children.
   `unidot_selectable` (`selectable.gd`): the colour tint of the target graphic by selection
   state (a button whose normal colour has alpha 0 is invisible until hovered), the Toggle's
   check mark, the Slider's fill and handle rects (Slider.UpdateVisuals).
+* **Sprites.** Border, pixels per unit and the rect of a sprite in a sheet come from the
+  texture's import settings. A sliced Image is drawn as nine patches with borders of Unity's
+  size (they shrink in a rect smaller than them), tiled and filled Images likewise by a helper
+  child (`ui_sprite.gd`); Unity's built-in sprites (UISprite, Background, Knob, Checkmark ...),
+  which no project contains, have stand-ins in `runtime/sprites`.
 * **Checked against Unity's numbers without Unity.** `tools/unity_ui_reference.py` reads a
   scene or prefab (nested prefab instances and their overrides included) and computes where
   Unity puts every rect, the colour each graphic is drawn with (or that it is not drawn) and
@@ -212,7 +219,7 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   does this for `tests/unity_ui` (written by `tools/gen_ui_fixture.py`: every anchor / pivot
   case, 3D placement, 43 layout group panels, nested and screen canvases, prefab overrides,
   sliders / toggles / tinted and disabled graphics / rich text, component overrides on prefab
-  instances) imported by unidot alone, after the unit tests of the run-time modules. For an
+  instances, sliced / tiled / filled sprites) imported by unidot alone, after the unit tests of the run-time modules. For an
   imported world:
   `world_runner.gd --static --scenario res://scenarios/canvas_dump.gd --dump-out d.json`, then
   `tools/unity_ui_reference.py <assets> <scene.unity> --compare d.json`.
@@ -222,7 +229,7 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   button by half its width while every transform was right. Canvas viewports turn that off, and
   on a display `scripts/test_ui.sh` and `scripts/test_world_billiards.sh` render every canvas
   (`test/ui_shots.gd --check`, PNGs in `<out>/shots`) and compare pixels of every solid graphic
-  and sprite with what the transforms put there.
+  and sprite with what the transforms put there (sliced sprites through Unity's slice geometry).
 * **Prefab instances** may override any of this per component (text, colour, `m_Enabled`,
   Toggle / Slider values, Selectable colours, layout settings): the override changes the same
   metadata. `m_Enabled: 0` on a graphic or a layout component disables that component, not the
@@ -419,7 +426,7 @@ another argument list: styled parsing, string comparisons and ranges, binary sea
 (the coordinate convention shared with unidot) and `TNulls` (null where the generated code
 has a value type, members that hide or override base members).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 1051 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 1054 checks pass.
 
 ### Debug switches
 

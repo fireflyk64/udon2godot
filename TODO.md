@@ -124,7 +124,7 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       - [x] Tests without scripting: the "Widgets" canvas of `tests/unity_ui` (9 sliders, toggles,
             9 buttons, disabled graphics, masks, canvas groups, rich text, an input field); the
             reference computes the colour each graphic is drawn with and the characters each
-            text shows, the dump reads both from what the controls draw; 240 unit checks.
+            text shows, the dump reads both from what the controls draw.
       - [x] Scripts: `tests/coverage/TWidgets.cs` (36 checks) and the engine-side checks of
             what is drawn after the script ran.
 - [x] Found on the way:
@@ -136,12 +136,18 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
         renders each canvas and compares the pixel at the centre of every solid graphic with
         renders each canvas and compares pixels with the transforms: five points of every
         solid graphic and nine of every sprite (where its texture is opaque and even), through
-        text drawn over them (1660 points on 364 of 386 graphics in `tests/unity_ui`, 233 on
+        text drawn over them (1942 points on 395 of 420 graphics in `tests/unity_ui`, 233 on
         40 of 46 in the pool table with every menu shown; with the snapping left on it reports
         the START and PLAY buttons and the fixture's menu items). `scripts/test_ui.sh` and
         `scripts/test_world_billiards.sh` run it when a display is there.
       * unidot's YAML reader kept the closing quote of single-quoted scalars and dropped doubled
         quotes (`'>>'` → `>>'`).
+- [x] Text higher than its rect (TextMeshPro's overflow mode, all 53 texts of the table; uGUI's
+      vertical overflow): Unity draws every line around the alignment point, a RichTextLabel
+      draws from the top and drops the lines that start below its rect. Such a text is drawn by
+      a child label as high as the content, placed by the vertical alignment
+      (`UnidotTextOverflow`, made and removed by `ui_text.gd` as text and rect change; the node
+      keeps the Unity rect and the string). Fixture: TmpOverTop / Middle / Bottom, UguiOver.
 - [x] UI component overrides on prefab instances: text, font size / style, colour (by member:
       `m_Color.r`), `m_Enabled` (it used to hide the object), sprite, Selectable colours /
       interactable, `m_IsOn`, Slider value / range / direction, layout group / element / fitter
@@ -152,11 +158,11 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       Layout components keep their settings when disabled (`enabled: false` in the metadata), so
       `layoutGroup.enabled` of a script works and no longer hides the object.
 - [ ] Left over, not positioning of the pool table:
-      * Text that overflows its rect vertically: a RichTextLabel draws only the lines that start
-        inside the rect, from the top; TextMeshPro's overflow mode draws all of them around the
-        alignment point (needs a drawing child the size of the content).
-      * Image type Filled (`fillAmount`), sliced sprites (9-slice borders), sprite tags and font
-        assets of TextMeshPro (a system font family stands in for every font asset).
+      * A text that is cut at its rect (uGUI's vertical Truncate, TextMeshPro's Truncate /
+        Ellipsis / Masking) is clipped at the rect's edge from the top: a line that fits only
+        partly is drawn partly, and the text is not centred when it is too high.
+      * Radial fills of an Image; sprite tags and font assets of TextMeshPro (a system font
+        family stands in for every font asset); sprites packed tightly or rotated in an atlas.
       * Selectable transitions other than colour tint (sprite swap, animation); tints are
         applied at once (no fade); `CanvasGroup.interactable` does not disable the selectables
         below it; CanvasGroup overrides on prefab instances.
@@ -178,8 +184,33 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
 - [x] TextMeshPro (3D) outside a canvas (the table's "winner" text) → Label3D (font size in
       tenths of a unit, the object's RectTransform as text box); a RectTransform outside every
       canvas is an ordinary Node3D placed by its anchored position.
-- [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts /
-      sprites / 9-slice, Dropdown templates; Animator; constraints components; ...).
+- [x] Sprites of UI Images. The importer loaded the whole texture of a sprite and stretched it
+      over the rect. The pool table: 58 of 65 Images are of type Sliced, two sprites have borders
+      (`snookerbutton.psd` 68 px, 12 uses: every button shape; `SelectionOutline.png` 196 px, 4
+      uses), 20 Images use Unity's built-in sprites (UISprite 13, Background 4, Knob 2,
+      InputFieldBackground 1), which no package ships: white squares.
+      - [x] Sprite information from the texture's import settings (`spriteBorder`,
+            `spritePixelsToUnits`, the rect and border of a sprite in a sheet: an AtlasTexture).
+      - [x] Image type Sliced: nine patches drawn by a helper child (`runtime/ui_sprite.gd`,
+            behind the control), border size as Unity (sprite pixels × canvas reference pixels
+            per unit / sprite pixels per unit / multiplier), borders shrink on an axis where the
+            rect is smaller than both (Image.GetAdjustedBorders), fill centre.
+      - [x] Tiled (from the bottom-left, the last tiles cut) and Filled, horizontal and vertical
+            with origin; `fillAmount` / `fillMethod` / `fillOrigin` / `type` / `SetNativeSize`
+            of a script. Radial fills are drawn whole.
+      - [x] Built-in sprites: stand-ins with Unity's sizes (200 pixels per unit) and 10 pixel
+            borders in `runtime/sprites` (ImageTextures saved as text: no import step), written
+            by `make_sprites.gd`.
+      - [x] An Image's preferred size in a layout is its sprite's size in canvas units, or the
+            sum of its borders when sliced or tiled (`preferred` of the graphic metadata;
+            the reference reads PNG / PSD headers and the .meta).
+      - [x] Tests: slice and fill geometry by hand-computed Unity numbers (276 unit checks);
+            `Frame.png`, `Bar.png`, `Sheet.png` written by the fixture generator and a "Sprites"
+            canvas (27 Images); the pixel check maps 25 points of every such Image through the
+            slices and checks that holes show what is behind (1942 points on 395 of 420
+            graphics); `TWidgets` drives a filled Image.
+- [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts,
+      Dropdown templates; Animator; constraints components; ...).
 
 - [x] Upstream fixed the 1MB direct-jump limit. Update the upstream godot-sandbox tooling to get the fixes.
       `refs/godot-sandbox` is at upstream main + the `MAX_LEVEL = 16` patch; the rebuilt library is in

@@ -3842,8 +3842,8 @@ func ui_text_set(n, key: String, value) -> void:
 		prop_set(n, "text_" + key, value)
 		return
 	UiText.update(t, {key: value})
-	if key == "auto" and bool(value) and t is RichTextLabel and t.get_node_or_null(UiText.HELPER) == null:
-		# the text is fitted again whenever its rect changes
+	if t is RichTextLabel and UiText.needs_layout(UiText.settings(t)) and t.get_node_or_null(UiText.HELPER) == null:
+		# the text is laid out again whenever its rect changes
 		var helper := Node.new()
 		helper.name = UiText.HELPER
 		helper.set_meta(RT.META_HELPER, true)
@@ -3965,21 +3965,61 @@ func ui_get_texture(n: Node):
 func ui_set_texture(n: Node, t) -> void:
 	if n.get("texture") != null or n is TextureRect:
 		n.set("texture", t)
+		if n is TextureRect:
+			n.set_meta("unidot_no_sprite", t == null)
+		_ui_sprite_redraw(n)
+	elif n is Control:
+		UiGraphic.update(n, {"texture": t})   # the background of a widget
+
+## How an Image draws its sprite when it is not simply stretched (`sprite` of the graphic
+## metadata, drawn by unidot's runtime/ui_sprite.gd): type (1 sliced, 2 tiled, 3 filled),
+## method / origin / amount / clockwise of a filled one.
+const _UiSprite := preload("res://addons/unidot_importer/runtime/ui_sprite.gd")
+
+func ui_sprite_get(n, key: String, default):
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return default
+	return (UiGraphic.state(c).get("sprite", {}) as Dictionary).get(key, default)
+
+func ui_sprite_set(n, key: String, value) -> void:
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return
+	var sprite: Dictionary = (UiGraphic.state(c).get("sprite", {}) as Dictionary).duplicate()
+	sprite[key] = value
+	if c.get_node_or_null(_UiSprite.HELPER) == null:
+		# the Image was simply stretched until now: the helper draws it from here on
+		var helper := Control.new()
+		helper.name = _UiSprite.HELPER
+		helper.set_meta(RT.META_HELPER, true)
+		helper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		helper.show_behind_parent = true
+		helper.set_script(_UiSprite)
+		c.add_child(helper)
+		c.move_child(helper, 0)
+		helper.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiGraphic.update(c, {"sprite": sprite})
+
+func _ui_sprite_redraw(n: Node) -> void:
+	var helper: CanvasItem = n.get_node_or_null(_UiSprite.HELPER) as CanvasItem
+	if helper != null:
+		helper.queue_redraw()
 
 func ui_get_fill(n: Node) -> float:
-	if n is TextureProgressBar:
-		return n.ratio
 	if n is Range:
 		return n.ratio
+	if int(ui_sprite_get(n, "type", 0)) == _UiSprite.FILLED:
+		return float(ui_sprite_get(n, "amount", 1.0))
 	return n.get_meta("udon_fill", 1.0)
 
 func ui_set_fill(n: Node, v: float) -> void:
-	if n is TextureProgressBar or n is Range:
+	if n is Range:
 		n.ratio = v
+	elif int(ui_sprite_get(n, "type", 0)) == _UiSprite.FILLED:
+		ui_sprite_set(n, "amount", clampf(v, 0.0, 1.0))
 	else:
 		n.set_meta("udon_fill", v)
-		if n is Control:
-			n.scale.x = v
 
 func ui_get_interactable(n: Node) -> bool:
 	if n.get("disabled") != null:
@@ -7199,10 +7239,19 @@ func ui_canvas_set(n: Node, key: String, value) -> void:
 	prop_set(c, key, value)
 
 ## Image.SetNativeSize: the Control takes its texture's size.
+## Graphic.SetNativeSize: the rect takes the size of the sprite in canvas units, around its pivot.
 func ui_set_native_size(n: Node) -> void:
-	if n is TextureRect and n.texture != null:
-		n.custom_minimum_size = n.texture.get_size()
-		n.size = n.texture.get_size()
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return
+	var st: Dictionary = UiGraphic.state(c)
+	var tex: Texture2D = st.get("texture") as Texture2D
+	if tex == null and c is TextureRect and not bool(c.get_meta("unidot_no_sprite", false)):
+		tex = c.texture
+	if tex == null:
+		return
+	RT.set_anchor_max(c, RT.anchor_min(c))
+	RT.set_size_delta(c, Vector2(tex.get_size()) * float(st.get("unit", 1.0)))
 
 func ui_texture_size(n: Node, axis: String) -> float:
 	var t: Texture2D = null
