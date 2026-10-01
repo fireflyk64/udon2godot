@@ -178,7 +178,7 @@ A RectTransform GameObject becomes a Control, a Canvas below a plain Transform a
 viewport pixels per metre, `unidot/ui/pixels_per_metre`) or, in a screen-space render mode, a
 CanvasLayer scaled like Unity's CanvasScaler. The code lives in the unidot fork and is independent
 of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_plane.gd`,
-`canvas_scaler.gd`, `layout_group.gd` (run time).
+`canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `selectable.gd` (run time).
 
 * **One implementation.** `rect_transform.gd` holds Unity's RectTransform rules (anchors,
   anchored position, size delta, pivot, offsets, rotation, scale, world matrices through nested
@@ -193,15 +193,40 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
 * **Layout groups** run Unity's rebuild algorithm (HorizontalLayoutGroup, VerticalLayoutGroup,
   GridLayoutGroup, ContentSizeFitter, AspectRatioFitter, LayoutElement) and place children the
   way Unity does, by writing their anchors, anchored position and size delta.
+* **What is drawn** follows three pieces of metadata the importer writes and the run-time
+  modules render, so a script's setter and the Unity file take the same path here too.
+  `unidot_text` (`ui_text.gd`): the Unity string and its settings; rich text becomes BBCode by
+  a tokenizer that knows TextMeshPro's and uGUI's tags (anything else in angle brackets stays
+  text), font styles, small caps, auto-sizing; the font is a system font with the metrics of
+  Liberation Sans (TextMeshPro's default, metric-compatible with uGUI's Arial), since TMP font
+  assets are not converted. `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
+  enabled — `image.enabled = false` hides the graphic, not the object and its children.
+  `unidot_selectable` (`selectable.gd`): the colour tint of the target graphic by selection
+  state (a button whose normal colour has alpha 0 is invisible until hovered), the Toggle's
+  check mark, the Slider's fill and handle rects (Slider.UpdateVisuals).
 * **Checked against Unity's numbers without Unity.** `tools/unity_ui_reference.py` reads a
   scene or prefab (nested prefab instances and their overrides included) and computes where
-  Unity puts every rect; `--compare` holds a dump of the running Godot scene against it, corner
-  by corner in world space, following what is actually rendered. `scripts/test_ui.sh` does this
-  for `tests/unity_ui` (written by `tools/gen_ui_fixture.py`: every anchor / pivot case, 3D
-  placement, 43 layout group panels, nested and screen canvases, prefab overrides) imported by
-  unidot alone, after the unit tests of `rect_transform.gd`. For an imported world:
+  Unity puts every rect, the colour each graphic is drawn with (or that it is not drawn) and
+  the characters each text shows; `--compare` holds a dump of the running Godot scene against
+  it, corner by corner in world space, following what is actually rendered. `scripts/test_ui.sh`
+  does this for `tests/unity_ui` (written by `tools/gen_ui_fixture.py`: every anchor / pivot
+  case, 3D placement, 43 layout group panels, nested and screen canvases, prefab overrides,
+  sliders / toggles / tinted and disabled graphics / rich text, component overrides on prefab
+  instances) imported by unidot alone, after the unit tests of the run-time modules. For an
+  imported world:
   `world_runner.gd --static --scenario res://scenarios/canvas_dump.gd --dump-out d.json`, then
   `tools/unity_ui_reference.py <assets> <scene.unity> --compare d.json`.
+* **Rendering is checked separately from transforms.** What the engine draws can differ from
+  what a control's transform says: Godot rounds control origins to whole units of the parent's
+  space ("snap controls to pixels"), which on a canvas in metres moved the pool table's START
+  button by half its width while every transform was right. Canvas viewports turn that off, and
+  on a display `scripts/test_ui.sh` and `scripts/test_world_billiards.sh` render every canvas
+  (`test/ui_shots.gd --check`, PNGs in `<out>/shots`) and compare pixels of every solid graphic
+  and sprite with what the transforms put there.
+* **Prefab instances** may override any of this per component (text, colour, `m_Enabled`,
+  Toggle / Slider values, Selectable colours, layout settings): the override changes the same
+  metadata. `m_Enabled: 0` on a graphic or a layout component disables that component, not the
+  object.
 
 Every script starts Godot through `scripts/godot.sh`: the engine is killed when its resident
 memory passes `GODOT_MEM_MB` (default 6144) or it runs longer than `GODOT_MAX_SECONDS` (default
@@ -376,21 +401,25 @@ checks the UNIDOT mapping against Unity's numbers. 2D uses Unity's Y-up in scrip
 
 ## Coverage fixtures
 
-`tests/coverage/` holds seventeen UdonSharp fixtures written to exercise the API surface at runtime:
+`tests/coverage/` holds twenty UdonSharp fixtures written to exercise the API surface at runtime:
 `TMath`/`TMathB` (integer and float semantics, `Mathf`, vectors, quaternions, colours,
 matrices, random, bounds), `TStrings` (formatting, interpolation, `StringBuilder`, chars),
 `TArrays` (arrays, params/ref/out, `DataList`, `DataDictionary`, JSON, enums), `TTransform`
 (transforms, hierarchy, GameObject, components, instantiate/destroy), `TPhysics` (rigidbodies,
 raycasts, triggers, collisions, joints), `TMedia` (audio, animator, particles, materials,
 lights, camera, line renderer, curves), `TUI` (Unity UI and TextMeshPro over Godot controls),
+`TRect` (RectTransform and layout components on a world canvas built by the importer's code),
+`TWidgets` (text, graphic colour / enabled, ColorBlock, Toggle and Slider visuals from a script),
 `TVRC` (players, ownership, events, sync, pickups, stations, object sync/pool, player data,
 input), `T2D` (2D physics), `TParticles` (particle modules), `TSystem` (.NET extras), `TNav`
 (navigation meshes, links and agents), `TAnim` (constraints, curves, humanoid tables), `TExt`
 (extension methods, cross-class statics, initializers, enum names, short-circuit side effects,
-loops the sandbox compiler got wrong) and `TOverloads` (overloads that used to fall back to
-another argument list: styled parsing, string comparisons and ranges, binary search).
+loops the sandbox compiler got wrong), `TOverloads` (overloads that used to fall back to
+another argument list: styled parsing, string comparisons and ranges, binary search), `TCoord`
+(the coordinate convention shared with unidot) and `TNulls` (null where the generated code
+has a value type, members that hide or override base members).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 954 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 1051 checks pass.
 
 ### Debug switches
 

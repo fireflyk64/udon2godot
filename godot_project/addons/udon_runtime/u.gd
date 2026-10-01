@@ -3792,54 +3792,172 @@ func _line_redraw(n: Node) -> void:
 # UI helpers (Control-based)
 # ---------------------------------------------------------------------------
 
-func ui_get_text(n: Node) -> String:
-	if n == null:
-		return ""
-	var t = n.get("text")
-	return str(t) if t != null else ""
+# --- Unity text, graphics and selectables ---------------------------------------------------------
+# The importer writes what a Unity text, graphic or selectable is to metadata (`unidot_text`,
+# `unidot_graphic`, `unidot_selectable`) and unidot's runtime modules draw from it; a script's
+# property goes through the same modules, so `text`, `color`, `enabled`, `isOn` or `value` set at
+# run time look like the same value set in the Unity scene.
+const UiText := preload("res://addons/unidot_importer/runtime/ui_text.gd")
+const UiGraphic := preload("res://addons/unidot_importer/runtime/ui_graphic.gd")
+const UiSelectable := preload("res://addons/unidot_importer/runtime/selectable.gd")
+const _UiTextFit := preload("res://addons/unidot_importer/runtime/ui_text_fit.gd")
 
-func ui_set_text(n: Node, s: String) -> void:
-	if n != null and n.get("text") != null:
-		n.set("text", s)
+## The node that draws a text or graphic component: the Control of a UI object, or the Label3D
+## the importer adds below the object of a 3D TextMeshPro.
+func _ui_draw_node(n) -> Node:
+	if not (n is Node):
+		return null
+	if n is Node3D and not (n is Label3D):
+		var l: Node = n.get_node_or_null("TextMeshPro")
+		if l is Label3D:
+			return l
+		var c: Control = _ui_ctl(n)
+		if c != null:
+			return c
+	return n
 
-func ui_get_color(n: Node) -> Color:
-	if n is Label3D:
-		return n.modulate
-	if n is Control:
-		var c = n.get_theme_color("font_color") if n.has_theme_color("font_color") else null
-		return c if c != null else n.modulate
+func ui_get_text(n) -> String:
+	return UiText.text(_ui_draw_node(n))
+
+func ui_set_text(n, s) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t == null:
+		return
+	UiText.set_text(t, str(s) if s != null else "")
+	if t is Control:
+		_ui_layout_dirty(t)
+
+## A setting of the text (`unidot_text`: style, rich, auto, min, max, wrap, overflow).
+func ui_text_get(n, key: String, default):
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		return UiText.settings(t).get(key, default)
+	return prop_get(n, "text_" + key, default)
+
+func ui_text_set(n, key: String, value) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t == null:
+		return
+	if not t.has_meta(UiText.META):
+		prop_set(n, "text_" + key, value)
+		return
+	UiText.update(t, {key: value})
+	if key == "auto" and bool(value) and t is RichTextLabel and t.get_node_or_null(UiText.HELPER) == null:
+		# the text is fitted again whenever its rect changes
+		var helper := Node.new()
+		helper.name = UiText.HELPER
+		helper.set_meta(RT.META_HELPER, true)
+		helper.set_script(_UiTextFit)
+		t.add_child(helper)
+	if t is Control:
+		_ui_layout_dirty(t)
+
+func ui_get_color(n) -> Color:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		return UiGraphic.color(t)
+	if t is CanvasItem:
+		return t.modulate
 	return Color.WHITE
 
-func ui_set_color(n: Node, c: Color) -> void:
-	if n is Label or n is RichTextLabel:
-		n.add_theme_color_override("font_color", c)
-	elif n is Label3D or n is CanvasItem:
-		n.modulate = c
+func ui_set_color(n, c: Color) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		UiGraphic.set_color(t, c)
+	elif t is CanvasItem:
+		t.modulate = c
 
-func ui_get_font_size(n: Node) -> int:
-	if n is Label3D:
-		return n.font_size
-	if n is Control and n.has_theme_font_size("font_size"):
-		return n.get_theme_font_size("font_size")
-	return 16
+func ui_set_color_alpha(n, a: float) -> void:
+	var c: Color = ui_get_color(n)
+	c.a = clampf(a, 0.0, 1.0)
+	ui_set_color(n, c)
 
-func ui_set_font_size(n: Node, s: int) -> void:
-	if n is Label3D:
-		n.font_size = s
-	elif n is Control:
-		n.add_theme_font_size_override("font_size", s)
+## Graphic.enabled: a disabled graphic is not drawn; its object and children stay.
+func ui_graphic_get_enabled(n) -> bool:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		return UiGraphic.enabled(t)
+	return get_enabled(n)
+
+func ui_graphic_set_enabled(n, v: bool) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		UiGraphic.set_enabled(t, v)
+	else:
+		set_enabled(n, v)
+
+## CanvasRenderer colour (what Graphic.CrossFadeColor / CrossFadeAlpha and a Selectable's tint
+## change): multiplied with the graphic's own colour.
+func ui_renderer_color(n) -> Color:
+	return UiGraphic.renderer_color(_ui_draw_node(n))
+
+func ui_set_renderer_color(n, c: Color) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		UiGraphic.set_renderer_color(t, c)
+
+func ui_set_renderer_alpha(n, a: float) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		UiGraphic.set_renderer_alpha(t, a)
+
+func ui_fade_alpha(n, alpha: float, duration: float) -> void:
+	var c: Color = ui_renderer_color(n)
+	c.a = alpha
+	ui_fade_color(n, c, duration, true)
+
+func ui_fade_color(n, color: Color, duration: float, use_alpha: bool = true) -> void:
+	var t: Node = _ui_draw_node(n)
+	if not (t is Control or t is Label3D):
+		return
+	var from: Color = UiGraphic.renderer_color(t)
+	var to: Color = color if use_alpha else Color(color.r, color.g, color.b, from.a)
+	if duration <= 0.0 or not t.is_inside_tree():
+		UiGraphic.set_renderer_color(t, to)
+		return
+	var tw: Tween = t.create_tween()
+	tw.tween_method(func(c: Color) -> void: UiGraphic.set_renderer_color(t, c), from, to, duration)
+
+func ui_get_font_size_f(n) -> float:
+	return UiText.font_size(_ui_draw_node(n))
+
+func ui_get_font_size(n) -> int:
+	return int(round(ui_get_font_size_f(n)))
+
+func ui_set_font_size(n, s: float) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t == null:
+		return
+	UiText.set_font_size(t, s)
+	if t is Control:
+		_ui_layout_dirty(t)
 
 func ui_set_visible_characters(n: Node, c: int) -> void:
-	if n.get("visible_characters") != null:
-		n.set("visible_characters", c)
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.get("visible_characters") != null:
+		t.set("visible_characters", c if c < 99999 else -1)
+
+func ui_get_visible_characters(n: Node) -> int:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.get("visible_characters") != null and int(t.get("visible_characters")) >= 0:
+		return int(t.get("visible_characters"))
+	return 99999
 
 func ui_text_info(n: Node) -> Dictionary:
-	var t: String = ui_get_text(n)
-	return {"characterCount": t.length(), "lineCount": t.split("\n").size()}
+	var t: Node = _ui_draw_node(n)
+	if t is RichTextLabel:
+		return {"characterCount": t.get_total_character_count(), "lineCount": t.get_line_count()}
+	var s: String = ui_get_text(n)
+	return {"characterCount": s.length(), "lineCount": s.split("\n").size()}
 
-func ui_fade_alpha(n: CanvasItem, alpha: float, duration: float) -> void:
-	var tw := n.create_tween()
-	tw.tween_property(n, "modulate:a", alpha, duration)
+## The size a text asks for (TMP_Text.preferredWidth / GetPreferredValues).
+func ui_text_preferred(n, axis: int) -> float:
+	var t: Node = _ui_draw_node(n)
+	if t is RichTextLabel or t is Label:
+		return UiText.preferred_size(t, axis)
+	if t is Control:
+		return t.size[axis]
+	return 0.0
 
 func ui_get_texture(n: Node):
 	return n.get("texture")
@@ -3875,6 +3993,65 @@ func ui_set_interactable(n: Node, v: bool) -> void:
 		n.disabled = not v
 	elif n.get("editable") != null:
 		n.editable = v
+	UiSelectable.refresh_host(n)   # the disabled colour of the target graphic
+
+## Toggle.SetIsOnWithoutNotify / Slider.SetValueWithoutNotify: no event, but the check mark and
+## the fill follow.
+func toggle_set_silent(n: Node, v: bool) -> void:
+	if n is BaseButton:
+		n.set_pressed_no_signal(v)
+		UiSelectable.refresh_host(n)
+
+func slider_set_silent(n: Node, v: float) -> void:
+	if n is Range:
+		n.set_value_no_signal(v)
+		UiSelectable.refresh_host(n)
+
+## The object a Selectable drives: "target" (targetGraphic), "graphic" (a Toggle's check mark),
+## "fill" / "handle" (a Slider's rects).
+func ui_selectable_part(n, key: String, fallback = null):
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return fallback
+	var part: Node = UiSelectable.part(c, key)
+	return part if part != null else fallback
+
+func ui_selectable_set_part(n, key: String, value) -> void:
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return
+	var cfg: Dictionary = UiSelectable.config(c).duplicate()
+	var target: Node = _ui_draw_node(value)
+	if target != null and target.is_inside_tree() == c.is_inside_tree():
+		cfg[key] = c.get_path_to(target)
+	else:
+		cfg.erase(key)
+	c.set_meta(UiSelectable.META, cfg)
+	_ui_selectable_helper(c)
+	UiSelectable.refresh_host(c)
+
+func ui_selectable_get(n, key: String, default):
+	var c: Control = _ui_ctl(n)
+	return UiSelectable.config(c).get(key, default) if c != null else default
+
+func ui_selectable_set(n, key: String, value) -> void:
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return
+	var cfg: Dictionary = UiSelectable.config(c).duplicate()
+	cfg[key] = value
+	c.set_meta(UiSelectable.META, cfg)
+	UiSelectable.refresh_host(c)
+
+## The helper that follows pointer state and value (the importer adds it to scene objects).
+func _ui_selectable_helper(c: Control) -> void:
+	if c.get_node_or_null(UiSelectable.HELPER) != null:
+		return
+	var helper := Node.new()
+	helper.name = UiSelectable.HELPER
+	helper.set_meta(RT.META_HELPER, true)
+	helper.set_script(UiSelectable)
+	c.add_child(helper)
 
 func scroll_get_v(s: ScrollContainer) -> float:
 	var bar := s.get_v_scroll_bar()
@@ -6748,23 +6925,29 @@ const _UI_DEFAULT_COLORS: Dictionary = {"normalColor": Color(1, 1, 1, 1), "highl
 func ui_default_colors() -> Dictionary:
 	return _UI_DEFAULT_COLORS.duplicate()
 
-## ColorBlock: stored per node; the normal colour tints the Control (modulate).
+## ColorBlock of a Selectable (`unidot_selectable` metadata): the colour of the selection state
+## tints the target graphic (unidot's runtime/selectable.gd).
 func ui_colors_get(n: Node) -> Dictionary:
-	if n != null and n.has_meta("udon_colors"):
-		return (n.get_meta("udon_colors") as Dictionary).duplicate()
-	return ui_default_colors()
+	var c: Control = _ui_ctl(n)
+	if c == null:
+		return ui_default_colors()
+	return UiSelectable.colors(c)
 
 func ui_colors_set(n: Node, d: Dictionary) -> void:
-	if n == null:
+	var c: Control = _ui_ctl(n)
+	if c == null:
 		return
-	var merged: Dictionary = ui_colors_get(n)
-	for k in d:
-		merged[k] = d[k]
-	n.set_meta("udon_colors", merged)
-	if n is CanvasItem:
-		var c: Color = merged.get("normalColor", Color.WHITE)
-		n.self_modulate = Color(c.r, c.g, c.b, c.a) * float(merged.get("colorMultiplier", 1.0))
-		n.self_modulate.a = c.a
+	var cfg: Dictionary = UiSelectable.config(c).duplicate()
+	var block: Dictionary = UiSelectable.colors(c)
+	block.merge(d, true)
+	cfg["colors"] = block
+	if not cfg.has("transition"):
+		cfg["transition"] = 1
+	if not cfg.has("target"):
+		cfg["target"] = NodePath(".")   # a Selectable's target graphic is the Image of its own object
+	c.set_meta(UiSelectable.META, cfg)
+	_ui_selectable_helper(c)
+	UiSelectable.refresh_host(c)
 
 ## SpriteState {highlightedSprite, pressedSprite, selectedSprite, disabledSprite}: applied to
 ## TextureButtons, stored for everything else.
@@ -6923,6 +7106,25 @@ func _ui_element(ctl: Control) -> Dictionary:
 	if ctl.has_meta("unidot_layout_element"):
 		return (ctl.get_meta("unidot_layout_element") as Dictionary).duplicate()
 	return {"min": Vector2(-1, -1), "pref": Vector2(-1, -1), "flex": Vector2(-1, -1), "ignore": false, "priority": 1, "enabled": true}
+
+## `enabled` of a layout component (group, fitter, element): a flag of its metadata, so a disabled
+## component stops laying out while its object stays as it is.
+func ui_component_enabled(n, meta_key: String) -> bool:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta(meta_key):
+		return false
+	return bool((ctl.get_meta(meta_key) as Dictionary).get("enabled", true))
+
+func ui_component_set_enabled(n, meta_key: String, on: bool) -> void:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta(meta_key):
+		return
+	var cfg: Dictionary = (ctl.get_meta(meta_key) as Dictionary).duplicate()
+	cfg["enabled"] = on
+	ctl.set_meta(meta_key, cfg)
+	if on:
+		_ui_layout_helper(ctl, true)
+	_ui_layout_dirty(ctl)
 
 ## LayoutElement.ignoreLayout / layoutPriority
 func ui_element_value(n, key: String, default):
@@ -7123,7 +7325,7 @@ func toggle_group_first(g) -> Node:
 
 # TMP alignment ↔ Godot (HorizontalAlignmentOptions: Left 1, Center 2, Right 4, Justified 8; VerticalAlignmentOptions: Top 256, Middle 512, Bottom 1024)
 func ui_halign_get(n: Node) -> int:
-	if n is Label:
+	if n is Label or n is RichTextLabel:
 		return {HORIZONTAL_ALIGNMENT_LEFT: 1, HORIZONTAL_ALIGNMENT_CENTER: 2, HORIZONTAL_ALIGNMENT_RIGHT: 4, HORIZONTAL_ALIGNMENT_FILL: 8}.get(n.horizontal_alignment, 1)
 	if n is LineEdit:
 		return {HORIZONTAL_ALIGNMENT_LEFT: 1, HORIZONTAL_ALIGNMENT_CENTER: 2, HORIZONTAL_ALIGNMENT_RIGHT: 4, HORIZONTAL_ALIGNMENT_FILL: 8}.get(n.alignment, 1)
@@ -7132,7 +7334,7 @@ func ui_halign_get(n: Node) -> int:
 func ui_halign_set(n: Node, v: int) -> void:
 	prop_set(n, "horizontalAlignment", v)
 	var ga: int = {1: HORIZONTAL_ALIGNMENT_LEFT, 2: HORIZONTAL_ALIGNMENT_CENTER, 4: HORIZONTAL_ALIGNMENT_RIGHT, 8: HORIZONTAL_ALIGNMENT_FILL, 16: HORIZONTAL_ALIGNMENT_FILL, 32: HORIZONTAL_ALIGNMENT_CENTER}.get(v, HORIZONTAL_ALIGNMENT_LEFT)
-	if n is Label:
+	if n is Label or n is RichTextLabel:
 		n.horizontal_alignment = ga
 	elif n is LineEdit:
 		n.alignment = ga
@@ -7140,13 +7342,13 @@ func ui_halign_set(n: Node, v: int) -> void:
 		n.alignment = ga
 
 func ui_valign_get(n: Node) -> int:
-	if n is Label:
+	if n is Label or n is RichTextLabel:
 		return {VERTICAL_ALIGNMENT_TOP: 256, VERTICAL_ALIGNMENT_CENTER: 512, VERTICAL_ALIGNMENT_BOTTOM: 1024}.get(n.vertical_alignment, 256)
 	return int(prop_get(n, "verticalAlignment", 256))
 
 func ui_valign_set(n: Node, v: int) -> void:
 	prop_set(n, "verticalAlignment", v)
-	if n is Label:
+	if n is Label or n is RichTextLabel:
 		n.vertical_alignment = {256: VERTICAL_ALIGNMENT_TOP, 512: VERTICAL_ALIGNMENT_CENTER, 1024: VERTICAL_ALIGNMENT_BOTTOM, 2048: VERTICAL_ALIGNMENT_BOTTOM, 4096: VERTICAL_ALIGNMENT_CENTER, 8192: VERTICAL_ALIGNMENT_TOP}.get(v, VERTICAL_ALIGNMENT_TOP)
 
 ## TextAlignmentOptions = horizontal | vertical
@@ -7159,6 +7361,9 @@ func ui_alignment_set(n: Node, v: int) -> void:
 
 ## TextOverflowModes: Overflow 0, Ellipsis 1, Masking 2, Truncate 3, ScrollRect 4, Page 5, Linked 6
 func ui_overflow_get(n: Node) -> int:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		return int(UiText.settings(t).get("overflow", 0))
 	if n is Label:
 		match n.text_overrun_behavior:
 			TextServer.OVERRUN_TRIM_ELLIPSIS, TextServer.OVERRUN_TRIM_WORD_ELLIPSIS:
@@ -7169,6 +7374,10 @@ func ui_overflow_get(n: Node) -> int:
 	return int(prop_get(n, "overflowMode", 0))
 
 func ui_overflow_set(n: Node, v: int) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		UiText.update(t, {"overflow": v})
+		return
 	prop_set(n, "overflowMode", v)
 	if n is Label:
 		match v:
@@ -7207,6 +7416,9 @@ func ui_rtl_set(n: Node, v: bool) -> void:
 		n.text_direction = Control.TEXT_DIRECTION_RTL if v else Control.TEXT_DIRECTION_AUTO
 
 func ui_wrap_get(n: Node) -> bool:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		return bool(UiText.settings(t).get("wrap", true))
 	if n is Label:
 		return n.autowrap_mode != TextServer.AUTOWRAP_OFF
 	if n is RichTextLabel:
@@ -7214,6 +7426,10 @@ func ui_wrap_get(n: Node) -> bool:
 	return bool(prop_get(n, "enableWordWrapping", true))
 
 func ui_wrap_set(n: Node, v: bool) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		UiText.update(t, {"wrap": v})
+		return
 	prop_set(n, "enableWordWrapping", v)
 	if n is Label or n is RichTextLabel:
 		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if v else TextServer.AUTOWRAP_OFF

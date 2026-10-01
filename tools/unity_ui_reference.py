@@ -15,6 +15,11 @@ the Godot side, following what is rendered, and `--compare` lists every node who
 Corners are world positions (Unity space; window pixels with y up for screen-space canvases) in
 the order of RectTransform.GetWorldCorners: bottom-left, top-left, top-right, bottom-right.
 
+Besides the rectangles: what one object does to another (a Slider's fill and handle anchors
+follow its value, a Selectable tints its target graphic, a Toggle shows its check mark), whether
+and in which colour each Graphic is drawn (component enabled, CanvasRenderer colour, masks that
+hide their graphic, canvas group alpha) and the characters a text shows (rich text tags removed).
+
 What is not modelled: text metrics (a Text / TMP preferred size is unknown without the font; such
 nodes are flagged `text_sized` and compared loosely) and anything scripts do at runtime.
 """
@@ -440,6 +445,9 @@ class Node:
         self.parent = None
         self.children = []
         self.components = []   # [(name, data)]
+        self.component_ids = []   # file ids, parallel to components
+        self.renderer_color = [1.0, 1.0, 1.0, 1.0]   # CanvasRenderer colour (Selectable tint, Toggle fade)
+        self.field_text = False   # the text or placeholder object of an input field
         d = tobj.data
         self.local_position = _vec(d.get("m_LocalPosition"), "xyz", (0, 0, 0))
         self.local_rotation = _vec(d.get("m_LocalRotation"), "xyzw", (0, 0, 0, 1))
@@ -514,6 +522,7 @@ def build_graph(model, assets):
                     p = assets.guid_to_path.get(guid, "")
                     name = os.path.splitext(os.path.basename(p))[0] if p else "script:" + str(guid)[:8]
             node.components.append((name, o.data))
+            node.component_ids.append(cid)
     roots = []
     for fid, n in nodes.items():
         pid = _ref_id(n.t.data.get("m_Father"))
@@ -937,6 +946,154 @@ class Layout:
                 self.set_axis(canvas, axis, canvas.active)
 
 
+# --------------------------------------------------------------------------------------------
+# Selectables, graphics and text
+# --------------------------------------------------------------------------------------------
+
+SELECTABLES = ("Button", "Toggle", "Slider", "Scrollbar", "InputField", "Dropdown", "TMP_InputField", "TMP_Dropdown")
+GRAPHICS = ("Image", "RawImage", "Text", "TextMeshProUGUI")
+
+
+def _color(d, default=(1.0, 1.0, 1.0, 1.0)):
+    if not isinstance(d, dict):
+        return list(default)
+    return [_num(d.get(k), default[i]) for i, k in enumerate("rgba")]
+
+
+def apply_selectables(nodes):
+    """What a Selectable writes to other objects when it is enabled (Selectable.OnEnable →
+    DoStateTransition, Toggle.PlayEffect, Slider.UpdateVisuals), before any input."""
+    owner = {}
+    for n in nodes.values():
+        for cid in n.component_ids:
+            owner[cid] = n
+    for n in nodes.values():
+        for name, d in n.components:
+            if name not in SELECTABLES or not enabled(d):
+                continue
+            # colour tint: the target graphic's CanvasRenderer colour is the state's colour
+            target = owner.get(_ref_id(d.get("m_TargetGraphic")))
+            if target is not None and int(_num(d.get("m_Transition", 1), 1)) == 1:
+                block = d.get("m_Colors") or {}
+                interactable = _num(d.get("m_Interactable", 1), 1) != 0
+                tint = _color(block.get("m_NormalColor" if interactable else "m_DisabledColor"))
+                mul = _num(block.get("m_ColorMultiplier", 1), 1)
+                target.renderer_color = [min(max(x * mul, 0.0), 1.0) for x in tint]
+            if name == "Toggle":
+                mark = owner.get(_ref_id(d.get("graphic")))
+                if mark is not None:
+                    mark.renderer_color = mark.renderer_color[:3] + [1.0 if _num(d.get("m_IsOn", 0)) != 0 else 0.0]
+            if name in ("InputField", "TMP_InputField"):
+                for key in ("m_TextComponent", "m_Placeholder"):
+                    part = owner.get(_ref_id(d.get(key)))
+                    if part is not None:
+                        part.field_text = True
+            if name == "Slider":
+                lo, hi = _num(d.get("m_MinValue", 0)), _num(d.get("m_MaxValue", 1), 1)
+                value = min(max(_num(d.get("m_Value", 0)), lo), hi)
+                if _num(d.get("m_WholeNumbers", 0)) != 0:
+                    value = round(value)
+                t = (value - lo) / (hi - lo) if hi > lo else 0.0
+                direction = int(_num(d.get("m_Direction", 0)))
+                axis = 0 if direction < 2 else 1
+                reverse = direction in (1, 3)
+                fill = nodes.get(_ref_id(d.get("m_FillRect")))
+                if fill is not None and fill.parent is not None and fill.parent.is_rect:
+                    amin, amax = [0.0, 0.0], [1.0, 1.0]
+                    img = fill.comp("Image")
+                    if not (img is not None and int(_num(img.get("m_Type", 0))) == 3):
+                        if reverse:
+                            amin[axis] = 1.0 - t
+                        else:
+                            amax[axis] = t
+                    fill.anchor_min, fill.anchor_max = amin, amax
+                handle = nodes.get(_ref_id(d.get("m_HandleRect")))
+                if handle is not None and handle.parent is not None and handle.parent.is_rect:
+                    amin, amax = [0.0, 0.0], [1.0, 1.0]
+                    amin[axis] = amax[axis] = (1.0 - t) if reverse else t
+                    handle.anchor_min, handle.anchor_max = amin, amax
+
+
+def graphic_of(n):
+    for name, d in n.components:
+        if name in GRAPHICS:
+            return name, d
+    return None, None
+
+
+def drawn_color(n, group_alpha):
+    """The colour a node's Graphic is drawn with: its own colour × the CanvasRenderer colour,
+    alpha × the canvas groups above; alpha 0 when the component is disabled or a Mask hides it."""
+    name, d = graphic_of(n)
+    if name is None:
+        return None
+    own = _color(d.get("m_fontColor") if name == "TextMeshProUGUI" else d.get("m_Color"))
+    c = [own[i] * n.renderer_color[i] for i in range(4)]
+    c[3] *= group_alpha
+    m = n.comp("Mask")
+    if not enabled(d) or (enabled(m) and _num(m.get("m_ShowMaskGraphic", 1), 1) == 0):
+        c[3] = 0.0
+    return c
+
+
+_TMP_TAGS = ("b", "i", "u", "s", "strikethrough", "br", "color", "size", "align", "mark", "uppercase", "allcaps", "smallcaps", "lowercase",
+             "nobr", "font", "material", "line-height", "line-indent", "indent", "margin", "margin-left", "margin-right", "pos", "voffset",
+             "cspace", "mspace", "gradient", "link", "style", "width", "sprite", "quad", "rotate", "page", "space", "font-weight", "alpha",
+             "sup", "sub", "noparse")
+_UGUI_TAGS = ("b", "i", "size", "color", "material", "quad")
+_TAG = re.compile(r"<(/?)([A-Za-z-]+|#[0-9A-Fa-f]{3,8})(?:[= ][^<>]*)?>")
+
+
+def shown_text(n):
+    """The characters a Text / TextMeshProUGUI shows: rich text tags removed (only the tags the
+    component knows: anything else in angle brackets is text), cased by the font style."""
+    name, d = graphic_of(n)
+    if name == "TextMeshProUGUI":
+        raw, rich, style, tags = d.get("m_text"), _num(d.get("m_isRichText", 1), 1) != 0, int(_num(d.get("m_fontStyle", 0))), _TMP_TAGS
+    elif name == "Text":
+        fd = d.get("m_FontData") or {}
+        raw, rich, style, tags = d.get("m_Text"), _num(fd.get("m_RichText", 1), 1) != 0, 0, _UGUI_TAGS
+    else:
+        return None
+    raw = "" if raw is None else str(raw)
+    case = [1 if style & (16 | 32) else 0, 1 if style & 8 else 0]   # upper, lower
+
+    def cased(t):
+        return t.upper() if case[0] > 0 else (t.lower() if case[1] > 0 else t)
+    if not rich:
+        return cased(raw)
+    out = []
+    pos = 0
+    for m in _TAG.finditer(raw):
+        tag = m.group(2).lower()
+        if tag.startswith("#"):
+            tag = "color" if name == "TextMeshProUGUI" else ""
+        if tag not in tags:
+            continue
+        out.append(cased(raw[pos:m.start()]))
+        pos = m.end()
+        closing = m.group(1) == "/"
+        if tag == "br":
+            out.append("\n")
+        elif tag in ("uppercase", "allcaps", "smallcaps"):
+            case[0] = max(case[0] + (-1 if closing else 1), 0)
+        elif tag == "lowercase":
+            case[1] = max(case[1] + (-1 if closing else 1), 0)
+    out.append(cased(raw[pos:]))
+    return "".join(out)
+
+
+def font_size(n):
+    """The font size of a text that is not auto-sized."""
+    name, d = graphic_of(n)
+    if name == "TextMeshProUGUI":
+        return None if _num(d.get("m_enableAutoSizing", 0)) != 0 else _num(d.get("m_fontSize", 36), 36)
+    if name == "Text":
+        fd = d.get("m_FontData") or {}
+        return None if _num(fd.get("m_BestFit", 0)) != 0 else _num(fd.get("m_FontSize", 14), 14)
+    return None
+
+
 def canvas_scale_factor(canvas, screen):
     scaler = canvas.comp("CanvasScaler")
     if not enabled(scaler):
@@ -1024,11 +1181,16 @@ def describe_canvas(canvas, layout, screen):
         "nodes": [],
     }
 
-    def walk(n, parent_m, shown, negative):
+    def group_alpha(n):
+        g = n.comp("CanvasGroup")
+        return min(max(_num(g.get("m_Alpha", 1), 1), 0.0), 1.0) if enabled(g) else 1.0
+
+    def walk(n, parent_m, shown, negative, alpha):
         for c in n.children:
             if not c.is_rect:
                 continue
             m = mat_mul(parent_m, local_matrix(c))
+            calpha = alpha * group_alpha(c)
             q = c.local_rotation
             e = {
                 "path": c.path(canvas),
@@ -1049,9 +1211,19 @@ def describe_canvas(canvas, layout, screen):
             if negative or c.size[0] < 0 or c.size[1] < 0:
                 # Unity lays children out against a negative-size rect; a Control cannot be negative
                 e["negative_size"] = True
+            color = drawn_color(c, calpha)
+            if color is not None:
+                e["graphic"] = color
+            text = shown_text(c)
+            if text is not None:
+                e["text"] = text
+                if font_size(c) is not None:
+                    e["font_size"] = font_size(c)
+            if c.field_text:
+                e["field_text"] = True   # drawn by the input field itself
             entry["nodes"].append(e)
-            walk(c, m, shown and c.active, negative or c.size[0] < 0 or c.size[1] < 0)
-    walk(canvas, wm, canvas.active, False)
+            walk(c, m, shown and c.active, negative or c.size[0] < 0 or c.size[1] < 0, calpha)
+    walk(canvas, wm, canvas.active, False, group_alpha(canvas))
     return entry
 
 
@@ -1060,6 +1232,7 @@ def reference(assets_dir, target, screen=(1152.0, 648.0)):
     model = assets.flatten(target)
     nodes, roots = build_graph(model, assets)
     layout = Layout()
+    apply_selectables(nodes)
     out = [describe_canvas(c, layout, screen) for c in find_canvases(roots)]
     return out, assets.warnings, nodes
 
@@ -1144,9 +1317,32 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                         problems.append("%s :: %s: off by %.4g (limit %.3g)  Unity %s, imported %s%s%s" % (rc["path"], e["path"], worst, limit, _corners(e["corners"]), _corners(d["corners"]), "" if e["shown"] else "  [hidden]", note))
                 if check_active and bool(d.get("active", True)) != bool(e["active"]):
                     problems.append("%s :: %s: active %s, Unity %s" % (rc["path"], e["path"], d.get("active"), e["active"]))
+                problems.extend("%s :: %s: %s" % (rc["path"], e["path"], p) for p in _drawn_problems(e, d))
                 walk(rch, dch)
         walk(_tree(rc["nodes"]), _tree(dc["nodes"]))
     return matched, problems
+
+
+def _drawn_problems(e, d):
+    """What is drawn: the graphic's colour (or that nothing is drawn), the text and its size."""
+    out = []
+    if e.get("field_text"):
+        return out
+    if "graphic" in e:
+        want = e["graphic"]
+        got = d.get("graphic")
+        if got is None:
+            if want[3] > 0.02:
+                out.append("draws no graphic, Unity draws %s" % _fmt(want))
+        elif abs(want[3] - got[3]) > 0.02 or (want[3] > 0.02 and max(abs(a - b) for a, b in zip(want[:3], got[:3])) > 0.02):
+            out.append("drawn colour %s, Unity %s" % (_fmt(got), _fmt(want)))
+    if "text" in e and "text" in d:
+        want_t, got_t = " ".join(e["text"].split()), " ".join(str(d["text"]).split())
+        if want_t != got_t:
+            out.append("text %r, Unity shows %r" % (got_t[:80], want_t[:80]))
+    if "font_size" in e and "font_size" in d and abs(e["font_size"] - d["font_size"]) > 0.51:
+        out.append("font size %s, Unity %s" % (d["font_size"], e["font_size"]))
+    return out
 
 
 def _fmt(v):

@@ -17,7 +17,13 @@ The scene (`UiCases.unity`) holds one canvas per group of cases:
   Nested     canvases inside canvases: in place, as prefab instances, coplanar and tilted
   Placed     a canvas with an off-centre pivot under rotated and scaled plain Transforms
   Screen*    screen-space canvases with each CanvasScaler mode
+  Widgets    what one object does to another and what is drawn: Slider fill and handle rects by
+             value and direction, Toggle check marks, Selectable colour tints, disabled graphics,
+             masks, canvas groups, rich text (TextMeshPro and uGUI), an input field's text objects
   prefab instances with RectTransform overrides (Card.prefab, Board.prefab)
+  Overrides  instances of Panel.prefab whose components are overridden: text, font size and
+             colour, a disabled Image, Selectable colours and interactable, Toggle.isOn,
+             Slider value and direction, layout group and layout element settings
 
 Unity itself is not needed: tools/unity_ui_reference.py computes where Unity puts every rect
 from these files, and the imported scene is compared with that (scripts/test_ui.sh).
@@ -43,6 +49,7 @@ GUID = {
     "ContentSizeFitter": "3245ec927659c4140ac4f8d17403cc18",
     "AspectRatioFitter": "86710e43de46f6f4bac7c8e50813a599",
     "Mask": "31a19414c41e5ae4aae2af33fee712f6",
+    "TextMeshProUGUI": "f4688fdb7df04437aeb418b961361dc5",
 }
 
 SCENE_SETTINGS = """--- !u!29 &1
@@ -222,13 +229,16 @@ class UnityFile:
 
     def add(self, o, comp):
         cid = self.new_id()
-        kind, body = comp
-        if kind == "Canvas":
+        kind, body = comp[0], comp[1]
+        on = 1 if len(comp) < 3 or comp[2] else 0
+        if kind == "CanvasGroup":
+            o.components.append((cid, 225, "CanvasGroup", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n%s" % (o.go, body)))
+        elif kind == "Canvas":
             o.components.append((cid, 223, "Canvas", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n%s" % (o.go, body)))
         elif kind == "CanvasRenderer":
             o.components.append((cid, 222, "CanvasRenderer", "  m_GameObject: {fileID: %d}\n  m_CullTransparentMesh: 1\n" % o.go))
         else:
-            head = "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n  m_EditorHideFlags: 0\n  m_Script: {fileID: 11500000, guid: %s, type: 3}\n  m_Name: \n  m_EditorClassIdentifier: \n" % (o.go, GUID[kind])
+            head = "  m_GameObject: {fileID: %d}\n  m_Enabled: %d\n  m_EditorHideFlags: 0\n  m_Script: {fileID: 11500000, guid: %s, type: 3}\n  m_Name: \n  m_EditorClassIdentifier: \n" % (o.go, on, GUID[kind])
             o.components.append((cid, 114, "MonoBehaviour", head + body))
         return cid
 
@@ -376,31 +386,71 @@ def renderer():
 _GRAPHIC = "  m_Material: {fileID: 0}\n  m_Color: %s\n  m_RaycastTarget: 1\n  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}\n  m_Maskable: 1\n  m_OnCullStateChanged:\n    m_PersistentCalls:\n      m_Calls: []\n"
 
 
-def image(color=(1, 1, 1, 1)):
-    return ("Image", _GRAPHIC % vec(color, "rgba") + "  m_Sprite: {fileID: 0}\n  m_Type: 0\n  m_PreserveAspect: 0\n  m_FillCenter: 1\n  m_FillMethod: 4\n  m_FillAmount: 1\n  m_FillClockwise: 1\n  m_FillOrigin: 0\n  m_UseSpriteMesh: 0\n  m_PixelsPerUnitMultiplier: 1\n")
+def disable(comp):
+    """The component, disabled (m_Enabled: 0)."""
+    return (comp[0], comp[1], False)
 
 
-def text(value, size=14, color=(0, 0, 0, 1), align=4):
-    return ("Text", _GRAPHIC % vec(color, "rgba") + "  m_FontData:\n    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n    m_FontSize: %d\n    m_FontStyle: 0\n    m_BestFit: 0\n    m_MinSize: 1\n    m_MaxSize: 40\n    m_Alignment: %d\n    m_AlignByGeometry: 0\n    m_RichText: 1\n    m_HorizontalOverflow: 0\n    m_VerticalOverflow: 0\n    m_LineSpacing: 1\n  m_Text: %s\n" % (size, align, value))
+def quoted(value):
+    """A YAML scalar that may hold anything (Unity single-quotes such strings)."""
+    return "'" + str(value).replace("'", "''") + "'"
 
 
-_SELECTABLE = "  m_Navigation:\n    m_Mode: 3\n    m_WrapAround: 0\n    m_SelectOnUp: {fileID: 0}\n    m_SelectOnDown: {fileID: 0}\n    m_SelectOnLeft: {fileID: 0}\n    m_SelectOnRight: {fileID: 0}\n  m_Transition: 1\n  m_Colors:\n    m_NormalColor: {r: 1, g: 1, b: 1, a: 1}\n    m_HighlightedColor: {r: 0.96, g: 0.96, b: 0.96, a: 1}\n    m_PressedColor: {r: 0.78, g: 0.78, b: 0.78, a: 1}\n    m_SelectedColor: {r: 0.96, g: 0.96, b: 0.96, a: 1}\n    m_DisabledColor: {r: 0.78, g: 0.78, b: 0.78, a: 0.5}\n    m_ColorMultiplier: 1\n    m_FadeDuration: 0.1\n  m_Interactable: 1\n  m_TargetGraphic: {fileID: 0}\n"
+def image(color=(1, 1, 1, 1), kind=0):
+    """kind: Image.Type (0 simple, 3 filled)."""
+    return ("Image", _GRAPHIC % vec(color, "rgba") + "  m_Sprite: {fileID: 0}\n  m_Type: %d\n  m_PreserveAspect: 0\n  m_FillCenter: 1\n  m_FillMethod: 4\n  m_FillAmount: 1\n  m_FillClockwise: 1\n  m_FillOrigin: 0\n  m_UseSpriteMesh: 0\n  m_PixelsPerUnitMultiplier: 1\n" % kind)
 
 
-def button():
-    return ("Button", _SELECTABLE + "  m_OnClick:\n    m_PersistentCalls:\n      m_Calls: []\n")
+def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
+    return ("Text", _GRAPHIC % vec(color, "rgba") + "  m_FontData:\n    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n    m_FontSize: %d\n    m_FontStyle: %d\n    m_BestFit: %d\n    m_MinSize: %d\n    m_MaxSize: %d\n    m_Alignment: %d\n    m_AlignByGeometry: 0\n    m_RichText: %d\n    m_HorizontalOverflow: %d\n    m_VerticalOverflow: %d\n    m_LineSpacing: 1\n  m_Text: %s\n" % (
+        size, style, best_fit, sizes[0], sizes[1], align, rich, overflow[0], overflow[1], quoted(value)))
 
 
-def toggle(on=False):
-    return ("Toggle", _SELECTABLE + "  toggleTransition: 1\n  graphic: {fileID: 0}\n  m_Group: {fileID: 0}\n  onValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n  m_IsOn: %d\n" % (1 if on else 0))
+def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72), wrap=True, overflow=0, halign=1, valign=256, rich=True):
+    """TextMeshProUGUI. style: 1 bold, 2 italic, 4 underline, 8 lower, 16 upper, 32 small caps;
+    halign 1 left, 2 centre, 4 right; valign 256 top, 512 middle, 1024 bottom."""
+    return ("TextMeshProUGUI", _GRAPHIC % vec((1, 1, 1, 1), "rgba") + (
+        "  m_text: %s\n  m_isRightToLeft: 0\n  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}\n"
+        "  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}\n  m_fontColor32:\n    serializedVersion: 2\n    rgba: 4294967295\n"
+        "  m_fontColor: %s\n  m_enableVertexGradient: 0\n  m_fontSize: %s\n  m_fontSizeBase: %s\n  m_fontWeight: 400\n  m_enableAutoSizing: %d\n  m_fontSizeMin: %s\n  m_fontSizeMax: %s\n"
+        "  m_fontStyle: %d\n  m_HorizontalAlignment: %d\n  m_VerticalAlignment: %d\n  m_textAlignment: 65535\n  m_characterSpacing: 0\n  m_lineSpacing: 0\n"
+        "  m_enableWordWrapping: %d\n  m_overflowMode: %d\n  m_isRichText: %d\n  m_margin: {x: 0, y: 0, z: 0, w: 0}\n") % (
+        quoted(value), vec(color, "rgba"), num(size), num(size), auto, num(sizes[0]), num(sizes[1]), style, halign, valign, wrap, overflow, rich))
 
 
-def slider(value=0.5, direction=0):
-    return ("Slider", _SELECTABLE + "  m_FillRect: {fileID: 0}\n  m_HandleRect: {fileID: 0}\n  m_Direction: %d\n  m_MinValue: 0\n  m_MaxValue: 1\n  m_WholeNumbers: 0\n  m_Value: %s\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (direction, num(value)))
+def selectable(target=0, transition=1, normal=(1, 1, 1, 1), highlighted=(0.96, 0.96, 0.96, 1), pressed=(0.78, 0.78, 0.78, 1), selected=(0.96, 0.96, 0.96, 1), disabled=(0.78, 0.78, 0.78, 0.5), multiplier=1, interactable=True):
+    """The fields every Selectable serializes. target: file id of the target Graphic component."""
+    return ("  m_Navigation:\n    m_Mode: 3\n    m_WrapAround: 0\n    m_SelectOnUp: {fileID: 0}\n    m_SelectOnDown: {fileID: 0}\n    m_SelectOnLeft: {fileID: 0}\n    m_SelectOnRight: {fileID: 0}\n"
+            "  m_Transition: %d\n  m_Colors:\n    m_NormalColor: %s\n    m_HighlightedColor: %s\n    m_PressedColor: %s\n    m_SelectedColor: %s\n    m_DisabledColor: %s\n    m_ColorMultiplier: %s\n    m_FadeDuration: 0.1\n"
+            "  m_Interactable: %d\n  m_TargetGraphic: {fileID: %d}\n") % (
+        transition, vec(normal, "rgba"), vec(highlighted, "rgba"), vec(pressed, "rgba"), vec(selected, "rgba"), vec(disabled, "rgba"), num(multiplier), interactable, target)
 
 
-def input_field(value=""):
-    return ("InputField", _SELECTABLE + "  m_TextComponent: {fileID: 0}\n  m_Placeholder: {fileID: 0}\n  m_ContentType: 0\n  m_InputType: 0\n  m_AsteriskChar: 42\n  m_KeyboardType: 0\n  m_LineType: 0\n  m_HideMobileInput: 0\n  m_CharacterValidation: 0\n  m_CharacterLimit: 0\n  m_OnSubmit:\n    m_PersistentCalls:\n      m_Calls: []\n  m_OnDidEndEdit:\n    m_PersistentCalls:\n      m_Calls: []\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n  m_CaretColor: {r: 0.2, g: 0.2, b: 0.2, a: 1}\n  m_CustomCaretColor: 0\n  m_SelectionColor: {r: 0.66, g: 0.81, b: 1, a: 0.75}\n  m_Text: %s\n  m_CaretBlinkRate: 0.85\n  m_CaretWidth: 1\n  m_ReadOnly: 0\n  m_ShouldActivateOnSelect: 1\n" % value)
+def button(**sel):
+    return ("Button", selectable(**sel) + "  m_OnClick:\n    m_PersistentCalls:\n      m_Calls: []\n")
+
+
+def toggle(on=False, graphic=0, **sel):
+    return ("Toggle", selectable(**sel) + "  toggleTransition: 1\n  graphic: {fileID: %d}\n  m_Group: {fileID: 0}\n  onValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n  m_IsOn: %d\n" % (graphic, 1 if on else 0))
+
+
+def slider(value=0.5, direction=0, fill=0, handle=0, lo=0, hi=1, whole=False, **sel):
+    """fill / handle: file ids of RectTransforms."""
+    return ("Slider", selectable(**sel) + "  m_FillRect: {fileID: %d}\n  m_HandleRect: {fileID: %d}\n  m_Direction: %d\n  m_MinValue: %s\n  m_MaxValue: %s\n  m_WholeNumbers: %d\n  m_Value: %s\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (
+        fill, handle, direction, num(lo), num(hi), whole, num(value)))
+
+
+def input_field(value="", text_component=0, placeholder=0, **sel):
+    return ("InputField", selectable(**sel) + "  m_TextComponent: {fileID: %d}\n  m_Placeholder: {fileID: %d}\n  m_ContentType: 0\n  m_InputType: 0\n  m_AsteriskChar: 42\n  m_KeyboardType: 0\n  m_LineType: 0\n  m_HideMobileInput: 0\n  m_CharacterValidation: 0\n  m_CharacterLimit: 0\n  m_OnSubmit:\n    m_PersistentCalls:\n      m_Calls: []\n  m_OnDidEndEdit:\n    m_PersistentCalls:\n      m_Calls: []\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n  m_CaretColor: {r: 0.2, g: 0.2, b: 0.2, a: 1}\n  m_CustomCaretColor: 0\n  m_SelectionColor: {r: 0.66, g: 0.81, b: 1, a: 0.75}\n  m_Text: %s\n  m_CaretBlinkRate: 0.85\n  m_CaretWidth: 1\n  m_ReadOnly: 0\n  m_ShouldActivateOnSelect: 1\n" % (
+        text_component, placeholder, value))
+
+
+def mask(show=True):
+    return ("Mask", "  m_ShowMaskGraphic: %d\n" % show)
+
+
+def canvas_group(alpha=1.0, interactable=True):
+    return ("CanvasGroup", "  m_Alpha: %s\n  m_Interactable: %d\n  m_BlocksRaycasts: 1\n  m_IgnoreParentGroups: 0\n" % (num(alpha), interactable))
 
 
 def _padding(p):
@@ -483,6 +533,39 @@ def card_prefab():
     return f, {"root": root, "title": f.objects[1], "icon": f.objects[2], "body": body}
 
 
+def panel_prefab():
+    """A UI prefab with one of each component an instance may override."""
+    f = UnityFile("0c11ca5e000000000000000000000003")
+    b = Builder(f)
+    root = b.img("Panel", None, {"size": (260, 170)}, color=(0.2, 0.22, 0.28, 1))
+    title = f.node("Title", root, {"amin": (0, 1), "amax": (1, 1), "pivot": (0.5, 1), "pos": (0, -4), "size": (-8, 28)}, [renderer(), tmp("Title", 20, halign=2, valign=512)])
+    note = f.node("Note", root, {"amin": (0, 1), "amax": (1, 1), "pivot": (0.5, 1), "pos": (0, -34), "size": (-8, 22)}, [renderer(), text("note", 14, (1, 1, 1, 1))])
+    icon = b.img("Icon", root, {"amin": (0, 0), "amax": (0, 0), "pivot": (0, 0), "pos": (8, 8), "size": (36, 36)}, color=(0.2, 0.7, 0.9, 1))
+    go = f.node("Go", root, {"amin": (1, 0), "amax": (1, 0), "pivot": (1, 0), "pos": (-8, 8), "size": (70, 26)}, [renderer(), image((1, 1, 1, 1))])
+    f.node("Label", go, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("Go", 12, (0, 0, 0, 1))])
+    go_button = f.add(go, button(target=go.components[1][0]))
+    check = b.box("Check", root, {"amin": (0, 0), "amax": (0, 0), "pivot": (0, 0), "pos": (52, 8), "size": (24, 24)})
+    back = b.img("Background", check, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.9, 0.9, 0.9, 1))
+    mark = b.img("Checkmark", back, {"amin": (0, 0), "amax": (1, 1), "size": (-8, -8)}, color=(0.1, 0.1, 0.1, 1))
+    check_toggle = f.add(check, toggle(False, mark.components[1][0], target=back.components[1][0]))
+    level = b.box("Level", root, {"amin": (0, 0), "amax": (1, 0), "pivot": (0.5, 0), "pos": (0, 50), "size": (-16, 14)})
+    b.img("Background", level, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.3, 0.3, 0.3, 1))
+    area = b.box("Fill Area", level, {"amin": (0, 0), "amax": (1, 1), "size": (-10, -4)})
+    fill = b.img("Fill", area, {"amin": (0, 0), "amax": (0.5, 1), "size": (0, 0)}, color=(0.3, 0.8, 0.4, 1))
+    harea = b.box("Handle Slide Area", level, {"amin": (0, 0), "amax": (1, 1), "size": (-10, 0)})
+    knob = b.img("Handle", harea, {"amin": (0.5, 0), "amax": (0.5, 1), "size": (10, 0)}, color=(0.95, 0.95, 0.95, 1))
+    level_slider = f.add(level, slider(0.5, 0, fill.t, knob.t, target=knob.components[1][0]))
+    row = b.box("Row", root, {"amin": (0, 0), "amax": (1, 0), "pivot": (0.5, 0), "pos": (0, 72), "size": (-16, 30)})
+    row_group = f.add(row, hgroup(padding=(2, 2, 2, 2), spacing=4, control=(True, True), expand=(False, True)))
+    cell_a = b.img("A", row, {"size": (10, 10)}, color=(0.9, 0.3, 0.3, 1))
+    cell_a_element = f.add(cell_a, element(pref=(40, -1)))
+    cell_b = b.img("B", row, {"size": (10, 10)}, color=(0.3, 0.4, 0.9, 1))
+    f.add(cell_b, element(pref=(60, -1)))
+    ids = {"root": root, "title": title.components[1][0], "note": note.components[1][0], "icon": icon.components[1][0], "go_image": go.components[1][0], "go": go_button,
+           "check": check_toggle, "level": level_slider, "row": row_group, "cell_a": cell_a_element}
+    return f, ids
+
+
 def board_prefab():
     """A prefab whose root is a world canvas (400 x 200 at scale 0.002)."""
     f = UnityFile("0c11ca5e000000000000000000000002")
@@ -494,7 +577,7 @@ def board_prefab():
     return f, {"root": root, "lamp": f.objects[2]}
 
 
-def build_scene(card, card_ids, board, board_ids):
+def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f = UnityFile("0c11ca5e000000000000000000000010", first_id=1000)
     b = Builder(f)
 
@@ -563,6 +646,13 @@ def build_scene(card, card_ids, board, board_ids):
     f.node("SlideV", panel, {"pos": (105, 0), "size": (8, 60)}, [slider(0.75, 2)])
     f.node("Label", panel, {"pos": (-30, -20), "size": (80, 16)}, [renderer(), text("Label", 12)])
     f.node("DirectButton", c, {"pos": (0.5, 0.15), "size": (0.12, 0.05)}, [renderer(), image(COLORS[4]), button()])
+    # a container of 100 x 100 metres (a RectTransform's default size on a canvas of scale 1) with
+    # scaled-down items at fractions of a metre: an engine that rounds control origins to whole
+    # units of the parent draws them up to half a metre away
+    menu = b.box("Menu", c, {"pos": (0.31, -0.07), "size": (100, 100)})
+    b.img("MenuItem", menu, {"pos": (0, 0), "size": (300, 100), "scale": 0.0005}, color=(0.9, 0.2, 0.6, 1))
+    b.img("MenuItemLeft", menu, {"pos": (-0.2, 0.04), "size": (200, 100), "scale": 0.0004}, color=(0.2, 0.9, 0.6, 1))
+    f.node("MenuButton", menu, {"pos": (0.16, 0.03), "size": (250, 100), "scale": 0.0004}, [renderer(), image((0.6, 0.6, 0.2, 1)), button()])
 
     # ---- Layouts ------------------------------------------------------------------------------
     c = b.world_canvas("Layouts", (0, 3.2, 2), (1800, 1400))
@@ -742,6 +832,123 @@ def build_scene(card, card_ids, board, board_ids):
     b.img("HiddenCanvasChild", hidden, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)})
 
     # ---- screen-space canvases --------------------------------------------------------------------
+    # ---- Overrides: components of prefab instances, overridden --------------------------------
+    c = b.world_canvas("Overrides", (5.0, 3.0, 2), (900, 400))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.1, 0.12, 1))
+    rt = widget_ids["root"].t
+    f.instance(widgets, c, "PanelPlain", [(rt, "m_AnchoredPosition.x", -300), (rt, "m_AnchoredPosition.y", 0)])
+    f.instance(widgets, c, "PanelChanged", [
+        (rt, "m_AnchoredPosition.x", 0), (rt, "m_AnchoredPosition.y", 0),
+        (widget_ids["title"], "m_text", "<b>Changed</b> title"), (widget_ids["title"], "m_fontSize", 24), (widget_ids["title"], "m_fontColor.g", 0.5), (widget_ids["title"], "m_fontStyle", 16),
+        (widget_ids["note"], "m_Text", "another note"), (widget_ids["note"], "m_FontData.m_FontSize", 18), (widget_ids["note"], "m_Color.b", 0),
+        (widget_ids["icon"], "m_Color.r", 1), (widget_ids["icon"], "m_Color.a", 0.5),
+        (widget_ids["go"], "m_Colors.m_NormalColor.a", 0),
+        (widget_ids["check"], "m_IsOn", 1),
+        (widget_ids["level"], "m_Value", 0.9),
+        (widget_ids["row"], "m_Spacing", 20), (widget_ids["row"], "m_Padding.m_Left", 10), (widget_ids["cell_a"], "m_PreferredWidth", 100),
+    ])
+    f.instance(widgets, c, "PanelOff", [
+        (rt, "m_AnchoredPosition.x", 300), (rt, "m_AnchoredPosition.y", 0),
+        (widget_ids["title"], "m_Enabled", 0),
+        (widget_ids["note"], "m_Enabled", 0),
+        (widget_ids["icon"], "m_Enabled", 0),
+        (widget_ids["go"], "m_Interactable", 0), (widget_ids["go"], "m_Colors.m_DisabledColor.r", 1), (widget_ids["go"], "m_Colors.m_DisabledColor.a", 1),
+        (widget_ids["check"], "m_Interactable", 0), (widget_ids["check"], "m_IsOn", 1),
+        (widget_ids["level"], "m_Direction", 1), (widget_ids["level"], "m_Value", 0.25),
+        (widget_ids["row"], "m_ChildAlignment", 5), (widget_ids["cell_a"], "m_IgnoreLayout", 1),
+    ])
+
+    # ---- Widgets: what one object does to another, and what is drawn ---------------------------
+    c = b.world_canvas("Widgets", (3.5, 3.0, 2), (800, 600))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.12, 0.12, 0.16, 1))
+
+    def graphic_id(o):
+        """File id of the object's Graphic component (after its CanvasRenderer)."""
+        return o.components[1][0]
+
+    def make_slider(name, pos, value, direction, lo=0, hi=1, whole=False, filled=False, handle=True, **sel):
+        vertical = direction >= 2
+        root = b.box(name, c, {"pos": pos, "size": (20, 160) if vertical else (160, 20)})
+        b.img("Background", root, {"amin": (0, 0.25), "amax": (1, 0.75), "size": (0, 0)}, color=(0.3, 0.3, 0.3, 1))
+        # the anchors in the file are stale on purpose: Unity sets them from the value
+        area = b.box("Fill Area", root, {"amin": (0, 0.25), "amax": (1, 0.75), "pos": (-5, 0), "size": (-20, 0)})
+        fill = f.node("Fill", area, {"amin": (0, 0), "amax": (0.9, 0.8), "size": (10, 0)}, [renderer(), image((0.3, 0.8, 0.4, 1), 3 if filled else 0)])
+        knob = None
+        if handle:
+            harea = b.box("Handle Slide Area", root, {"amin": (0, 0), "amax": (1, 1), "size": (-20, 0)})
+            knob = b.img("Handle", harea, {"amin": (0.9, 0.1), "amax": (0.9, 0.9), "size": (20, 0)}, color=(0.95, 0.95, 0.95, 1))
+        f.add(root, slider(value, direction, fill.t, knob.t if knob else 0, lo, hi, whole, target=graphic_id(knob) if knob else 0, **sel))
+        return root
+    make_slider("SliderLTR", (-300, 260), 0.25, 0)
+    make_slider("SliderRTL", (-300, 220), 0.25, 1)
+    make_slider("SliderRange", (-300, 180), 0, 0, lo=-10, hi=30)
+    make_slider("SliderWhole", (-300, 140), 3, 0, lo=0, hi=10, whole=True)
+    make_slider("SliderFilled", (-300, 100), 0.4, 0, filled=True)
+    make_slider("SliderNoHandle", (-300, 60), 0.8, 1, handle=False)
+    make_slider("SliderDisabled", (-300, 20), 1, 0, interactable=False)
+    make_slider("SliderBTT", (-160, 180), 0.6, 2)
+    make_slider("SliderTTB", (-120, 180), 0.6, 3)
+
+    def make_toggle(name, pos, on, **sel):
+        root = b.box(name, c, {"pos": pos, "size": (120, 24)})
+        back = b.img("Background", root, {"amin": (0, 0.5), "amax": (0, 0.5), "pos": (12, 0), "size": (20, 20)}, color=(0.9, 0.9, 0.9, 1))
+        mark = b.img("Checkmark", back, {"size": (16, 16)}, color=(0.1, 0.1, 0.1, 1))
+        f.node("Label", root, {"amin": (0, 0), "amax": (1, 1), "pos": (12, 0), "size": (-28, 0)}, [renderer(), text(name, 12, (1, 1, 1, 1))])
+        f.add(root, toggle(on, graphic_id(mark), target=graphic_id(back), **sel))
+        return root
+    make_toggle("ToggleOn", (0, 260), True)
+    make_toggle("ToggleOff", (0, 230), False)
+    make_toggle("ToggleOnDisabled", (0, 200), True, interactable=False)
+
+    def make_button(name, pos, color, own_image=True, child_target=False, image_on=True, **sel):
+        comps = [renderer(), image(color) if image_on else disable(image(color))] if own_image else []
+        root = f.node(name, c, {"pos": pos, "size": (140, 30)}, comps)
+        target = graphic_id(root) if own_image else 0
+        if child_target:
+            target = graphic_id(b.img("Face", root, {"amin": (0, 0), "amax": (1, 1), "size": (-6, -6)}, color=color))
+        f.node("Label", root, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text(name, 12, (0, 0, 0, 1))])
+        f.add(root, button(target=target if sel.pop("targeted", True) else 0, **sel))
+        return root
+    make_button("BtnPlain", (200, 260), (1, 1, 1, 1))
+    make_button("BtnClear", (200, 225), (1, 1, 1, 1), normal=(1, 1, 1, 0))                 # invisible until hovered
+    make_button("BtnTint", (200, 190), (0.5, 0.5, 1, 1), normal=(1, 0.5, 0.5, 1))
+    make_button("BtnDisabled", (200, 155), (1, 1, 1, 1), interactable=False)
+    make_button("BtnMultiplier", (200, 120), (1, 1, 1, 1), normal=(0.4, 0.4, 0.4, 1), multiplier=2)
+    make_button("BtnNoTransition", (200, 85), (0.2, 0.6, 0.9, 1), transition=0, normal=(1, 0, 0, 0.2))
+    make_button("BtnChildTarget", (200, 50), (1, 1, 1, 1), own_image=False, child_target=True, normal=(0.2, 1, 0.2, 1))
+    make_button("BtnNoTarget", (200, 15), (0.9, 0.6, 0.2, 1), normal=(1, 1, 1, 0), targeted=False)
+    make_button("BtnImageOff", (200, -20), (1, 1, 1, 1), image_on=False)                    # a disabled Image draws nothing
+
+    # graphics that are not drawn while their objects and children stay
+    hidden_img = f.node("ImageOff", c, {"pos": (0, 150), "size": (100, 40)}, [renderer(), disable(image((1, 0, 0, 1)))])
+    b.img("Kid", hidden_img, {"size": (40, 20)}, color=(0.2, 0.9, 0.2, 1))
+    masked = f.node("MaskHidden", c, {"pos": (0, 100), "size": (100, 40)}, [renderer(), image((1, 0, 0, 1)), mask(False)])
+    b.img("Kid", masked, {"size": (40, 20)}, color=(0.2, 0.9, 0.2, 1))
+    shown = f.node("MaskShown", c, {"pos": (0, 50), "size": (100, 40)}, [renderer(), image((0.5, 0.2, 0.2, 1)), mask(True)])
+    b.img("Kid", shown, {"size": (40, 20)}, color=(0.2, 0.9, 0.2, 1))
+    group = b.box("Group", c, {"pos": (0, 0), "size": (100, 40)}, [canvas_group(0.5)])
+    b.img("Half", group, {"amin": (0, 0), "amax": (0.5, 1), "size": (0, 0)}, color=(1, 1, 1, 1))
+    inner = b.box("Inner", group, {"amin": (0.5, 0), "amax": (1, 1), "size": (0, 0)}, [canvas_group(0.5)])
+    b.img("Quarter", inner, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(1, 1, 1, 0.8))
+    f.node("TextOff", c, {"pos": (0, -40), "size": (100, 20)}, [renderer(), disable(text("not drawn", 12, (1, 1, 1, 1)))])
+
+    # text
+    f.node("TmpTags", c, {"pos": (-200, -100), "size": (380, 30)}, [renderer(), tmp("<b>Bold</b> <color=#FFD700>gold</color> <size=13>small</size> 1<<2 <unknown> <#00ff00>green</color> end", 20)])
+    f.node("TmpSmallCaps", c, {"pos": (-200, -140), "size": (380, 30)}, [renderer(), tmp("Small Caps Text", 20, style=35)])
+    f.node("TmpUpper", c, {"pos": (-200, -180), "size": (380, 30)}, [renderer(), tmp("upper <lowercase>LOWER</lowercase> case", 20, style=16)])
+    f.node("TmpNoRich", c, {"pos": (-200, -220), "size": (380, 30)}, [renderer(), tmp("<b>raw</b> text", 20, rich=False)])
+    f.node("TmpAuto", c, {"pos": (-200, -260), "size": (380, 30)}, [renderer(), tmp("Auto sized text that has to shrink to fit its rect", 60, auto=True, sizes=(8, 60), halign=2, valign=512)])
+    f.node("TmpCentre", c, {"pos": (200, -100), "size": (300, 30)}, [renderer(), tmp("centred<br>two lines", 12, color=(1, 0.8, 0.2, 1), halign=2, valign=512)])
+    f.node("UguiRich", c, {"pos": (200, -140), "size": (300, 30)}, [renderer(), text("<b>bold</b> <color=red>red</color> <size=20>big</size> <u>plain</u>", 14, (1, 1, 1, 1))])
+    f.node("UguiBold", c, {"pos": (200, -180), "size": (300, 30)}, [renderer(), text("bold italic", 14, (1, 1, 1, 1), style=3)])
+    f.node("UguiBestFit", c, {"pos": (200, -220), "size": (300, 30)}, [renderer(), text("Best fit text that is far too long for its rect at forty", 40, (1, 1, 1, 1), best_fit=True, sizes=(6, 40))])
+
+    # an input field draws its text and placeholder objects itself
+    field = f.node("Field", c, {"pos": (200, -265), "size": (200, 30)}, [renderer(), image((1, 1, 1, 1))])
+    hint = f.node("Placeholder", field, {"amin": (0, 0), "amax": (1, 1), "size": (-20, -10)}, [renderer(), text("Enter text...", 14, (0.2, 0.2, 0.2, 0.5), style=2)])
+    shown_text = f.node("Text", field, {"amin": (0, 0), "amax": (1, 1), "size": (-20, -10)}, [renderer(), text("typed", 14, (0.2, 0.2, 0.2, 1))])
+    f.add(field, input_field("typed", graphic_id(shown_text), graphic_id(hint), target=graphic_id(field)))
+
     def screen(name, sc, order):
         cv = f.node(name, None, {"amin": (0, 0), "amax": (0, 0), "size": (0, 0), "scale": 0}, [canvas(0, order), sc, raycaster()])
         b.img("TL", cv, {"amin": (0, 1), "amax": (0, 1), "pivot": (0, 1), "pos": (10, -10), "size": (80, 40)})
@@ -767,8 +974,9 @@ def main(argv):
     os.makedirs(out, exist_ok=True)
     card, card_ids = card_prefab()
     board, board_ids = board_prefab()
-    scene = build_scene(card, card_ids, board, board_ids)
-    for name, f, is_scene in (("Card.prefab", card, False), ("Board.prefab", board, False), ("UiCases.unity", scene, True)):
+    panel, panel_ids = panel_prefab()
+    scene = build_scene(card, card_ids, board, board_ids, panel, panel_ids)
+    for name, f, is_scene in (("Card.prefab", card, False), ("Board.prefab", board, False), ("Panel.prefab", panel, False), ("UiCases.unity", scene, True)):
         with open(os.path.join(out, name), "w") as fh:
             fh.write(f.text(is_scene))
         with open(os.path.join(out, name + ".meta"), "w") as fh:

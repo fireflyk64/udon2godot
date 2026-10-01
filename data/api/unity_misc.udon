@@ -525,18 +525,18 @@ type CanvasGroup : Behaviour kind=component gd=Control extern=UnityEngineCanvasG
 type Graphic : Behaviour kind=component gd=Control extern=UnityEngineUIGraphic
   color: Color => U.ui_get_color($0)
   set color: Color => U.ui_set_color($0, $v)
-  enabled: bool => $0.visible
-  set enabled: bool => $0.visible = $v
+  enabled: bool => U.ui_graphic_get_enabled($0)
+  set enabled: bool => U.ui_graphic_set_enabled($0, $v)
   raycastTarget: bool => ($0.mouse_filter != 2)
   set raycastTarget: bool => $0.mouse_filter = (0 if $v else 2)
   rectTransform: RectTransform => $0
-  canvasRenderer: Component => $0
+  canvasRenderer: CanvasRenderer => $0
   material: Material => $0.material
   set material: Material => $0.material = $v
   SetAllDirty(): void => pass
   SetVerticesDirty(): void => pass
   CrossFadeAlpha(float, float, bool): void => U.ui_fade_alpha($0, $1, $2)
-  CrossFadeColor(Color, float, bool, bool): void => U.ui_set_color($0, $1)
+  CrossFadeColor(Color, float, bool, bool): void => U.ui_fade_color($0, $1, $2, $4)
 
 type Text : Graphic kind=component gd=Control extern=UnityEngineUIText
   text: string => U.ui_get_text($0)
@@ -545,30 +545,30 @@ type Text : Graphic kind=component gd=Control extern=UnityEngineUIText
   set fontSize: int => U.ui_set_font_size($0, $v)
   alignment: int => 0
   set alignment: int => pass
-  fontStyle: int => 0
-  set fontStyle: int => pass
-  supportRichText: bool => true
-  set supportRichText: bool => pass
-  resizeTextForBestFit: bool => false
-  set resizeTextForBestFit: bool => pass
+  fontStyle: int => (int(U.ui_text_get($0, "style", 0)) & 3)
+  set fontStyle: int => U.ui_text_set($0, "style", $v)
+  supportRichText: bool => bool(U.ui_text_get($0, "rich", true))
+  set supportRichText: bool => U.ui_text_set($0, "rich", $v)
+  resizeTextForBestFit: bool => bool(U.ui_text_get($0, "auto", false))
+  set resizeTextForBestFit: bool => U.ui_text_set($0, "auto", $v)
   lineSpacing: float => 1.0
   set lineSpacing: float => pass
-  preferredWidth: float => $0.size.x
-  preferredHeight: float => $0.size.y
+  preferredWidth: float => U.ui_text_preferred($0, 0)
+  preferredHeight: float => U.ui_text_preferred($0, 1)
 
 type TMP_Text : Graphic kind=component gd=Control extern=TMProTMP_Text
   text: string => U.ui_get_text($0)
   set text: string => U.ui_set_text($0, $v)
-  fontSize: float => float(U.ui_get_font_size($0))
-  set fontSize: float => U.ui_set_font_size($0, int($v))
+  fontSize: float => U.ui_get_font_size_f($0)
+  set fontSize: float => U.ui_set_font_size($0, $v)
   color: Color => U.ui_get_color($0)
   set color: Color => U.ui_set_color($0, $v)
-  fontStyle: int => 0
-  set fontStyle: int => pass
-  richText: bool => true
-  set richText: bool => pass
-  enableAutoSizing: bool => false
-  set enableAutoSizing: bool => pass
+  fontStyle: int => int(U.ui_text_get($0, "style", 0))
+  set fontStyle: int => U.ui_text_set($0, "style", $v)
+  richText: bool => bool(U.ui_text_get($0, "rich", true))
+  set richText: bool => U.ui_text_set($0, "rich", $v)
+  enableAutoSizing: bool => bool(U.ui_text_get($0, "auto", false))
+  set enableAutoSizing: bool => U.ui_text_set($0, "auto", $v)
   characterSpacing: float => 0.0
   set characterSpacing: float => pass
   outlineWidth: float => 0.0
@@ -577,9 +577,9 @@ type TMP_Text : Graphic kind=component gd=Control extern=TMProTMP_Text
   set outlineColor: Color32 => pass
   faceColor: Color32 => U.ui_get_color($0)
   set faceColor: Color32 => U.ui_set_color($0, $v)
-  preferredWidth: float => $0.size.x
-  preferredHeight: float => $0.size.y
-  maxVisibleCharacters: int => 99999
+  preferredWidth: float => U.ui_text_preferred($0, 0)
+  preferredHeight: float => U.ui_text_preferred($0, 1)
+  maxVisibleCharacters: int => U.ui_get_visible_characters($0)
   set maxVisibleCharacters: int => U.ui_set_visible_characters($0, $v)
   textInfo: TMP_TextInfo => U.ui_text_info($0)
   SetText(string): void => U.ui_set_text($0, $1)
@@ -589,8 +589,8 @@ type TMP_Text : Graphic kind=component gd=Control extern=TMProTMP_Text
   ForceMeshUpdate(): void => pass
   ForceMeshUpdate(bool): void => pass
   ForceMeshUpdate(bool, bool): void => pass
-  GetPreferredValues(): Vector2 => $0.size
-  GetPreferredValues(string): Vector2 => $0.size
+  GetPreferredValues(): Vector2 => Vector2(U.ui_text_preferred($0, 0), U.ui_text_preferred($0, 1))
+  GetPreferredValues(string): Vector2 => Vector2(U.ui_text_preferred($0, 0), U.ui_text_preferred($0, 1))
 
 type TMP_TextInfo kind=class gd=Dictionary extern=TMProTMP_TextInfo
   characterCount: int => $0.get("characterCount", 0)
@@ -646,23 +646,23 @@ type RawImage : Graphic kind=component gd=TextureRect extern=UnityEngineUIRawIma
 type Selectable : Behaviour kind=component gd=Control extern=UnityEngineUISelectable
   interactable: bool => U.ui_get_interactable($0)
   set interactable: bool => U.ui_set_interactable($0, $v)
-  image: Image => $0
-  targetGraphic: Graphic => $0
+  image: Image => U.ui_selectable_part($0, "target", $0)
+  targetGraphic: Graphic => U.ui_selectable_part($0, "target", $0)
   Select(): void => $0.grab_focus()
 
 type Button : Selectable kind=component gd=BaseButton extern=UnityEngineUIButton
   interactable: bool => not $0.disabled
-  set interactable: bool => $0.disabled = not $v
+  set interactable: bool => U.ui_set_interactable($0, $v)
   onClick: UnityEvent => $0.pressed
 
 type Toggle : Selectable kind=component gd=BaseButton extern=UnityEngineUIToggle
   isOn: bool => $0.button_pressed
   set isOn: bool => $0.button_pressed = $v
   interactable: bool => not $0.disabled
-  set interactable: bool => $0.disabled = not $v
-  SetIsOnWithoutNotify(bool): void => $0.set_pressed_no_signal($1)
+  set interactable: bool => U.ui_set_interactable($0, $v)
+  SetIsOnWithoutNotify(bool): void => U.toggle_set_silent($0, $1)
   onValueChanged: UnityEvent => $0.toggled
-  graphic: Graphic => $0
+  graphic: Graphic => U.ui_selectable_part($0, "graphic", null)
   group: ToggleGroup => null
   set group: ToggleGroup => pass
 
@@ -683,8 +683,8 @@ type Slider : Selectable kind=component gd=Range extern=UnityEngineUISlider
   wholeNumbers: bool => $0.rounded
   set wholeNumbers: bool => $0.rounded = $v
   interactable: bool => $0.editable
-  set interactable: bool => $0.editable = $v
-  SetValueWithoutNotify(float): void => $0.set_value_no_signal($1)
+  set interactable: bool => U.ui_set_interactable($0, $v)
+  SetValueWithoutNotify(float): void => U.slider_set_silent($0, $1)
   onValueChanged: UnityEvent => $0.value_changed
 
 type Scrollbar : Selectable kind=component gd=ScrollBar extern=UnityEngineUIScrollbar
@@ -720,6 +720,8 @@ type InputField : Selectable kind=component gd=LineEdit extern=UnityEngineUIInpu
   isFocused: bool => $0.has_focus()
 
 type LayoutElement : Behaviour kind=component gd=Control extern=UnityEngineUILayoutElement
+  enabled: bool => U.ui_component_enabled($0, "unidot_layout_element")
+  set enabled: bool => U.ui_component_set_enabled($0, "unidot_layout_element", $v)
   preferredWidth: float => U.ui_element_get($0, "pref", 0)
   set preferredWidth: float => U.ui_element_set($0, "pref", 0, $v)
   preferredHeight: float => U.ui_element_get($0, "pref", 1)

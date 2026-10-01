@@ -15,7 +15,7 @@ func _init() -> void:
 	_U = root.get_node("U")
 	_Udon = root.get_node("Udon")
 	var only: Array = OS.get_cmdline_user_args()
-	var names: Array = ["TCoord", "TMath", "TMathB", "TStrings", "TArrays", "TTransform", "TPhysics", "TMedia", "TUI", "TRect", "TVRC", "T2D", "TParticles", "TSystem", "TNav", "TAnim", "TExt", "TOverloads", "TNulls"]
+	var names: Array = ["TCoord", "TMath", "TMathB", "TStrings", "TArrays", "TTransform", "TPhysics", "TMedia", "TUI", "TRect", "TWidgets", "TVRC", "T2D", "TParticles", "TSystem", "TNav", "TAnim", "TExt", "TOverloads", "TNulls"]
 	for n in names:
 		if not only.is_empty() and not only.has(n):
 			continue
@@ -124,6 +124,39 @@ func run_fixture(name: String) -> void:
 func _godot_checks_late(name: String, target: Node3D, _host: Node3D) -> Array:
 	var out: Array = []
 	match name:
+		"TWidgets":
+			# what the script set is what the controls draw
+			var wroot: Control = _U.RT.root_control(_host.get_node("Canvas"))
+			var label: RichTextLabel = wroot.get_node("Label")
+			if label.get_parsed_text() != "LOCALPLAYER WON":
+				out.append("the text set by the script is drawn without tags, cased by its style: " + label.get_parsed_text())
+			if not label.text.contains("[font_size=13]") or not label.text.contains("[color=#FFD700]") or not label.text.begins_with("[b]"):
+				out.append("... as BBCode: " + label.text)
+			if label.get_theme_font_size("normal_font_size") != 25:
+				out.append("font size 24.5 is drawn at 25: %d" % label.get_theme_font_size("normal_font_size"))
+			if not label.get_theme_color("default_color").is_equal_approx(Color(1, 0, 0, 0.5)) or not is_equal_approx(label.self_modulate.a, 1.0):
+				out.append("text colour drawn: %s, modulate %s" % [str(label.get_theme_color("default_color")), str(label.self_modulate)])
+			var fitted: RichTextLabel = wroot.get_node("Fitted")
+			var fs: int = fitted.get_theme_font_size("normal_font_size")
+			if fs >= 60 or fs < 8 or fitted.get_content_height() > 30.5:
+				out.append("the auto-sized text is fitted to its rect: size %d, content height %d" % [fs, fitted.get_content_height()])
+			var image: TextureRect = wroot.get_node("Image")
+			if not image.visible or image.self_modulate.a != 0.0 or not (wroot.get_node("Image/Kid") as Control).is_visible_in_tree():
+				out.append("a disabled Image draws nothing but stays visible with its children: %s" % str(image.self_modulate))
+			var button: Button = wroot.get_node("Button")
+			var box: StyleBox = button.get_theme_stylebox("normal")
+			if not (box is StyleBoxFlat) or not (box as StyleBoxFlat).bg_color.is_equal_approx(Color(0, 0, 1, 0.5)):
+				out.append("the button draws its disabled colour: " + str(box.get("bg_color")))
+			var mark: TextureRect = wroot.get_node("Toggle/Background/Checkmark")
+			if not mark.self_modulate.is_equal_approx(Color(0.1, 0.1, 0.1, 1)):
+				out.append("the check mark of the toggle that is on is drawn: " + str(mark.self_modulate))
+			var fill: Control = wroot.get_node("Slider/Fill Area/Fill")
+			# right to left at 0.875: the fill covers the right 87.5 % of the 160 wide area, plus its size delta
+			if absf(fill.size.x - 150.0) > 0.01 or absf(fill.position.x - 15.0) > 0.01:
+				out.append("the fill rect follows its anchors: x %s, width %s" % [str(fill.position.x), str(fill.size.x)])
+			var l3d: Label3D = _host.get_node("Text3D/TextMeshPro")
+			if l3d.text != "Winner" or not l3d.modulate.is_equal_approx(Color(0, 1, 0, 1)):
+				out.append("the 3D text draws what the script set: %s %s" % [l3d.text, str(l3d.modulate)])
 		"TRect":
 			# the script moved `Mover` onto a 3D spot: it is drawn there, on a canvas of its own
 			var RT = _U.RT
@@ -251,7 +284,7 @@ func _godot_checks(name: String, target: Node3D, _host: Node3D) -> Array:
 				"TMP no autowrap": tmp.autowrap_mode == TextServer.AUTOWRAP_OFF,
 				"outline colour override": tmp.has_theme_color_override("font_outline_color") and tmp.get_theme_color("font_outline_color") == Color.BLUE,
 				"outline size 2": tmp.get_theme_constant("outline_size") == 2,
-				"button normal colour tints": btn.self_modulate == Color.RED,
+				"button normal colour tints": btn.get_theme_stylebox("normal") is StyleBoxFlat and (btn.get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color.RED,
 				"button focus neighbour": btn.focus_neighbor_bottom == btn.get_path_to(ui.get_node("Slider")),
 				"mask clips": rect.clip_contents,
 				"layout preferred width": is_equal_approx((rect.get_meta("unidot_layout_element")["pref"] as Vector2).x, 120.0),
@@ -447,6 +480,77 @@ func _build_scene(name: String, target: Node3D, host: Node3D) -> void:
 			host.add_child(spot)
 			spot.position = Vector3(-3, 0.5, -1)                                # Unity (3, 0.5, -1)
 			spot.quaternion = Quaternion(0.0, -sin(PI / 4.0), 0.0, cos(PI / 4.0))  # Unity 90 degrees about y
+		"TWidgets":
+			# texts, graphics and selectables as the importer leaves them: metadata rendered by
+			# unidot's runtime modules, helper children for what follows input
+			var RT = _U.RT
+			var defaults: Dictionary = RT._defaults()
+			var cv := Node3D.new()
+			cv.name = "Canvas"
+			host.add_child(cv)
+			var croot := Control.new()
+			croot.name = "Canvas"
+			RT.build_island(cv, croot, {"anchored_position": Vector2(0, 1), "z": 2.0, "size_delta": Vector2(400, 300), "scale": Vector3(0.01, 0.01, 0.01), "anchor_min": Vector2.ZERO, "anchor_max": Vector2.ZERO})
+			var mk := func(cls: String, nm: String, parent: Control, v: Dictionary) -> Control:
+				var c: Control = ClassDB.instantiate(cls)
+				c.name = nm
+				parent.add_child(c)
+				var full: Dictionary = defaults.duplicate()
+				full.merge(v, true)
+				RT.set_values(c, full)
+				return c
+			var helper := func(c: Control, nm: String, script: Script) -> void:
+				var h := Node.new()
+				h.name = nm
+				h.set_meta(RT.META_HELPER, true)
+				h.set_script(script)
+				c.add_child(h)
+			var label: RichTextLabel = mk.call("RichTextLabel", "Label", croot, {"anchored_position": Vector2(0, 120), "size_delta": Vector2(300, 40)})
+			_U.UiText.set_fonts(label)
+			label.set_meta(_U.UiText.META, {"text": "<b>Start</b>", "tmp": true, "rich": true, "size": 20.0, "style": 0, "auto": false, "min": 18.0, "max": 72.0, "wrap": true, "overflow": 0})
+			_U.UiText.render(label)
+			_U.UiGraphic.update(label, {"color": Color.WHITE})
+			var fitted: RichTextLabel = mk.call("RichTextLabel", "Fitted", croot, {"anchored_position": Vector2(0, 80), "size_delta": Vector2(200, 30)})
+			_U.UiText.set_fonts(fitted)
+			fitted.set_meta(_U.UiText.META, {"text": "Auto sized text that has to shrink", "tmp": true, "rich": true, "size": 60.0, "style": 0, "auto": true, "min": 8.0, "max": 60.0, "wrap": true, "overflow": 0})
+			_U.UiText.render(fitted)
+			helper.call(fitted, _U.UiText.HELPER, _U._UiTextFit)
+			var image: Control = mk.call("TextureRect", "Image", croot, {"anchored_position": Vector2(-150, 40), "size_delta": Vector2(60, 40)})
+			_U.UiGraphic.update(image, {"color": Color(1, 0.5, 0.25, 1)})
+			mk.call("TextureRect", "Kid", image, {"size_delta": Vector2(20, 20)})
+			var button: Button = mk.call("Button", "Button", croot, {"anchored_position": Vector2(0, 40), "size_delta": Vector2(120, 30)})
+			_U.UiGraphic.update(button, {"color": Color.WHITE})
+			button.set_meta(_U.UiSelectable.META, {"transition": 1, "target": NodePath("."), "colors": {"normalColor": Color(1, 1, 1, 0), "highlightedColor": Color(1, 1, 1, 1), "pressedColor": Color(0.8, 0.8, 0.8, 1), "selectedColor": Color(1, 1, 1, 1), "disabledColor": Color(0.8, 0.8, 0.8, 0.5), "colorMultiplier": 1.0, "fadeDuration": 0.1}})
+			helper.call(button, _U.UiSelectable.HELPER, _U.UiSelectable)
+			var toggle: Button = mk.call("Button", "Toggle", croot, {"anchored_position": Vector2(0, 0), "size_delta": Vector2(120, 24)})
+			toggle.toggle_mode = true
+			var back: Control = mk.call("TextureRect", "Background", toggle, {"size_delta": Vector2(20, 20)})
+			var mark: Control = mk.call("TextureRect", "Checkmark", back, {"size_delta": Vector2(16, 16)})
+			_U.UiGraphic.update(back, {"color": Color.WHITE})
+			_U.UiGraphic.update(mark, {"color": Color(0.1, 0.1, 0.1, 1)})
+			toggle.set_meta(_U.UiSelectable.META, {"transition": 1, "target": toggle.get_path_to(back), "graphic": toggle.get_path_to(mark)})
+			helper.call(toggle, _U.UiSelectable.HELPER, _U.UiSelectable)
+			var slider: HSlider = mk.call("HSlider", "Slider", croot, {"anchored_position": Vector2(0, -40), "size_delta": Vector2(160, 20)})
+			slider.max_value = 1.0
+			slider.step = 0.0
+			slider.value = 0.5
+			var area: Control = mk.call("Control", "Fill Area", slider, {"anchor_min": Vector2(0, 0), "anchor_max": Vector2(1, 1), "size_delta": Vector2.ZERO})
+			var fill: Control = mk.call("TextureRect", "Fill", area, {"anchor_min": Vector2(0, 0), "anchor_max": Vector2(0.9, 1), "size_delta": Vector2(10, 0)})
+			var knob: Control = mk.call("TextureRect", "Handle", area, {"anchor_min": Vector2(0.9, 0), "anchor_max": Vector2(0.9, 1), "size_delta": Vector2(20, 0)})
+			slider.set_meta(_U.UiSelectable.META, {"transition": 1, "target": slider.get_path_to(knob), "fill": slider.get_path_to(fill), "handle": slider.get_path_to(knob), "direction": 0})
+			helper.call(slider, _U.UiSelectable.HELPER, _U.UiSelectable)
+			for c in [button, toggle, slider]:
+				_U.UiSelectable.refresh_static(c)   # the importer's last step
+			var t3 := Node3D.new()
+			t3.name = "Text3D"
+			host.add_child(t3)
+			var l3d := Label3D.new()
+			l3d.name = "TextMeshPro"
+			l3d.font_size = 64
+			l3d.set_meta(_U.UiText.META, {"text": "ready", "tmp": true, "rich": true, "size": 2.0, "style": 0, "wrap": false, "overflow": 0})
+			t3.add_child(l3d)
+			_U.UiText.render(l3d)
+			_U.UiGraphic.update(l3d, {"color": Color.WHITE})
 		"TVRC":
 			var other := Node3D.new()
 			other.name = "Other"
@@ -594,6 +698,20 @@ func _wire(name: String, t: Node3D, host: Node3D, script) -> void:
 			t.set("itemB", croot.get_node("List/ItemB"))
 			t.set("mover", croot.get_node("Mover"))
 			t.set("spot", host.get_node("Spot"))
+		"TWidgets":
+			var wroot: Control = _U.RT.root_control(host.get_node("Canvas"))
+			t.set("label", wroot.get_node("Label"))
+			t.set("fitted", wroot.get_node("Fitted"))
+			t.set("image", wroot.get_node("Image"))
+			t.set("kid", wroot.get_node("Image/Kid"))
+			t.set("button", wroot.get_node("Button"))
+			t.set("buttonImage", wroot.get_node("Button"))
+			t.set("toggle", wroot.get_node("Toggle"))
+			t.set("check", wroot.get_node("Toggle/Background/Checkmark"))
+			t.set("slider", wroot.get_node("Slider"))
+			t.set("fill", wroot.get_node("Slider/Fill Area/Fill"))
+			t.set("handle", wroot.get_node("Slider/Fill Area/Handle"))
+			t.set("text3d", host.get_node("Text3D"))
 		"TVRC":
 			var other := host.get_node("Other")
 			other.set_script(script)

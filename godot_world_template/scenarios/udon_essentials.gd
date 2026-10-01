@@ -41,7 +41,7 @@ func run(r):
 			var shown: String = ""
 			if items.size() > 0:
 				for n in r._all(items[0]):
-					if n is Label and str(n.text) == str(me.display_name):
+					if (n is Label or n is RichTextLabel) and r.u().ui_get_text(n) == str(me.display_name):
 						shown = str(n.text)
 			r.check(shown != "", "the entry shows the player's display name (%s)" % str(me.display_name))
 			if items.size() > 0:

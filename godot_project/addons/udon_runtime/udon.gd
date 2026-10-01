@@ -780,7 +780,18 @@ func _phys_hook(co: Node) -> void:
 	_phys_hooked[id] = co
 	co.tree_exiting.connect(_phys_unhook.bind(id))
 
+## A hooked object leaves the tree: forgotten when it is being freed, kept while it is only
+## being moved (its signal connections stay with it, and hooking it again would double them).
 func _phys_unhook(id: int) -> void:
+	var co = _phys_hooked.get(id)
+	if co is Node and is_instance_valid(co):
+		var n: Node = co
+		while n != null:
+			if n.is_queued_for_deletion():
+				_phys_hooked.erase(id)
+				return
+			n = n.get_parent()
+		return
 	_phys_hooked.erase(id)
 
 ## The behaviours that receive physics callbacks for a collision object: those whose own

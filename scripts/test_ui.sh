@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Unity UI import without any scripting: canvases, RectTransforms and layout groups.
-#   scripts/test_ui.sh [out_dir]        (REIMPORT=1 forces a fresh import, SHOTS=1 renders screenshots)
+#   scripts/test_ui.sh [out_dir]        (REIMPORT=1 forces a fresh import)
 # 1. unit tests of unidot's runtime/rect_transform.gd (no importer involved)
 # 2. tests/unity_ui (written by tools/gen_ui_fixture.py: every RectTransform case, every layout
 #    group mode, nested and screen-space canvases, prefab overrides) is imported by unidot alone:
 #    the project has no udon_runtime, no sandbox and no udon_integration plugin
-# 3. the imported scene is run and every UI node's drawn world position is compared with where
-#    Unity puts it (tools/unity_ui_reference.py, computed from the Unity files)
+# 3. the imported scene is run and every UI node's drawn world position, colour and text are
+#    compared with what Unity shows (tools/unity_ui_reference.py, computed from the Unity files)
+# 4. on a display: every canvas is rendered (PNG in <out>/shots) and the pixels are compared
+#    with the transforms (test/ui_shots.gd --check)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/ui}
@@ -63,10 +65,16 @@ python3 tools/unity_ui_reference.py tests/unity_ui tests/unity_ui/UiCases/UiCase
 grep -c "MISMATCH" "$OUT/compare.log" | sed 's/^/mismatches: /'
 head -${UI_SHOW:-40} "$OUT/compare.log" | cut -c1-260
 tail -1 "$OUT/compare.log"
-if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-0}" = 1 ]; then
-  mkdir -p "$OUT/shots"
-  timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$OUT" -s addons/unidot_importer/test/ui_shots.gd -- --scene "res://$SCENE" --out "$OUT/shots" > "$OUT/shots.log" 2>&1
-  ls "$OUT/shots"
+if [ -n "${DISPLAY:-}" ]; then
+  # what is rendered against the transforms: every canvas to a PNG, and at the centre of every
+  # solid graphic the pixel must show the control the transforms put on top there
+  echo "== rendered canvases against the transforms (display $DISPLAY)"
+  rm -rf "$OUT/shots"; mkdir -p "$OUT/shots"
+  timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$OUT" -s addons/unidot_importer/test/ui_shots.gd -- --scene "res://$SCENE" --out "$OUT/shots" --check 1 > "$OUT/shots.log" 2>&1 || CODE=1
+  grep -E "MISDRAWN" "$OUT/shots.log" | head -${UI_SHOW:-40} | cut -c1-260
+  grep -E "^\[ui_shots\]" "$OUT/shots.log" || { echo "the rendering run did not finish (see $OUT/shots.log)"; CODE=1; }
+else
+  echo "== no display: the rendering of the canvases is not checked"
 fi
 godot_guard_report "$OUT"/*.log
 godot_script_errors "$OUT/unit.log" "$OUT/dump.log" || CODE=1

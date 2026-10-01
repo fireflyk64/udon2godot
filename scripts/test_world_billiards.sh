@@ -29,13 +29,20 @@ else
   cargo build --release -q && target/release/udon2godot -q --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted $(find refs/MS-VRCSA-Billiards -name "*.cs" -not -path "*/Editor/*")
 fi
 python3 scripts/world_doctor.py "$OUT" | sed -n '1,40p'
-# the table's UI as imported (scripts not running) against where Unity puts every rect, computed
-# from the Unity files: 3 canvases, 147 nodes, world-space corners within 2 mm + 1 %
+# the table's UI as imported (scripts not running) against what Unity shows, computed from the
+# Unity files: 3 canvases, 147 nodes, world-space corners within 2 mm + 1 %, colours and texts
 echo "== UI layout against the Unity reference"
 timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --static --scenario res://scenarios/canvas_dump.gd --dump-out "$OUT/ui_dump.json" > "$OUT/ui_dump.log" 2>&1
 python3 tools/unity_ui_reference.py refs/MS-VRCSA-Billiards refs/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.unity --compare "$OUT/ui_dump.json" --active > "$OUT/ui_compare.log" 2>/dev/null
 UCODE=$?
 head -20 "$OUT/ui_compare.log" | cut -c1-240
+if [ -n "${DISPLAY:-}" ]; then
+  # ... and what is rendered against those transforms: every canvas with all its menus shown,
+  # pixels of solid graphics and sprites where the transforms put them (PNGs in shots/canvases)
+  mkdir -p "$OUT/shots/canvases"
+  timeout 900 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$OUT" -s addons/unidot_importer/test/ui_shots.gd -- --scene $SCENE --out "$OUT/shots/canvases" --check 1 --static 1 --all 1 > "$OUT/ui_pixels.log" 2>&1 || UCODE=1
+  grep -E "MISDRAWN|^\[ui_shots\] pixel" "$OUT/ui_pixels.log" | head -20 | cut -c1-240
+fi
 echo "== scenario (headless)"
 timeout 600 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 10 --debug-scripts --scenario res://scenarios/billiards.gd > "$OUT/scenario.log" 2>&1
 CODE=$?

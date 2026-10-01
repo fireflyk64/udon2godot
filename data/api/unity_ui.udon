@@ -54,14 +54,14 @@ type Selectable
   colors: ColorBlock => U.ui_colors_get($0)
   navigation: Navigation => U.ui_nav_get($0)
   spriteState: SpriteState => U.ui_sprite_state_get($0)
-  transition: Selectable.Transition => !stored U.prop_get($0, "transition", 0)
+  transition: Selectable.Transition => int(U.ui_selectable_get($0, "transition", 1))
   set animationTriggers: AnimationTriggers => !stored U.prop_set($0, "animationTriggers", $v)
   set colors: ColorBlock => U.ui_colors_set($0, $v)
-  set image: Image => pass
+  set image: Image => U.ui_selectable_set_part($0, "target", $v)
   set navigation: Navigation => U.ui_nav_set($0, $v)
   set spriteState: SpriteState => U.ui_sprite_state_set($0, $v)
-  set targetGraphic: Graphic => pass
-  set transition: Selectable.Transition => !stored U.prop_set($0, "transition", $v)
+  set targetGraphic: Graphic => U.ui_selectable_set_part($0, "target", $v)
+  set transition: Selectable.Transition => U.ui_selectable_set($0, "transition", $v)
 
 type Button
   OnPointerClick(PointerEventData): void => U.ui_press($0, null)
@@ -86,12 +86,12 @@ type Slider
   OnInitializePotentialDrag(PointerEventData): void => pass
   Rebuild(CanvasUpdate): void => pass
   SetDirection(Slider.Direction, bool): void => pass
-  direction: Slider.Direction => !stored U.prop_get($0, "direction", 0)
-  fillRect: RectTransform => null
-  handleRect: RectTransform => null
-  set direction: Slider.Direction => !stored U.prop_set($0, "direction", $v)
-  set fillRect: RectTransform => pass
-  set handleRect: RectTransform => pass
+  direction: Slider.Direction => int(U.ui_selectable_get($0, "direction", 0))
+  fillRect: RectTransform => U.ui_selectable_part($0, "fill", null)
+  handleRect: RectTransform => U.ui_selectable_part($0, "handle", null)
+  set direction: Slider.Direction => U.ui_selectable_set($0, "direction", $v)
+  set fillRect: RectTransform => U.ui_selectable_set_part($0, "fill", $v)
+  set handleRect: RectTransform => U.ui_selectable_set_part($0, "handle", $v)
 
 type Scrollbar
   SetDirection(Scrollbar.Direction, bool): void => pass
@@ -305,6 +305,8 @@ type Outline : Shadow kind=component gd=Control extern=UnityEngineUIOutline
 type PositionAsUV1 : BaseMeshEffect kind=component gd=Control extern=UnityEngineUIPositionAsUV1
 
 type AspectRatioFitter : Behaviour kind=component gd=Control extern=UnityEngineUIAspectRatioFitter
+  enabled: bool => U.ui_component_enabled($0, "unidot_aspect")
+  set enabled: bool => U.ui_component_set_enabled($0, "unidot_aspect", $v)
   IsActive(): bool => $0.is_visible_in_tree()
   IsAspectModeValid(): bool => true
   IsComponentValidOnObject(): bool => true
@@ -439,14 +441,14 @@ type ScrollRect
 
 type TMP_Text
   alignment: TextAlignmentOptions => U.ui_alignment_get($0)
-  alpha: float => U.ui_alpha_get($0)
+  alpha: float => U.ui_get_color($0).a
   characterWidthAdjustment: float => !stored U.prop_get($0, "characterWidthAdjustment", 0.0)
   enableWordWrapping: bool => U.ui_wrap_get($0)
   firstVisibleCharacter: int => !stored int(U.prop_get($0, "firstVisibleCharacter", 0))
   fontMaterial: Material => $0.material
   fontSharedMaterial: Material => $0.material
-  fontSizeMax: float => !stored U.prop_get($0, "fontSizeMax", 0.0)
-  fontSizeMin: float => !stored U.prop_get($0, "fontSizeMin", 0.0)
+  fontSizeMax: float => float(U.ui_text_get($0, "max", 72.0))
+  fontSizeMin: float => float(U.ui_text_get($0, "min", 18.0))
   horizontalAlignment: HorizontalAlignmentOptions => U.ui_halign_get($0)
   isRightToLeftText: bool => U.ui_rtl_get($0)
   lineSpacing: float => U.ui_line_spacing_get($0)
@@ -458,14 +460,14 @@ type TMP_Text
   verticalAlignment: VerticalAlignmentOptions => U.ui_valign_get($0)
   wordSpacing: float => !stored U.prop_get($0, "wordSpacing", 0.0)
   set alignment: TextAlignmentOptions => U.ui_alignment_set($0, $v)
-  set alpha: float => U.ui_alpha_set($0, $v)
+  set alpha: float => U.ui_set_color_alpha($0, $v)
   set characterWidthAdjustment: float => !stored U.prop_set($0, "characterWidthAdjustment", $v)
   set enableWordWrapping: bool => U.ui_wrap_set($0, $v)
   set firstVisibleCharacter: int => !stored U.prop_set($0, "firstVisibleCharacter", $v)
   set fontMaterial: Material => $0.material = $v
   set fontSharedMaterial: Material => $0.material = $v
-  set fontSizeMax: float => !stored U.prop_set($0, "fontSizeMax", $v)
-  set fontSizeMin: float => !stored U.prop_set($0, "fontSizeMin", $v)
+  set fontSizeMax: float => U.ui_text_set($0, "max", $v)
+  set fontSizeMin: float => U.ui_text_set($0, "min", $v)
   set horizontalAlignment: HorizontalAlignmentOptions => U.ui_halign_set($0, $v)
   set isRightToLeftText: bool => U.ui_rtl_set($0, $v)
   set lineSpacing: float => U.ui_line_spacing_set($0, $v)

@@ -98,24 +98,86 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       Seen in the screenshots and not a matter of position (see the items below): text set by a
       script shows TextMeshPro tags literally (`<size=13>LocalPlayer`), the game mode buttons
       are white squares, slider handles do not follow the value.
-- [ ] Left over from this work, not positioning of the pool table:
+- [x] What the pool table's UI draws (after positioning). The screenshots of `billiards_ui.gd`
+      showed the menus in place but not looking like Unity. One implementation again: the importer
+      writes metadata, a run-time module of unidot renders it, and a script's setter goes through
+      the same module.
+      - [x] Text (`runtime/ui_text.gd`, metadata `unidot_text`): Unity rich text → BBCode by a tag
+            tokenizer (TextMeshPro's and uGUI's tag sets; anything else in angle brackets stays
+            text: `<<`, `<winner>`), font styles (the table uses bold + italic + small caps on 16
+            texts), auto-sizing (7 texts; a helper child refits when the rect changes), a
+            SystemFont family with Liberation Sans metrics (TMP's default font; the theme's Open
+            Sans is 21 % taller). uGUI Text is a RichTextLabel too. `text` / `fontSize` /
+            `fontStyle` / `richText` / `enableAutoSizing` ... of a script go through `U.ui_text_*`.
+      - [x] Graphics (`runtime/ui_graphic.gd`, metadata `unidot_graphic`): colour × CanvasRenderer
+            colour × enabled. A disabled Image draws nothing while its object and children stay
+            (the six `<<` / `>>` buttons were white boxes); `Graphic.enabled`, `color`,
+            `CrossFadeAlpha`, `canvasRenderer.SetAlpha` of a script use it (`enabled` used to
+            hide the whole object).
+      - [x] Selectables (`runtime/selectable.gd`, metadata `unidot_selectable`): colour tint of
+            the target graphic by selection state (the game mode buttons have a normal colour of
+            alpha 0), Toggle check mark follows `isOn`, Slider fill and handle follow the value
+            (Slider.UpdateVisuals); `colors`, `interactable`, `isOn`, `value`,
+            `SetValueWithoutNotify`, `direction`, `fillRect` ... of a script.
+      - [x] InputField: the LineEdit draws text and placeholder with the fonts and colours of
+            Unity's two child objects, which are not drawn a second time.
+      - [x] Tests without scripting: the "Widgets" canvas of `tests/unity_ui` (9 sliders, toggles,
+            9 buttons, disabled graphics, masks, canvas groups, rich text, an input field); the
+            reference computes the colour each graphic is drawn with and the characters each
+            text shows, the dump reads both from what the controls draw; 240 unit checks.
+      - [x] Scripts: `tests/coverage/TWidgets.cs` (36 checks) and the engine-side checks of
+            what is drawn after the script ran.
+- [x] Found on the way:
+      * Rendering is not where the transforms are. Godot rounds the origin of every Control to
+        a whole unit of its parent's space when drawing ("snap controls to pixels"); on a canvas
+        in metres (the table's `intl.menu`) that is up to half a metre: the START and PLAY
+        buttons were drawn half outside their viewport (and looked occluded). Off on every
+        canvas viewport. No check of transforms could see it, so `test/ui_shots.gd --check`
+        renders each canvas and compares the pixel at the centre of every solid graphic with
+        renders each canvas and compares pixels with the transforms: five points of every
+        solid graphic and nine of every sprite (where its texture is opaque and even), through
+        text drawn over them (1660 points on 364 of 386 graphics in `tests/unity_ui`, 233 on
+        40 of 46 in the pool table with every menu shown; with the snapping left on it reports
+        the START and PLAY buttons and the fixture's menu items). `scripts/test_ui.sh` and
+        `scripts/test_world_billiards.sh` run it when a display is there.
+      * unidot's YAML reader kept the closing quote of single-quoted scalars and dropped doubled
+        quotes (`'>>'` → `>>'`).
+- [x] UI component overrides on prefab instances: text, font size / style, colour (by member:
+      `m_Color.r`), `m_Enabled` (it used to hide the object), sprite, Selectable colours /
+      interactable, `m_IsOn`, Slider value / range / direction, layout group / element / fitter
+      settings. The override changes the same metadata and is rendered by the same modules; the
+      component is found by its file id (`unidot_ui` metadata of the Control), or by its fields
+      inside nested instances. `tests/unity_ui`: `Panel.prefab` with three instances on the
+      "Overrides" canvas (26 expectations that failed before).
+      Layout components keep their settings when disabled (`enabled: false` in the metadata), so
+      `layoutGroup.enabled` of a script works and no longer hides the object.
+- [ ] Left over, not positioning of the pool table:
+      * Text that overflows its rect vertically: a RichTextLabel draws only the lines that start
+        inside the rect, from the top; TextMeshPro's overflow mode draws all of them around the
+        alignment point (needs a drawing child the size of the content).
+      * Image type Filled (`fillAmount`), sliced sprites (9-slice borders), sprite tags and font
+        assets of TextMeshPro (a system font family stands in for every font asset).
+      * Selectable transitions other than colour tint (sprite swap, animation); tints are
+        applied at once (no fade); `CanvasGroup.interactable` does not disable the selectables
+        below it; CanvasGroup overrides on prefab instances.
       * ScrollRect is a Godot ScrollContainer: the scrolled object and Unity's Scrollbar children
         are not where Unity puts them (2 known mismatches in `tests/unity_fixture`); a Unity-style
-        scroller (content moved by its anchored position) would fix both and make
-        `content.anchoredPosition` scripts work.
-      * Slider fill / handle rects do not follow the value, Toggle graphics do not follow isOn
-        (Unity draws these with child objects; the Godot widget's own drawing is now empty).
-      * UI component overrides on prefab instances (text, colour, sprite of an instance).
+        scroller (content moved by its anchored position, Scrollbar.UpdateVisuals for the handle)
+        would fix both and make `content.anchoredPosition` scripts work.
       * A rect with a negative size (stretched with insets larger than the parent): a Control
         cannot be negative; children anchored to it are off (flagged, not compared).
       * An InputField smaller than one line of its font keeps Godot's minimum height.
       * Plain Transform children and 3D components (AudioSource, colliders) under a UI control
         have no 3D frame unless the control is a canvas.
-      * TextMeshPro (3D) outside a canvas (the table's "winner" text) is not converted.
       * The pointer takes the nearest canvas shape; it does not fall through to a canvas behind
         when the nearest one has no control under the pointer.
+      * The pixel check does not compare text glyphs, translucent graphics or widgets drawn by
+        Godot (LineEdit, OptionButton).
       * A branch off upstream unidot with only the UI commits (the fork's hooks in
         `object_adapter.gd` were introduced by earlier, mixed commits).
+- [x] TextMeshPro (3D) outside a canvas (the table's "winner" text) → Label3D (font size in
+      tenths of a unit, the object's RectTransform as text box); a RectTransform outside every
+      canvas is an ordinary Node3D placed by its anchored position.
 - [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts /
       sprites / 9-slice, Dropdown templates; Animator; constraints components; ...).
 

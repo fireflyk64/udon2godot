@@ -23,7 +23,7 @@ func run(r):
 	r.check(r.find("Floor/BoxCollider") is StaticBody3D, "collider became a StaticBody3D child named after the component")
 	r.check(r.find("Floor/MeshRenderer") is MeshInstance3D, "MeshRenderer child")
 	var lbl: Node = r.find("Label")
-	r.check(lbl is Label and lbl.get_theme_color("font_outline_color") == Color.YELLOW and lbl.get_theme_constant("outline_size") == 2, "imported Outline → theme overrides: " + str(lbl))
+	r.check(lbl is RichTextLabel and lbl.get_theme_color("font_outline_color") == Color.YELLOW and lbl.get_theme_constant("outline_size") == 2, "imported Outline → theme overrides: " + str(lbl))
 	var cvc: Node = r.find("Canvas/Viewport/Canvas")
 	r.check(cvc is Control and is_equal_approx((cvc as Control).modulate.a, 0.8), "imported CanvasGroup alpha → modulate")
 	var gp: Node = r.find("Probe/Marker/ParticleSystem")
@@ -150,14 +150,14 @@ func _ui_checks(r, fx: Node) -> void:
 		var slabel: Node = null
 		if spawned != null:
 			for n in r._all(spawned):
-				if n is Label:
+				if n is RichTextLabel:
 					slabel = n
 		r.check(int(fx.get("itemsSpawned")) == 2 and spawned is Control and cv.is_ancestor_of(spawned), "two items instantiated under the canvas: %s" % str(spawned))
 		# SetParent(canvas) puts a RectTransform among the canvas's controls, and localPosition = 0
 		# is the canvas pivot: Unity draws the items over the Center button
 		r.check(spawned is Control and spawned.get_viewport() == vp and u.go_parent(spawned) == cv, "a spawned item is drawn by the canvas and has it as its parent: %s" % str(u.go_parent(spawned) if spawned != null else null))
 		r.check(spawned is Control and u.get_position(spawned).is_equal_approx(Vector3(0, 1.5, 3)) and u.get_local_position(spawned).is_zero_approx(), "localPosition 0 under the canvas is the canvas pivot: %s" % str(u.get_position(spawned) if spawned != null else null))
-		r.check(slabel != null and str(slabel.text) == "item 2", "the instance's Text was found and set: " + str(slabel.text if slabel else null))
+		r.check(slabel != null and u.ui_get_text(slabel) == "item 2" and slabel.get_parsed_text() == "item 2", "the instance's Text was found and set: " + str(slabel.text if slabel else null))
 	# SDK components referenced through the SDK's DLL (one GUID, the class is the fileID): the GUID
 	# alone used to mean VRC_Pickup, which tagged audio sources, object syncs and UI shapes as pickups
 	var dll_pickup: Node = r.find("DllPickup")
@@ -182,15 +182,15 @@ func _ui_checks(r, fx: Node) -> void:
 	# invisible), and `dropdown.value = i` raises onValueChanged like Unity
 	var ddn: Node = r.find("Dropdown")
 	var cap: Node = r.find("DropCaption")
-	r.check(ddn is OptionButton and cap is Label and str(cap.text) == ddn.get_item_text(ddn.selected), "dropdown caption label shows the selected option: " + str(cap.text if cap is Label else null))
-	if ddn is OptionButton and cap is Label:
+	r.check(ddn is OptionButton and cap is RichTextLabel and cap.get_parsed_text() == ddn.get_item_text(ddn.selected), "dropdown caption label shows the selected option: " + str(cap.text if cap is RichTextLabel else null))
+	if ddn is OptionButton and cap is RichTextLabel:
 		var dchanged: int = int(fx.get("dropdownChanged"))
 		u.dd_set_value(ddn, 1, true)
 		await r.wait(3)
-		r.check(str(cap.text) == "Green" and int(fx.get("dropdownChanged")) == dchanged + 1 and int(fx.get("dropdownValue")) == 1, "value = 1: caption %s, onValueChanged raised (%d -> %d)" % [str(cap.text), dchanged, int(fx.get("dropdownChanged"))])
+		r.check(cap.get_parsed_text() == "Green" and int(fx.get("dropdownChanged")) == dchanged + 1 and int(fx.get("dropdownValue")) == 1, "value = 1: caption %s, onValueChanged raised (%d -> %d)" % [cap.get_parsed_text(), dchanged, int(fx.get("dropdownChanged"))])
 		u.dd_set_value(ddn, 0, false)
 		await r.wait(3)
-		r.check(str(cap.text) == ddn.get_item_text(0) and int(fx.get("dropdownChanged")) == dchanged + 1, "SetValueWithoutNotify updates the caption only")
+		r.check(cap.get_parsed_text() == ddn.get_item_text(0) and int(fx.get("dropdownChanged")) == dchanged + 1, "SetValueWithoutNotify updates the caption only")
 	# An Image without a sprite is a solid rectangle in Unity (so are the built-in UI sprites, which
 	# no package ships): it gets a white texture, and its colour tints only itself, not its children.
 	var panel: Node = r.find("Panel")

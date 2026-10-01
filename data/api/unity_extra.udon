@@ -1330,6 +1330,8 @@ type RectOffset kind=class gd=Dictionary extern=UnityEngineRectOffset
 # runtime/layout_group.gd runs Unity's layout from it): the same data whether a value comes from
 # the Unity file or from a script.
 type HorizontalOrVerticalLayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUIHorizontalOrVerticalLayoutGroup
+  enabled: bool => U.ui_component_enabled($0, "unidot_layout")
+  set enabled: bool => U.ui_component_set_enabled($0, "unidot_layout", $v)
   spacing: float => float(U.ui_layout_get($0, "spacing", 0.0))
   set spacing: float => U.ui_layout_set($0, "spacing", float($v))
   childForceExpandWidth: bool => bool(U.ui_layout_get($0, "expand_w", true))
@@ -1366,6 +1368,8 @@ type HorizontalLayoutGroup : HorizontalOrVerticalLayoutGroup kind=component gd=C
 type VerticalLayoutGroup : HorizontalOrVerticalLayoutGroup kind=component gd=Control extern=UnityEngineUIVerticalLayoutGroup
 
 type GridLayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUIGridLayoutGroup
+  enabled: bool => U.ui_component_enabled($0, "unidot_layout")
+  set enabled: bool => U.ui_component_set_enabled($0, "unidot_layout", $v)
   cellSize: Vector2 => U.ui_layout_get($0, "cell", Vector2(100, 100))
   set cellSize: Vector2 => U.ui_layout_set($0, "cell", $v)
   spacing: Vector2 => U.ui_layout_get($0, "spacing2", Vector2.ZERO)
@@ -1388,6 +1392,8 @@ type GridLayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUIG
   preferredHeight: float => U.ui_layout_ask($0, 1, 1)
 
 type LayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUILayoutGroup
+  enabled: bool => U.ui_component_enabled($0, "unidot_layout")
+  set enabled: bool => U.ui_component_set_enabled($0, "unidot_layout", $v)
   childAlignment: int => int(U.ui_layout_get($0, "align", 0))
   set childAlignment: int => U.ui_layout_set($0, "align", int($v))
   padding: RectOffset => U.ui_layout_padding($0)
@@ -1405,6 +1411,8 @@ type LayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUILayou
   SetLayoutVertical(): void => U.ui_force_layout($0)
 
 type ContentSizeFitter : Behaviour kind=component gd=Control extern=UnityEngineUIContentSizeFitter
+  enabled: bool => U.ui_component_enabled($0, "unidot_fitter")
+  set enabled: bool => U.ui_component_set_enabled($0, "unidot_fitter", $v)
   horizontalFit: int => int(U.ui_fitter_get($0, "h"))
   set horizontalFit: int => U.ui_fitter_set($0, "h", int($v))
   verticalFit: int => int(U.ui_fitter_get($0, "v"))
@@ -1453,10 +1461,10 @@ type CanvasRenderer : Component kind=component gd=CanvasItem extern=UnityEngineC
   set cullTransparentMesh: bool => pass
   clippingSoftness: Vector2 => Vector2.ZERO
   set clippingSoftness: Vector2 => pass
-  SetColor(Color): void => $0.modulate = $1
-  GetColor(): Color => $0.modulate
-  SetAlpha(float): void => $0.modulate.a = $1
-  GetAlpha(): float => $0.modulate.a
+  SetColor(Color): void => U.ui_set_renderer_color($0, $1)
+  GetColor(): Color => U.ui_renderer_color($0)
+  SetAlpha(float): void => U.ui_set_renderer_alpha($0, $1)
+  GetAlpha(): float => U.ui_renderer_color($0).a
   SetMaterial(Material, int): void => $0.material = $1
   GetMaterial(int): Material => $0.material
   GetMaterial(): Material => $0.material
@@ -1727,14 +1735,14 @@ type InputField
 type Text
   font: Font => $0.get_theme_font("font")
   set font: Font => $0.add_theme_font_override("font", $v)
-  horizontalOverflow: int => 0
-  set horizontalOverflow: int => pass
-  verticalOverflow: int => 0
-  set verticalOverflow: int => pass
-  resizeTextMinSize: int => 10
-  set resizeTextMinSize: int => pass
-  resizeTextMaxSize: int => 40
-  set resizeTextMaxSize: int => pass
+  horizontalOverflow: int => (0 if U.ui_wrap_get($0) else 1)
+  set horizontalOverflow: int => U.ui_wrap_set($0, $v == 0)
+  verticalOverflow: int => (1 if U.ui_overflow_get($0) == 0 else 0)
+  set verticalOverflow: int => U.ui_overflow_set($0, 0 if $v != 0 else 3)
+  resizeTextMinSize: int => int(U.ui_text_get($0, "min", 10))
+  set resizeTextMinSize: int => U.ui_text_set($0, "min", float($v))
+  resizeTextMaxSize: int => int(U.ui_text_get($0, "max", 40))
+  set resizeTextMaxSize: int => U.ui_text_set($0, "max", float($v))
   alignByGeometry: bool => false
   set alignByGeometry: bool => pass
   pixelsPerUnit: float => 1.0
@@ -3475,7 +3483,7 @@ type CinemachinePathBase
   DistanceCacheSampleStepsPerSegment: int => 10
 
 type Toggle
-  set graphic: Graphic => !stored U.prop_set($0, "graphic", $v)
+  set graphic: Graphic => U.ui_selectable_set_part($0, "graphic", $v)
   set toggleTransition: int => !stored U.prop_set($0, "toggleTransition", $v)
 
 type ButtonButtonClickedEvent
@@ -3961,7 +3969,7 @@ type Texture3D
   ctor(int, int, int, TextureFormat, bool, bool) => U.new_texture3d($1, $2, $3)
 
 type Graphic
-  CrossFadeColor(Color, float, bool, bool, bool): void => U.ui_set_color($0, $1)
+  CrossFadeColor(Color, float, bool, bool, bool): void => U.ui_fade_color($0, $1, $2, $4)
 
 type VertexHelper
   ctor(Mesh) => {"verts": 0, "indices": 0}

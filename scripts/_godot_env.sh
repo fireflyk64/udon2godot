@@ -15,6 +15,9 @@ install_runtime() {
   rm -rf "$proj/addons/udon_runtime" "$proj/addons/unidot_importer/runtime"
   cp -r runtime/addons/udon_runtime "$proj/addons/"
   cp -r refs/unidot_importer/runtime "$proj/addons/unidot_importer/runtime"
+  # the UI dump and the rendering check that the world tests run (scripts only: a world keeps
+  # the import metadata Godot wrote next to them)
+  if [ -d "$proj/addons/unidot_importer/test" ]; then cp refs/unidot_importer/test/*.gd "$proj/addons/unidot_importer/test/"; fi
 }
 
 # Print the launcher's messages found in log files (a memory or lifetime cap that fired).

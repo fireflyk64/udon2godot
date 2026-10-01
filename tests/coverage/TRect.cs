@@ -121,6 +121,14 @@ namespace Coverage
             LayoutRebuilder.ForceRebuildLayoutImmediate(list);
             // itemA has no layout element: controlled, it gets its preferred height (0)
             Check(Near(itemB.rect.height, 50f) && Near(itemA.rect.height, 0f), "controlled heights come from the layout elements: " + itemA.rect.height + " " + itemB.rect.height);
+            // a disabled group stops placing its children; the object stays active
+            vg.enabled = false;
+            itemA.anchoredPosition = new Vector2(7f, -7f);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(list);
+            Check(!vg.enabled && list.gameObject.activeSelf && Near2(itemA.anchoredPosition, 7f, -7f), "a disabled layout group leaves its children alone: " + itemA.anchoredPosition);
+            vg.enabled = true;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(list);
+            Check(vg.enabled && Near(itemA.anchoredPosition.x, 50f), "enabled again it places them: " + itemA.anchoredPosition);
             ContentSizeFitter fitter = list.GetComponent<ContentSizeFitter>();
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             LayoutRebuilder.ForceRebuildLayoutImmediate(list);
