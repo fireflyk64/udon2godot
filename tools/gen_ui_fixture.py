@@ -1386,6 +1386,20 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     other = b.img("OtherTrack", c, {"pos": (0, -40), "size": (200, 40)}, [("Animator", KNOB_CONTROLLER)], color=(0.3, 0.35, 0.3, 1))
     b.img("Knob", other, {"pos": (-70, 0), "size": (40, 40)}, color=(0.95, 0.95, 0.6, 1))
 
+    # ---- Cut: TextMeshPro texts that do not fit their rects ------------------------------------
+    # Ellipsis (overflow mode 1) ends the text in an ellipsis where it is cut, Truncate (3)
+    # just cuts; a wrapped text is cut by lines, a line that is not wrapped at the rect's width
+    c = b.world_canvas("Cut", (10.2, 1.5, 2), (500, 260))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.13, 0.1, 0.13, 1))
+    for i, (name, value, size, kw) in enumerate([
+            ("EllipsisLines", "first line<br>second line<br>third line<br>fourth line", (220, 58), {"overflow": 1}),
+            ("EllipsisWide", "A player name that is much too long for its column", (220, 30), {"overflow": 1, "wrap": False}),
+            ("TruncateWide", "A player name that is much too long for its column", (220, 30), {"overflow": 3, "wrap": False}),
+            ("EllipsisFits", "Fits", (220, 30), {"overflow": 1, "wrap": False}),
+            ("EllipsisRich", "<b>Bold</b> and <color=#ffd700>gold words</color> that run on and on", (220, 30), {"overflow": 1, "wrap": False})]):
+        frame = b.img(name + "Frame", c, {"pos": (-125 + 250 * (i % 2), 90 - 70 * (i // 2)), "size": size}, color=(0.25, 0.22, 0.3, 1))
+        f.node(name, frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp(value, 20, **kw)])
+
     # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
     c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1000, 640))
     b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.13, 0.12, 0.15, 1))

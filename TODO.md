@@ -178,6 +178,13 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       Masking): a truncated text shows the lines that fit entirely, placed by the vertical
       alignment (it was clipped from the top, a line that fits only partly drawn partly); a
       masked one is drawn whole and clipped at the rect. Same drawing child as the overflow.
+- [x] TextMeshPro's Ellipsis mode (99 texts in the cloned repositories: Udonity 57, the model
+      loader 29, SaccFlight 13; none on the pool table) and lines that are not wrapped. A cut
+      text showed the lines that fit and no ellipsis, and a line wider than its rect that is
+      not wrapped (a player name in a column) was not cut at all. The longest beginning of the
+      text that fits the rect is found by laying it out (`to_bbcode` with a character limit
+      and a tail), with the ellipsis after it in Ellipsis mode, in the text's styles; the node
+      keeps the whole text. 14 unit checks, canvas "Cut" in `tests/unity_ui`.
 - [x] CanvasGroup (`runtime/canvas_group.gd`): a group that is not interactable or does not block
       raycasts takes no pointer input, nor does anything below it (`mouse_behavior_recursive`;
       the group's Control used to swallow clicks or let them through to its children), the
@@ -212,8 +219,7 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       the Dropdown and draws it on top with a sorting canvas; Godot picks by tree order), an
       item is named `Item 1_ B` (a node name cannot hold Unity's colon), no fade in / out.
 - [ ] Left over, not positioning of the pool table:
-      * TextMeshPro's Ellipsis mode truncates without drawing the ellipsis; Page and Linked
-        modes truncate.
+      * TextMeshPro's Page and Linked overflow modes truncate.
       * Sprite tags of TextMeshPro; a font asset's material (outline, underlay) and its
         fallback fonts; a font asset whose font file is not in the project gets a stand-in;
         sprites packed tightly or rotated in an atlas.
