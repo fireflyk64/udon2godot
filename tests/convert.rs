@@ -111,7 +111,8 @@ public class T : UdonSharpBehaviour {
     assert!(s.contains("match i:"));
     assert!(s.contains("\t\t\tif b:\n\t\t\t\tpass\n\t\t\telse:\n\t\t\t\ti = 3"), "switch break rewrite: {}", s);
     assert!(s.contains("var m: float = (v - Vector3.ONE).length()"));
-    assert!(s.contains("is_instance_valid(tr_) and is_instance_valid(tr_.get_parent())"), "`tr` collides with Object.tr() and is mangled");
+    // (`transform.parent` is the parent GameObject: U.go_parent sees through the helper nodes of a canvas)
+    assert!(s.contains("is_instance_valid(tr_) and is_instance_valid(U.go_parent(tr_))"), "`tr` collides with Object.tr() and is mangled: {}", s);
     assert!(s.contains("U.set_parent(tr_, null, true)"));
     assert!(s.contains("atan2(v.y, v.x) * (180.0 / PI)"));
     assert!(s.contains("\"a\".unicode_at(0) + U.f2i(2.7)"));
