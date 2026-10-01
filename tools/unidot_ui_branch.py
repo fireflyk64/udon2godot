@@ -117,9 +117,8 @@ rep('''func get_enabled_plugins() -> Array[RefCounted]:
 ''')
 open(p, "w").write(s)
 
-UI_FILES = ["ui_integration.gd", "runtime/rect_transform.gd", "runtime/canvas_plane.gd", "runtime/canvas_scaler.gd", "runtime/layout_group.gd", "runtime/scroll_rect.gd",
-            "runtime/dropdown.gd", "runtime/selectable.gd", "runtime/ui_graphic.gd", "runtime/ui_sprite.gd", "runtime/ui_text.gd", "runtime/ui_text_fit.gd", "runtime/ui_white.tres",
-            "runtime/fonts", "runtime/sprites", "test/rect_transform_test.gd", "test/ui_dump.gd", "test/ui_dump_main.gd", "test/ui_shots.gd"]
+# the UI files: the plugin, and everything the fork added or changed under runtime/ and test/
+UI_FILES = ["ui_integration.gd"] + [f for f in git("diff", "--name-only", "origin/main..HEAD", "--", "runtime", "test").split() if f]
 for f in UI_FILES:
     src, dst = os.path.join(fork, f), os.path.join(tree, f)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
