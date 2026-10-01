@@ -134,9 +134,9 @@ The pipeline:
    every serialized field (references resolve once the scene exists and are stored as NodePaths in
    `metadata/udon_refs`, bound by the runtime at `_ready`), applies prefab-instance overrides, marks
    VRChat SDK components (`udon_pickup`, `udon_station`, ... groups + settings metadata read by the
-   adapters), turns Unity UI into Controls (world-space canvases become a SubViewport on a quad,
-   nested canvases are containers) and wires `Button.onClick`/`Toggle`/`Slider`/`InputField`
-   persistent calls to `SendCustomEvent`. Prefab assets referenced by scripts become inactive template
+   adapters) and wires `Button.onClick`/`Toggle`/`Slider`/`InputField` persistent calls to
+   `SendCustomEvent`. Unity UI itself is converted by unidot's own `ui_integration.gd`, which
+   knows nothing about Udon (see "Unity UI" below). Prefab assets referenced by scripts become inactive template
    nodes under `UdonPrefabs`; RenderTexture assets become `UdonRenderTexture` resources backed by
    viewports on demand.
    Older content is covered too: **UdonSharp 0.x** scenes have no C# proxy components, their
@@ -171,6 +171,38 @@ renders screenshots (`--display-driver x11 --rendering-method gl_compatibility` 
 `--shadows` turns on real-time shadows for every light, the stand-in for the lightmaps Unity
 baked (lightmap data cannot be imported).
 
+### Unity UI
+
+A RectTransform GameObject becomes a Control, a Canvas below a plain Transform a *world canvas*
+(a Node3D holder with a SubViewport that renders the controls and a quad that shows it; 1024
+viewport pixels per metre, `unidot/ui/pixels_per_metre`) or, in a screen-space render mode, a
+CanvasLayer scaled like Unity's CanvasScaler. The code lives in the unidot fork and is independent
+of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_plane.gd`,
+`canvas_scaler.gd`, `layout_group.gd` (run time).
+
+* **One implementation.** `rect_transform.gd` holds Unity's RectTransform rules (anchors,
+  anchored position, size delta, pivot, offsets, rotation, scale, world matrices through nested
+  canvases). The importer builds every Control with it and the catalog maps every script-side
+  property to it (`U.rect_*`, `transform.position` / `rotation` / `localPosition` ... on UI
+  nodes), so a value in the Unity file and the same value set from Udon give the same node.
+* **UI in 3D.** Unity renders each UI element with its full transform; a Control is flat. A
+  control whose transform leaves the plane of its canvas (tilted about x / y, more than 1 mm
+  along z) gets a canvas of its own in the same place of the tree, at start for imported values
+  and at the end of the frame for values a script set. Scripts keep addressing the control;
+  `transform.parent`, `GetChild`, `Find` and `childCount` see through the helper nodes.
+* **Layout groups** run Unity's rebuild algorithm (HorizontalLayoutGroup, VerticalLayoutGroup,
+  GridLayoutGroup, ContentSizeFitter, AspectRatioFitter, LayoutElement) and place children the
+  way Unity does, by writing their anchors, anchored position and size delta.
+* **Checked against Unity's numbers without Unity.** `tools/unity_ui_reference.py` reads a
+  scene or prefab (nested prefab instances and their overrides included) and computes where
+  Unity puts every rect; `--compare` holds a dump of the running Godot scene against it, corner
+  by corner in world space, following what is actually rendered. `scripts/test_ui.sh` does this
+  for `tests/unity_ui` (written by `tools/gen_ui_fixture.py`: every anchor / pivot case, 3D
+  placement, 43 layout group panels, nested and screen canvases, prefab overrides) imported by
+  unidot alone, after the unit tests of `rect_transform.gd`. For an imported world:
+  `world_runner.gd --static --scenario res://scenarios/canvas_dump.gd --dump-out d.json`, then
+  `tools/unity_ui_reference.py <assets> <scene.unity> --compare d.json`.
+
 Every script starts Godot through `scripts/godot.sh`: the engine is killed when its resident
 memory passes `GODOT_MEM_MB` (default 6144) or it runs longer than `GODOT_MAX_SECONDS` (default
 3600, unlimited while playing), and termination signals are forwarded so a `timeout` never leaves
@@ -190,9 +222,9 @@ camera through the mouse (the view centre while captured, or a ray a controller 
 world canvas is turned into mouse events pushed into that canvas's SubViewport at the pixel the
 canvas mapping gives (hover, press, release, drag), a hit on a behaviour's collider calls `Interact`
 within its proximity, and a hit on a `VRC_Pickup` grabs it (left click use, right click or G drop).
-World canvases are sized from the union of their drawing controls with the RectTransform scales
-applied, and `transform.position` / `localPosition` of UI elements convert between world metres and
-canvas units, so menus that scripts move onto table anchor spots land where Unity puts them.
+World canvases are sized from the union of their drawing controls, and a UI element that a script
+puts on a 3D spot (the pool table sets the world position and rotation of its menus and score
+texts from anchor transforms of the table model) is drawn there on a plane of its own.
 `--vr` spawns the OpenXR player instead (`udon_runtime/udon_vr_player.gd`: one pointer per
 controller, trigger = use / UI / Interact / sit, grip = grab, left stick walk, right stick snap
 turn; `--vr-sim` drives the same code with simulated controllers, which is how `scenarios/vr.gd`
@@ -402,13 +434,15 @@ src/            compiler (lexer, parser, ast, program, api catalog, template, lo
 data/api/       API catalog: system*, unity_math, unity_core, unity_physics, unity_misc, unity_2d,
                 unity_extra, vrc, vrc_extra (hand-written) and generated.udon (stubs)
 data/known_externs.txt  Udon extern signatures (from udonweft)
-tools/          gen_catalog.py (stub generator), gen_particles.py, gen_ui.py (catalog generators);
+tools/          gen_catalog.py (stub generator), gen_particles.py, gen_ui.py (catalog generators),
+                unity_ui_reference.py (Unity UI rectangles from the Unity files), gen_ui_fixture.py;
                 scripts/setup_deps.sh puts the Godot editor and release zips here (ignored)
 runtime/addons/udon_runtime/   Godot addon: udon_behaviour.gd, udon.gd, u.gd, udon_world_provider.gd,
                 udon_network_provider.gd, udon_player.gd, adapters (pickup, station, object sync/pool, video),
-                udon_canvas_plane.gd (world canvases), udon_pointer.gd, udon_desktop_player.gd
+                udon_pointer.gd, udon_desktop_player.gd (Unity UI runs on unidot's runtime/ scripts)
 docs/           session notes with hands-on instructions (docs/session-2026-09-17.md)
-tests/          Rust integration tests, C# fixtures and tests/coverage/ API fixtures
+tests/          Rust integration tests, C# fixtures, tests/coverage/ API fixtures, tests/unity_fixture (Unity scene
+                with scripts) and tests/unity_ui (generated UI-only Unity scene)
 godot_project/  Godot 4.7 test project: e2e_counter.gd, coverage_runner.gd, net_test.gd, compile_check.gd;
                 addons/godot_sandbox/ (customized plugin scripts + MAX_LEVEL 16 Linux build)
 godot_world_template/  project skeleton for scripts/import_world.sh: world_runner.gd, scenarios/
@@ -416,6 +450,6 @@ godot_world_template/  project skeleton for scripts/import_world.sh: world_runne
                 udonutils_tests.gd)
 refs/           reference checkouts made by scripts/setup_deps.sh (ignored)
 scripts/        setup_deps.sh, verify.sh, coverage_test.sh, net_test.sh, import_world.sh, play_world.sh,
-                test_unity_fixture.sh, test_world_billiards.sh, test_world_community.sh,
+                test_ui.sh, test_unity_fixture.sh, test_world_billiards.sh, test_world_community.sh,
                 diff_converter_output.sh, world_doctor.py, ci.sh
 ```

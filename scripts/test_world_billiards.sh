@@ -29,9 +29,17 @@ else
   cargo build --release -q && target/release/udon2godot -q --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted $(find refs/MS-VRCSA-Billiards -name "*.cs" -not -path "*/Editor/*")
 fi
 python3 scripts/world_doctor.py "$OUT" | sed -n '1,40p'
+# the table's UI as imported (scripts not running) against where Unity puts every rect, computed
+# from the Unity files: 3 canvases, 147 nodes, world-space corners within 2 mm + 1 %
+echo "== UI layout against the Unity reference"
+timeout 300 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --static --scenario res://scenarios/canvas_dump.gd --dump-out "$OUT/ui_dump.json" > "$OUT/ui_dump.log" 2>&1
+python3 tools/unity_ui_reference.py refs/MS-VRCSA-Billiards refs/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.unity --compare "$OUT/ui_dump.json" --active > "$OUT/ui_compare.log" 2>/dev/null
+UCODE=$?
+head -20 "$OUT/ui_compare.log" | cut -c1-240
 echo "== scenario (headless)"
 timeout 600 "$GODOT" --headless --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 10 --debug-scripts --scenario res://scenarios/billiards.gd > "$OUT/scenario.log" 2>&1
 CODE=$?
+[ $UCODE -ne 0 ] && CODE=1
 grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/scenario.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/scenario.log")  (log: $OUT/scenario.log)"
 if [ -n "${DISPLAY:-}" ]; then
@@ -43,6 +51,9 @@ if [ -n "${DISPLAY:-}" ]; then
   if [ ! -f "$OUT/shots/billiards_settled.png" ] || [ "$OUT/shots/billiards_settled.png" -ot "$OUT/scenario.log" ]; then
     echo "SCREENSHOTS FAILED (see $OUT/shots.log)"; tail -3 "$OUT/shots.log"; CODE=1
   fi
+  # the table's menus and score texts in each game state, from in front of each element
+  timeout 1500 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$OUT" -s world_runner.gd -- --scene $SCENE --frames 5 --light --scenario res://scenarios/billiards_ui.gd --shot "$OUT/shots/ui.png" > "$OUT/shots_ui.log" 2>&1 || CODE=1
+  grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/shots_ui.log"
 fi
 # interactive: the desktop player plays through window input only (START button, lobby canvas, cue
 # pickup, E, aim and shoot). Input needs no rendering, so this runs headless; PLAY_SHOTS=1 runs it on
@@ -58,5 +69,5 @@ grep -E "^\[scenario\]|FAIL |SCENARIO" "$OUT/play.log"
 echo "runtime errors: $(grep -c '^ERROR\|^SCRIPT ERROR' "$OUT/play.log")  (log: $OUT/play.log)"
 [ $PCODE -ne 0 ] && CODE=$PCODE
 godot_guard_report "$OUT"/*.log
-godot_script_errors "$OUT/scenario.log" "$OUT/play.log" || CODE=1
+godot_script_errors "$OUT/scenario.log" "$OUT/play.log" "$OUT/ui_dump.log" || CODE=1
 exit $CODE

@@ -80,9 +80,24 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       same data: `GetComponent<VerticalLayoutGroup>()`, `spacing`, `padding` (RectOffset),
       `childAlignment`, `childControl*`, `LayoutElement.*`, `ContentSizeFitter.*Fit`,
       `LayoutUtility.Get*`, `LayoutRebuilder.ForceRebuildLayoutImmediate` (TRect).
-- [ ] Pool table verification: static comparison of the imported table with the reference,
-      the seven elements on their spots after the scripts ran, screenshots;
-      `scripts/test_world_billiards.sh` checks it.
+- [x] Pool table verification (2026-09-30, `scripts/test_world_billiards.sh`):
+      * as imported (`--static`): 3 root canvases, 147 of 147 UI nodes within 2 mm + 1 % of the
+        Unity reference, active flags included (before: the scorecard texts 0.86 m off, the
+        lobby menu flat instead of tilted, `OtherMenu` 7 cm and `StartMenu` 16 cm off their depth);
+      * with the scripts running (`scenarios/billiards.gd`, 40 checks): `player0-name`,
+        `player1-name`, `player0-score`, `player1-score`, `SnookerInstructions`, `MenuAnchor` and,
+        once the game is live, `JoinMenu` are on their spots of the table model - world
+        position within 2 mm, rotation within 0.5 degrees, and drawn there - and every UI control
+        of the world is drawn within 3 mm of where its transform says;
+      * `scenarios/billiards_play.gd` (17 checks) still plays through the pointer: START, the
+        lobby buttons on the tilted menu, cue pickup, aim, shoot;
+      * `scenarios/billiards_ui.gd` (18 checks) photographs each element from its readable side
+        in the idle, lobby and game states (`shots/ui_*.png`): the lobby menu stands tilted at
+        the head of the table with the join menu beside it, the names and scores sit on the
+        table's scorecard, the practice menu is its own panel beside the table.
+      Seen in the screenshots and not a matter of position (see the items below): text set by a
+      script shows TextMeshPro tags literally (`<size=13>LocalPlayer`), the game mode buttons
+      are white squares, slider handles do not follow the value.
 - [ ] Left over from this work, not positioning of the pool table:
       * ScrollRect is a Godot ScrollContainer: the scrolled object and Unity's Scrollbar children
         are not where Unity puts them (2 known mismatches in `tests/unity_fixture`); a Unity-style
