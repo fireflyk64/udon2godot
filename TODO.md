@@ -394,21 +394,48 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       - [x] In `scripts/test_world_community.sh` (and so in CI): the scenario on the M.O.O.N
             table, headless and on the display, and the UI reference comparison and pixel check
             of the three menu styles.
-      - [ ] vrcbce's desktop UI (a screen-space canvas, 10 nodes per menu style) is off: its
+      - [x] vrcbce's desktop UI (a screen-space canvas, 10 nodes per menu style) was off: its
             plain Transforms are turned out of the canvas plane (`Shot Angle`: -90 degrees about
             x, scale 75; `desktop_hitpower`) and their RectTransform children are turned back
             (and scaled 0.02), so the result is in the plane again. A Control shows the planar
-            projection of its own rotation and scale, the holder's projection has no height,
-            and nothing below it can undo that. Plan:
-            - [ ] a plain Transform holder never turns or scales as a Control; it hands its 3D
-                  rotation and scale down, and each RectTransform below it shows the projection
-                  of the composed transform (its Unity values stay its own);
-            - [ ] the same for holders in world canvases (what is still out of the plane
-                  after composing gets a canvas of its own);
-            - [ ] `tests/unity_ui`: the vrcbce pattern on a screen canvas and a world canvas.
-      - [ ] Not done for vrcbce: its eight custom shaders are approximated (the doctor lists
-            them: `Silent/Filamented` 17 materials, ghost balls, surface colour masks, the
-            guideline); the cue is not played through the desktop player as on the MS-VRCSA
+            projection of its own rotation and scale, the holder's projection had no height,
+            and nothing below it could undo that. A plain Transform holder never turns or
+            scales as a Control now: it hands its rotation, scale and distance from the plane
+            down (`unidot_carry`), each RectTransform below shows the projection of the composed
+            transform and keeps its own Unity values, and what is still out of the plane after
+            composing gets a canvas of its own (the holder does not: on a world canvas a turned
+            holder used to become a canvas with further canvases inside it). `tests/unity_ui`:
+            the pattern on the "Plain" world canvas and on a screen canvas ("ScreenHolders"),
+            a holder in front of the canvas; 25 unit checks. vrcbce: 135 / 121 / 184 nodes, 0
+            problems.
+      - [x] Ports of five of vrcbce's shaders (`shader_ports/`): `VRCBCE/Ghost Balls`
+            (marker, cue grip and hit indicators), `VRCBCE/Surface Color Mask` (the ball atlas
+            with team colours), `VRCBCE/TableSurface`, `VRCBCE/Unlit Color+Texture`,
+            `Custom/StandardScrollingEmissive`. They follow the shader sources; there are no
+            Unity pictures to compare with.
+      - [x] Animator clips that animate RectTransforms. vrcbce's two slide toggles are moved
+            by clips (`Left` / `Right`: `m_AnchoredPosition.x` and `m_LocalPosition` of the
+            RectTransform "Selector", class id 224) that `UIAnimationManager` switches with
+            `Animator.SetBool("Toggle")`. unidot converted the curves as if the target were a
+            Node3D: three float tracks on `Selector:position`, the anchored position dropped
+            ("Unknown property"). Only vrcbce has such clips among the cloned repositories (2 of
+            356 clips); it is also the first imported AnimatorController a script drives.
+            RectTransform curves are tracks on a helper child of the Control now
+            (`runtime/rect_anim.gd`, "UnidotRect": anchored position, size delta, anchors,
+            pivot, local position, scale, Euler angles), whose setters go through
+            `rect_transform.gd` like every other way a rect changes; the helper is added to the
+            controls a clip animates when the clip is adapted to its Animator. Where a clip
+            records the local position beside the anchored position, x and y are taken once.
+            `tests/unity_ui`: canvas "Animated" (two objects with the same controller, three
+            clips), `test/ui_anim_test.gd` in `scripts/test_ui.sh` (17 checks: poses, the
+            transition, keys over time, size and scale, the other object is not moved). vrcbce
+            scenario: switching the guideline slides the knob to the other pose (the clips' -39 and 36) and
+            switches the guideline (4 checks).
+            Left: rotation curves of a RectTransform (`m_EulerCurves` have no class id and
+            become 3D rotation tracks), curves of UI components (colours, `m_Enabled`).
+      - [ ] Not done for vrcbce: `Silent/Filamented` (a Standard replacement, 17 materials)
+            and the two fur shaders are approximated; the guideline's shader is not in the
+            package; the cue is not played through the desktop player as on the MS-VRCSA
             table; the sample scene with all 18 tables is imported but not run.
 - [ ] Then continue with the open items below (Animator; VRChat constraint components; ...).
 

@@ -161,7 +161,9 @@ def vec(v, keys):
 
 
 def euler_to_quat(e):
-    """Unity's Quaternion.Euler: z, then x, then y (degrees)."""
+    """Unity's Quaternion.Euler: z, then x, then y (degrees). Four numbers are a quaternion."""
+    if len(e) == 4:
+        return tuple(e)
     x, y, z = (math.radians(a) * 0.5 for a in e)
     cx, sx, cy, sy, cz, sz = math.cos(x), math.sin(x), math.cos(y), math.sin(y), math.cos(z), math.sin(z)
     return (
@@ -248,6 +250,8 @@ class UnityFile:
             o.components.append((cid, 225, "CanvasGroup", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n%s" % (o.go, body)))
         elif kind == "Canvas":
             o.components.append((cid, 223, "Canvas", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n%s" % (o.go, body)))
+        elif kind == "Animator":
+            o.components.append((cid, 95, "Animator", "  serializedVersion: 5\n  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n  m_Avatar: {fileID: 0}\n  m_Controller: {fileID: 9100000, guid: %s, type: 2}\n  m_CullingMode: 0\n  m_UpdateMode: 0\n  m_ApplyRootMotion: 0\n  m_LinearVelocityBlending: 0\n  m_StabilizeFeet: 0\n  m_WarningMessage: \n  m_HasTransformHierarchy: 1\n  m_AllowConstantClipSamplingOptimization: 1\n  m_KeepAnimatorStateOnDisable: 0\n  m_WriteDefaultValuesOnDisable: 0\n" % (o.go, body)))
         elif kind == "CanvasRenderer":
             o.components.append((cid, 222, "CanvasRenderer", "  m_GameObject: {fileID: %d}\n  m_CullTransparentMesh: 1\n" % o.go))
         else:
@@ -402,6 +406,23 @@ _GRAPHIC = "  m_Material: {fileID: 0}\n  m_Color: %s\n  m_RaycastTarget: 1\n  m_
 def disable(comp):
     """The component, disabled (m_Enabled: 0)."""
     return (comp[0], comp[1], False)
+
+
+def holders_turned_back(f, b, c):
+    """vrcbce's desktop UI: plain Transforms turned out of the canvas plane (and scaled up) whose
+    RectTransforms are turned back (and scaled down), so that everything is in the plane again."""
+    flat = f.node("Flat", c, pos=(-200, 130, 0), rot=(-90, 0, 0), scale=(50, 50, 50))
+    b.img("FlatImage", flat, {"pos": (0, 0), "size": (100, 60), "rot": (90, 0, 0), "scale": 0.02}, color=(0.9, 0.5, 0.1, 1))
+    # local (1.5, 0, 0.4) in the turned holder: 75 to the right, 20 up
+    b.img("FlatOffset", flat, {"pos": (1.5, 0), "z": 0.4, "size": (40, 40), "rot": (90, 0, 0), "scale": 0.02}, color=(0.1, 0.6, 0.9, 1))
+    # a holder inside the holder (not turned itself), its image turned back
+    hit = f.node("FlatHit", flat, pos=(-1, 0, -0.5))
+    b.img("FlatHitImage", hit, {"pos": (0, 0), "size": (60, 60), "rot": (90, 0, 0), "scale": 0.01}, color=(0.9, 0.9, 0.9, 1))
+    # turned about all three axes (120 degrees about (-1, 1, -1)), the bar turned back; what is
+    # below the bar is laid out in it as usual
+    swung = f.node("Swung", c, pos=(200, 130, 0), rot=(-0.5, 0.5, -0.5, 0.5), scale=(100, 100, 100))
+    bar = b.img("SwungBar", swung, {"pos": (0, 0), "size": (20, 120), "rot": (0.5, -0.5, 0.5, 0.5), "scale": 0.01}, color=(0.3, 0.3, 0.35, 1))
+    b.img("SwungInner", bar, {"pos": (0, 30), "size": (30, 10), "rot": (0, 0, 45)}, color=(0.9, 0.2, 0.2, 1))
 
 
 def quoted(value):
@@ -683,6 +704,92 @@ def write_fonts(out):
     write("Calistoga SDF.asset.meta", FONT_ASSET_META % FONT_ASSET)
     write("Lost SDF.asset", FONT_ASSET_YAML % {"name": "Lost SDF", "source": "f5a7c1d2e3b44f5a8697a1b2c3d4e5f6", "family": "Lost Family"})
     write("Lost SDF.asset.meta", FONT_ASSET_META % FONT_ASSET_LOST)
+
+
+# ---- animation clips and a controller ---------------------------------------------------------
+CLIP_LEFT = "a0a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_RIGHT = "a1a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_SLIDE = "a2a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+KNOB_CONTROLLER = "a3a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+
+
+def _curve(path, attribute, keys, class_id=224):
+    """A float curve of a clip: keys are (time, value); straight between them."""
+    out = "  - curve:\n      serializedVersion: 2\n      m_Curve:\n"
+    for i, (t, v) in enumerate(keys):
+        before = (v - keys[i - 1][1]) / (t - keys[i - 1][0]) if i > 0 else 0
+        after = (keys[i + 1][1] - v) / (keys[i + 1][0] - t) if i + 1 < len(keys) else 0
+        out += ("      - serializedVersion: 3\n        time: %s\n        value: %s\n        inSlope: %s\n        outSlope: %s\n        tangentMode: 69\n        weightedMode: 0\n        inWeight: 0.33333334\n        outWeight: 0.33333334\n"
+                % (num(t), num(v), num(before), num(after)))
+    out += "      m_PreInfinity: 2\n      m_PostInfinity: 2\n      m_RotationOrder: 4\n    attribute: %s\n    path: %s\n    classID: %d\n    script: {fileID: 0}\n" % (attribute, path, class_id)
+    return out
+
+
+def _clip(name, curves, length):
+    return ("%%YAML 1.1\n%%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n"
+            "  m_Name: %s\n  serializedVersion: 6\n  m_Legacy: 0\n  m_Compressed: 0\n  m_UseHighQualityCurve: 1\n  m_RotationCurves: []\n  m_CompressedRotationCurves: []\n  m_EulerCurves: []\n  m_PositionCurves: []\n  m_ScaleCurves: []\n"
+            "  m_FloatCurves:\n%s  m_PPtrCurves: []\n  m_SampleRate: 60\n  m_WrapMode: 0\n  m_Bounds:\n    m_Center: {x: 0, y: 0, z: 0}\n    m_Extent: {x: 0, y: 0, z: 0}\n  m_ClipBindingConstant:\n    genericBindings: []\n    pptrCurveMapping: []\n"
+            "  m_AnimationClipSettings:\n    serializedVersion: 2\n    m_AdditiveReferencePoseClip: {fileID: 0}\n    m_AdditiveReferencePoseTime: 0\n    m_StartTime: 0\n    m_StopTime: %s\n    m_OrientationOffsetY: 0\n    m_Level: 0\n    m_CycleOffset: 0\n"
+            "    m_HasAdditiveReferencePose: 0\n    m_LoopTime: 0\n    m_LoopBlend: 0\n    m_LoopBlendOrientation: 0\n    m_LoopBlendPositionY: 0\n    m_LoopBlendPositionXZ: 0\n    m_KeepOriginalOrientation: 0\n    m_KeepOriginalPositionY: 1\n"
+            "    m_KeepOriginalPositionXZ: 0\n    m_HeightFromFeet: 0\n    m_Mirror: 0\n  m_EditorCurves: []\n  m_EulerEditorCurves: []\n  m_HasGenericRootTransform: 0\n  m_HasMotionFloatCurves: 0\n  m_Events: []\n"
+            % (name, "".join(curves), num(length)))
+
+
+def _state(fid, name, clip, transitions):
+    return ("--- !u!1102 &%d\nAnimatorState:\n  serializedVersion: 5\n  m_ObjectHideFlags: 1\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: %s\n  m_Speed: 1\n  m_CycleOffset: 0\n"
+            "  m_Transitions:%s  m_StateMachineBehaviours: []\n  m_Position: {x: 50, y: 50, z: 0}\n  m_IKOnFeet: 0\n  m_WriteDefaultValues: 1\n  m_Mirror: 0\n  m_SpeedParameterActive: 0\n  m_MirrorParameterActive: 0\n"
+            "  m_CycleOffsetParameterActive: 0\n  m_TimeParameterActive: 0\n  m_Motion: {fileID: 7400000, guid: %s, type: 2}\n  m_Tag: \n  m_SpeedParameter: \n  m_MirrorParameter: \n  m_CycleOffsetParameter: \n  m_TimeParameter: \n"
+            % (fid, name, ("\n" + "".join("  - {fileID: %d}\n" % t for t in transitions)) if transitions else " []\n", clip))
+
+
+def _transition(fid, mode, parameter, to, duration):
+    """mode: 1 if the bool is true, 2 if it is false."""
+    return ("--- !u!1101 &%d\nAnimatorStateTransition:\n  m_ObjectHideFlags: 1\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: \n  m_Conditions:\n"
+            "  - m_ConditionMode: %d\n    m_ConditionEvent: %s\n    m_EventTreshold: 0\n  m_DstStateMachine: {fileID: 0}\n  m_DstState: {fileID: %d}\n  m_Solo: 0\n  m_Mute: 0\n  m_IsExit: 0\n  serializedVersion: 3\n"
+            "  m_TransitionDuration: %s\n  m_TransitionOffset: 0\n  m_ExitTime: 0.75\n  m_HasExitTime: 0\n  m_HasFixedDuration: 1\n  m_InterruptionSource: 0\n  m_OrderedInterruption: 1\n  m_CanTransitionToSelf: 1\n"
+            % (fid, mode, parameter, to, num(duration)))
+
+
+def write_animations(out):
+    """Anim/: clips that animate the RectTransform "Knob" below the animator's object (as Unity
+    records them: the anchored position, with the local position beside it), and a controller
+    with two states switched by the bool "On" (vrcbce's slide toggles)."""
+    folder = os.path.join(out, "Anim")
+    os.makedirs(folder, exist_ok=True)
+
+    def write(name, data, guid, importer="NativeFormatImporter", main=7400000):
+        with open(os.path.join(folder, name), "w") as fh:
+            fh.write(data)
+        with open(os.path.join(folder, name + ".meta"), "w") as fh:
+            fh.write("fileFormatVersion: 2\nguid: %s\n%s:\n  externalObjects: {}\n  mainObjectFileID: %d\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n" % (guid, importer, main))
+    with open(os.path.join(out, "Anim.meta"), "w") as fh:
+        fh.write("fileFormatVersion: 2\nguid: a4a7c1d2e3b44f5a8697a1b2c3d4e5f6\nfolderAsset: yes\nDefaultImporter:\n  externalObjects: {}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
+
+    def pose(x):
+        return [_curve("Knob", "m_LocalPosition.x", [(0, x)]), _curve("Knob", "m_LocalPosition.y", [(0, 0)]), _curve("Knob", "m_LocalPosition.z", [(0, 0)]),
+                _curve("Knob", "m_AnchoredPosition.x", [(0, x)]), _curve("Knob", "m_AnchoredPosition.y", [(0, 0)])]
+    write("KnobLeft.anim", _clip("KnobLeft", pose(-70), 0), CLIP_LEFT)
+    write("KnobRight.anim", _clip("KnobRight", pose(70), 0), CLIP_RIGHT)
+    # one second: the knob crosses the track, grows from 40 x 40 to 60 x 40 and to twice its scale
+    write("KnobSlide.anim", _clip("KnobSlide", [
+        _curve("Knob", "m_AnchoredPosition.x", [(0, -70), (1, 70)]), _curve("Knob", "m_AnchoredPosition.y", [(0, 0), (1, 10)]),
+        _curve("Knob", "m_SizeDelta.x", [(0, 40), (1, 60)]),
+        _curve("Knob", "m_LocalScale.x", [(0, 1), (1, 2)]), _curve("Knob", "m_LocalScale.y", [(0, 1), (1, 2)]), _curve("Knob", "m_LocalScale.z", [(0, 1), (1, 1)]),
+    ], 1), CLIP_SLIDE)
+    controller = ("%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!91 &9100000\nAnimatorController:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Knob\n  serializedVersion: 5\n"
+                  "  m_AnimatorParameters:\n  - m_Name: On\n    m_Type: 4\n    m_DefaultFloat: 0\n    m_DefaultInt: 0\n    m_DefaultBool: 0\n    m_Controller: {fileID: 0}\n"
+                  "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n    m_StateMachine: {fileID: 1107000000000000001}\n    m_Mask: {fileID: 0}\n    m_Motions: []\n    m_Behaviours: []\n    m_BlendingMode: 0\n    m_SyncedLayerIndex: -1\n"
+                  "    m_DefaultWeight: 0\n    m_IKPass: 0\n    m_SyncedLayerAffectsTiming: 0\n    m_Controller: {fileID: 9100000}\n"
+                  + _transition(1101000000000000001, 1, "On", 1102000000000000002, 0.25)     # Left → Right while On
+                  + _transition(1101000000000000002, 2, "On", 1102000000000000001, 0.25)     # Right → Left while not
+                  + _state(1102000000000000001, "Left", CLIP_LEFT, [1101000000000000001])
+                  + _state(1102000000000000002, "Right", CLIP_RIGHT, [1101000000000000002])
+                  + _state(1102000000000000003, "Slide", CLIP_SLIDE, [])                     # (reached by no transition: played by name)
+                  + "--- !u!1107 &1107000000000000001\nAnimatorStateMachine:\n  serializedVersion: 5\n  m_ObjectHideFlags: 1\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Base Layer\n"
+                  "  m_ChildStates:\n  - serializedVersion: 1\n    m_State: {fileID: 1102000000000000001}\n    m_Position: {x: 288, y: 120, z: 0}\n  - serializedVersion: 1\n    m_State: {fileID: 1102000000000000002}\n    m_Position: {x: 552, y: 120, z: 0}\n  - serializedVersion: 1\n    m_State: {fileID: 1102000000000000003}\n    m_Position: {x: 552, y: 240, z: 0}\n"
+                  "  m_ChildStateMachines: []\n  m_AnyStateTransitions: []\n  m_EntryTransitions: []\n  m_StateMachineTransitions: {}\n  m_StateMachineBehaviours: []\n  m_AnyStatePosition: {x: 50, y: 20, z: 0}\n  m_EntryPosition: {x: 50, y: 120, z: 0}\n"
+                  "  m_ExitPosition: {x: 800, y: 120, z: 0}\n  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}\n  m_DefaultState: {fileID: 1102000000000000001}\n")
+    write("Knob.controller", controller, KNOB_CONTROLLER, main=9100000)
 
 
 def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
@@ -1263,6 +1370,21 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     hidden_holder = f.node("HiddenHolder", c, pos=(0, 150, 0), active=False)
     b.img("HiddenImage", hidden_holder, {"pos": (0, 0), "size": (60, 30)}, color=(1, 0, 0, 1))
     f.node("Only3D", c, pos=(0, -150, 0))   # nothing of the UI below it: an object in space as before
+    holders_turned_back(f, b, c)
+    # a holder in front of the canvas (vrcbce's timer hangs 0.338 above a canvas that lies flat):
+    # what is below it is as far from the plane as the holder
+    lifted = f.node("Lifted", c, pos=(0, -60, -80), scale=(0.5, 0.5, 0.5))
+    b.img("LiftedImage", lifted, {"pos": (0, 0), "size": (100, 40)}, color=(0.2, 0.9, 0.7, 1))
+    f.node("LiftedText", lifted, {"amin": (0, 0), "amax": (1, 1), "pos": (0, -50), "size": (200, 30)}, [renderer(), tmp("in front of the canvas", 20, halign=2, valign=512)])
+
+    # ---- Animated: an Animator that moves a RectTransform ---------------------------------------
+    c = b.world_canvas("Animated", (10.2, 3.0, 2), (400, 200))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.12, 0.14, 1))
+    track = b.img("Track", c, {"pos": (0, 40), "size": (200, 40)}, [("Animator", KNOB_CONTROLLER)], color=(0.3, 0.3, 0.35, 1))
+    b.img("Knob", track, {"pos": (-70, 0), "size": (40, 40)}, color=(0.95, 0.95, 0.95, 1))
+    # the same controller on a second object: its knob is its own
+    other = b.img("OtherTrack", c, {"pos": (0, -40), "size": (200, 40)}, [("Animator", KNOB_CONTROLLER)], color=(0.3, 0.35, 0.3, 1))
+    b.img("Knob", other, {"pos": (-70, 0), "size": (40, 40)}, color=(0.95, 0.95, 0.6, 1))
 
     # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
     c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1000, 640))
@@ -1472,6 +1594,14 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     screen("ScreenMatchHalf", scaler(1, 1, (1920, 1080), 0, 0.5), 4)
     screen("ScreenExpand", scaler(1, 1, (800, 600), 1, 0), 5)
     screen("ScreenShrink", scaler(1, 1, (800, 600), 2, 0), 6)
+    # plain Transforms that hold UI on a screen canvas: drawn without perspective, so what is
+    # turned back into the plane is whole and what stays tilted is shortened
+    holders = f.node("ScreenHolders", None, {"amin": (0, 0), "amax": (0, 0), "size": (0, 0), "scale": 0}, [canvas(0, 7), scaler(0, 1), raycaster()])
+    holders_turned_back(f, b, holders)
+    turned = f.node("Turned", holders, pos=(-300, -100, 0), rot=(0, 0, 30), scale=(2, 2, 2))
+    b.img("TurnedImage", turned, {"pivot": (0, 0), "pos": (0, 0), "size": (50, 30)}, color=(0.3, 0.8, 0.3, 1))
+    tilted = f.node("Tilted", holders, pos=(0, -150, 0), rot=(60, 0, 0))
+    b.img("TiltedImage", tilted, {"pos": (0, 0), "size": (100, 100)}, color=(0.8, 0.8, 0.2, 1))   # half as high on the screen
     return f
 
 
@@ -1486,6 +1616,7 @@ def main(argv):
     panel, panel_ids = panel_prefab()
     write_textures(out)
     write_fonts(out)
+    write_animations(out)
     scene = build_scene(card, card_ids, board, board_ids, panel, panel_ids)
     for name, f, is_scene in (("Card.prefab", card, False), ("Board.prefab", board, False), ("Panel.prefab", panel, False), ("UiCases.unity", scene, True)):
         with open(os.path.join(out, name), "w") as fh:

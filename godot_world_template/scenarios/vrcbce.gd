@@ -44,6 +44,32 @@ func run(r):
 		r.check(unlock_object.get("behaviour") == menu, "the unlock object's target is the menu: " + str(unlock_object.get("behaviour")))
 		unlock_object.Interact()
 	await r.wait(10)
+	# the guideline switch: a slide toggle whose knob ("Selector") is moved by an Animator
+	# (clips Left / Right on its RectTransform, switched by UIAnimationManager with SetBool)
+	var guide: BaseButton = _button_sending(r, "_SwitchGuideMode")
+	var knob: Node = guide.get_node_or_null("Selector") if guide != null else null
+	r.check(guide != null and knob is Control, "the guideline toggle and its knob: %s %s" % [str(guide), str(knob)])
+	if guide != null and knob is Control:
+		var rt = u.RT
+		# (the controller starts in one pose and blends to the one its parameter asks for)
+		var frames_waited: int = 0
+		# (the clips: anchored position -39 in Left, 36 in Right)
+		while not (absf(rt.anchored_position(knob).x - 36.0) < 0.01 or absf(rt.anchored_position(knob).x + 39.0) < 0.01) and frames_waited < 900:
+			await r.wait(10)
+			frames_waited += 10
+		var before_x: float = rt.anchored_position(knob).x
+		r.check(absf(before_x - 36.0) < 0.01 or absf(before_x + 39.0) < 0.01, "the knob rests in one of its clips' poses (-39 or 36): %s" % str(before_x))
+		var guideline_before = mgr.get("guideLineEnabled")
+		u.ui_press(guide, null)
+		frames_waited = 0
+		while absf(absf(rt.anchored_position(knob).x - before_x) - 75.0) > 0.01 and frames_waited < 900:
+			await r.wait(10)
+			frames_waited += 10
+		var after_x: float = rt.anchored_position(knob).x
+		r.check(absf(absf(after_x - before_x) - 75.0) < 0.01, "switching the guideline slides the knob to the other pose: %s → %s" % [str(before_x), str(after_x)])
+		r.check(mgr.get("guideLineEnabled") != guideline_before, "... and switches the guideline: %s → %s" % [str(guideline_before), str(mgr.get("guideLineEnabled"))])
+		u.ui_press(guide, null)   # (back, for the game below)
+		await r.wait(10)
 	# sign up, start: the buttons of the menu, found by the event they send
 	r.check(mgr.get("isTableLocked") == false, "the table is unlocked: isTableLocked=" + str(mgr.get("isTableLocked")))
 	var join: BaseButton = _button_sending(r, "_SignUpAsPlayer1")
@@ -118,7 +144,9 @@ func run(r):
 		if ((after[i] as Vector3) - (before[i] as Vector3)).length() > 0.01:
 			moved += 1
 	r.check(moved >= 3, "balls moved after the break: %d" % moved)
-	# ... and the shadows went with them
+	# ... and the shadows went with them (as drawn: the frame's constraint solve comes after its
+	# updates, and the balls may have moved in a physics step since)
+	u.solve_constraints()
 	loose = []
 	for i in range(16):
 		var c: Node = cons[i]

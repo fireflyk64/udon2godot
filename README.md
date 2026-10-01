@@ -179,7 +179,7 @@ viewport pixels per metre, `unidot/ui/pixels_per_metre`) or, in a screen-space r
 CanvasLayer scaled like Unity's CanvasScaler. The code lives in the unidot fork and is independent
 of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_plane.gd`,
 `canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `ui_sprite.gd`,
-`selectable.gd`, `scroll_rect.gd`, `canvas_group.gd`, `dropdown.gd` (run time).
+`selectable.gd`, `scroll_rect.gd`, `canvas_group.gd`, `dropdown.gd`, `rect_anim.gd` (run time).
 
 * **Separate from Udon.** Nothing of this needs the scripting layer: `scripts/test_ui.sh`
   imports with unidot alone, and `tools/unidot_ui_branch.py` builds the branch `ui-canvas` of
@@ -198,8 +198,13 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
 * **Plain Transforms inside a canvas.** An object without a RectTransform below a canvas has
   no rect, but the RectTransforms below it are still UI of that canvas (Unity lays them out
   against no parent rect). It becomes a Control of no size at its local position, so what
-  hangs below it is drawn, and a script that turns it (a label that faces the player) turns
-  UI.
+  hangs below it is drawn. The holder itself never turns or scales as a Control: it hands
+  its rotation, scale and distance from the plane down, and each rect below it shows the
+  composed transform (a holder turned out of the plane whose rects are turned back is whole
+  again; what stays out of the plane gets a canvas of its own).
+* **Animated rects.** A clip that animates a RectTransform (`m_AnchoredPosition.x`,
+  `m_SizeDelta`, `m_LocalScale` ...) drives a helper child of the Control (`rect_anim.gd`)
+  whose properties are Unity's, so animation is one more caller of `rect_transform.gd`.
 * **Layout groups** run Unity's rebuild algorithm (HorizontalLayoutGroup, VerticalLayoutGroup,
   GridLayoutGroup, ContentSizeFitter, AspectRatioFitter, LayoutElement) and place children the
   way Unity does, by writing their anchors, anchored position and size delta.
