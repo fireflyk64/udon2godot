@@ -70,6 +70,35 @@ world emychess refs/EmyChess/Packages/com.emymin.emychess/Runtime res://Runtime/
 # (unidot keeps paths relative to the Unity project: the folder above "Assets")
 # the package's own runtime tests, run by its TestController in the imported world
 world udonutils_tests refs/UdonUtils/Packages/tlp.udonutils/Runtime "res://Runtime/Scenes/Examples/RuntimeTesting/RuntimeTestingExample.tscn" res://scenarios/udonutils_tests.gd --player-data "$WORLDS/udonutils_tests/player_data.dat"
+# vrcbce (VRCBilliards Community Edition): one table prefab as the scene, played through its menu;
+# --frame / --view put the display pass's camera over the cloth
+world vrcbce refs/vrcbce/Packages/com.vrcbilliards.vrcbce "res://com.vrcbilliards.vrcbce/VRCBCE (M.O.O.N).prefab.tscn" res://scenarios/vrcbce.gd --shadows --frame "Core Table Code/Shadows" --view "0.15,0.8,-0.6" --dist 1.3 --fov 55
+# ... and the canvases of its three menu styles against what Unity computes from the prefabs
+# (tools/unity_ui_reference.py), on a display also what is rendered against the transforms
+ui_reference() {
+  local name=$1 assets=$2 out="$WORLDS/$1"
+  shift 2
+  if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  [ -d "$out" ] || return 0
+  local code=0 unity scene tag
+  for unity in "$@"; do
+    scene="res://$(basename "$assets")/${unity#"$assets"/}.tscn"
+    tag=$(basename "$unity" .prefab | tr -c 'A-Za-z0-9\n' '_')
+    timeout 300 "$GODOT" --headless --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --static --scenario res://scenarios/canvas_dump.gd --dump-out "$out/ui_dump_$tag.json" > "$out/ui_dump_$tag.log" 2>&1
+    python3 tools/unity_ui_reference.py "$assets" "$unity" --compare "$out/ui_dump_$tag.json" > "$out/ui_compare_$tag.log" 2>/dev/null || code=1
+    grep -E "MISMATCH" "$out/ui_compare_$tag.log" | head -10
+    echo "$(basename "$unity"): $(tail -1 "$out/ui_compare_$tag.log")"
+    grep -q ", 0 problem(s)" "$out/ui_compare_$tag.log" || code=1
+    if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ]; then
+      timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s addons/unidot_importer/test/ui_shots.gd -- --scene "$scene" --out "$out/shots/canvases_$tag" --check 1 --static 1 --all 1 > "$out/ui_pixels_$tag.log" 2>&1 || code=1
+      grep -E "MISDRAWN|pixel check" "$out/ui_pixels_$tag.log" | head -10
+    fi
+  done
+  [ $code -ne 0 ] && FAILED+=("$name-ui")
+  return 0
+}
+VRCBCE=refs/vrcbce/Packages/com.vrcbilliards.vrcbce
+[ -d "$VRCBCE" ] && ui_reference vrcbce "$VRCBCE" "$VRCBCE/VRCBCE (M.O.O.N).prefab" "$VRCBCE/VRCBCE (esnya).prefab" "$VRCBCE/VRCBCE (akalink).prefab"
 world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs" "res://Assets/Varneon/Udon Prefabs/Essentials/Examples/UdonEssentials_ExampleScene.tscn" res://scenarios/udon_essentials.gd
 
 echo

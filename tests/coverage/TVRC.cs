@@ -123,6 +123,8 @@ namespace Coverage
             Check((int)other.GetProgramVariable("syncedInt") == 41, "Get/SetProgramVariable");
             SendCustomEventDelayedFrames(nameof(OnDelayed), 1);
             SendCustomEventDelayedSeconds(nameof(OnDelayed), 0.05f);
+            countdown = 0.03f;
+            SendCustomEventDelayedSeconds(nameof(OnTimedOut), 0.03f);
             SendCustomNetworkEvent(NetworkEventTarget.All, nameof(OnNet), 5, "x");
             Check(networkEvents == 1 && netArgSum == 5 && sawNetworkCallContext, "SendCustomNetworkEvent(All) runs locally with args and NetworkCalling context");
             Check(!NetworkCalling.InNetworkCall, "InNetworkCall false outside");
@@ -225,6 +227,23 @@ namespace Coverage
         public void OnCustom() { customEvents++; }
         public void OnDelayed() { delayedEvents++; }
 
+        // An Update countdown and a delayed event of the same length started together (vrcbce's
+        // intro animation and the event that ends it): the event's time runs from the time of
+        // the frame it was scheduled in, so the countdown, which takes that frame's delta too,
+        // is over first.
+        private float countdown;
+        private bool timedOut;
+        private bool timedOutEarly;
+        public void OnTimedOut() { timedOut = true; timedOutEarly = countdown > 0f; }
+        private void Update()
+        {
+            if (countdown > 0f)
+            {
+                countdown -= Time.deltaTime;
+                if (countdown < 0f) countdown = 0f;
+            }
+        }
+
         [NetworkCallable]
         public void OnNet(int n, string tag)
         {
@@ -262,6 +281,7 @@ namespace Coverage
         public void AfterFrames()
         {
             Check(delayedEvents == 2, "delayed events fired (frames + seconds): " + delayedEvents);
+            Check(timedOut && !timedOutEarly, "a delayed event comes after an Update countdown of the same length started with it: fired " + timedOut + ", early " + timedOutEarly);
             Check(deserializations >= 1, "OnDeserialization ran after RequestSerialization (loopback): " + deserializations);
             Check(healthCallbacks >= 2, "FieldChangeCallback invoked by deserialization: " + healthCallbacks);
             Check(joins >= 2 && joinedName == "Remote", "OnPlayerJoined for a joining remote player: " + joins + " " + joinedName);

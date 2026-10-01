@@ -22,8 +22,29 @@ namespace Coverage
 
         private bool Near(float a, float b) { return Mathf.Abs(a - b) < 0.01f; }
 
+        private int calls;
+        private bool Count(bool v) { calls++; return v; }
+
         public void RunTests()
         {
+            // & and | on bools evaluate both operands, && and || do not
+            calls = 0;
+            bool any = false;
+            for (int i = 0; i < 3; i++) { any |= Count(true); }
+            Check(calls == 3 && any, "|= evaluates its right side every time: " + calls);
+            calls = 0;
+            bool every = true;
+            every &= Count(false);
+            every &= Count(true);
+            Check(calls == 2 && !every, "&= evaluates its right side every time: " + calls);
+            calls = 0;
+            bool both = Count(true) | Count(true);
+            bool neither = Count(false) & Count(false);
+            Check(calls == 4 && both && !neither, "| and & evaluate both operands: " + calls);
+            calls = 0;
+            bool lazyOr = Count(true) || Count(true);
+            bool lazyAnd = Count(false) && Count(true);
+            Check(calls == 2 && lazyOr && !lazyAnd, "|| and && stop at the first operand that decides: " + calls);
             TimeSpan a = TimeSpan.FromMinutes(90);
             Check(Near((float)a.TotalHours, 1.5f) && a.Hours == 1 && a.Minutes == 30, "TimeSpan components");
             TimeSpan b = new TimeSpan(0, 0, 45);

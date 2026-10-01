@@ -1699,6 +1699,16 @@ impl<'p> Lowerer<'p> {
         } else {
             Ty::Unknown
         };
+        // C#'s `&` and `|` on bools evaluate both operands (`moving |= Step(i)` steps every
+        // ball); GDScript's `and` / `or` skip the right one. Where an operand may do something,
+        // it goes first, or both go through a call.
+        if matches!(op, BinOp::BitAnd | BinOp::BitOr) && a.ty.is_bool() && b.ty.is_bool() && b.e.may_have_effects() {
+            let word: &'static str = if op == BinOp::BitAnd { "and" } else { "or" };
+            if !a.e.may_have_effects() {
+                return Lw::new(b.e.bin(word, a.e), Ty::Bool);
+            }
+            return Lw::new(GExpr::ident("U").method(if op == BinOp::BitAnd { "b_and" } else { "b_or" }, vec![a.e, b.e]), Ty::Bool);
+        }
         let gop: &'static str = match op {
             BinOp::Add => "+",
             BinOp::Sub => "-",

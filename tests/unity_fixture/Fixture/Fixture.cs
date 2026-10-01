@@ -32,6 +32,8 @@ public class Fixture : UdonSharpBehaviour
     // a PositionConstraint authored in the scene (Shadow follows Ball, 0.2 below it)
     public Transform ball;
     public UnityEngine.Animations.PositionConstraint shadow;
+    // an inactive GameObject with an enabled component (its collider)
+    public GameObject sleeper;
     public BoxCollider floorCollider;
     public GameObject[] targets;
     public string[] names;
@@ -113,6 +115,7 @@ public class Fixture : UdonSharpBehaviour
             Check(NearV(shadow.translationOffset, new Vector3(0f, -0.2f, 0f)) && NearV(shadow.translationAtRest, new Vector3(5f, 0.8f, -3f)), "... its offset and rest position: " + shadow.translationOffset);
             Check(shadow.gameObject.name == "Shadow", "... on its GameObject: " + shadow.gameObject.name);
         }
+        Check(sleeper != null && !sleeper.activeSelf && !sleeper.activeInHierarchy, "an inactive GameObject is inactive for the script");
         GameObject first = pool != null ? pool.TryToSpawn() : null;
         GameObject second = pool != null ? pool.TryToSpawn() : null;
         GameObject third = pool != null ? pool.TryToSpawn() : null;
@@ -207,6 +210,13 @@ public class Fixture : UdonSharpBehaviour
     public void OnPressed()
     {
         pressed++;
+    }
+
+    // the BL button's onClick also calls UdonBehaviour.Interact (vrcbce unlocks its table like this)
+    public int interacted;
+    public override void Interact()
+    {
+        interacted++;
     }
 
     public void OnTL() { pressedTL++; lastPressed = "TL"; }

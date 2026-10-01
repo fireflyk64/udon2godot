@@ -68,7 +68,7 @@ func _udon_bind_refs() -> void:
 	for k in refs.keys():
 		var v = refs[k]
 		if v is NodePath:
-			var n: Node = get_node_or_null(v)
+			var n: Node = U.resolve_ref(self, v)
 			if n != null:
 				set(str(k), n)
 			else:
@@ -80,7 +80,7 @@ func _udon_bind_refs() -> void:
 				arr.resize(v.size())
 			for i in range(v.size()):
 				if v[i] is NodePath:
-					arr[i] = get_node_or_null(v[i])
+					arr[i] = U.resolve_ref(self, v[i])
 					if arr[i] == null:
 						push_warning("udon2godot: %s.%s[%d]: reference %s not found" % [name, str(k), i, str(v[i])])
 			set(str(k), arr)
@@ -106,9 +106,13 @@ func _process(delta: float) -> void:
 	Udon._note_process(delta)
 	if not _udon_started:
 		_udon_start()
-	_udon_run_timers(delta)
 	if enabled and _udon_has.get("Update", false):
 		call("Update")
+	# Delayed events of the frame come after its Update (as those timed for LateUpdate come
+	# after LateUpdate): an Update countdown and a delayed event of the same length may end in
+	# the same frame, and scripts rely on the event being the later one (vrcbce's intro
+	# animation switches something off in every Update, the event switches it on again).
+	_udon_run_timers(delta)
 	# LateUpdate runs after every Update of this frame; a deferred call approximates that.
 	if enabled and (_udon_has.get("LateUpdate", false) or not _udon_late.is_empty() or _udon_has.get("PostLateUpdate", false)):
 		call_deferred("_udon_late_update")
@@ -136,8 +140,12 @@ func _udon_run_timers(delta: float) -> void:
 	if not _udon_timers.is_empty():
 		var due: Array = []
 		var i: int = 0
+		var now: int = Engine.get_process_frames()
 		while i < _udon_timers.size():
 			var t: Dictionary = _udon_timers[i]
+			if int(t.get("since", -1)) == now:
+				i += 1
+				continue   # scheduled in this frame: its time starts now
 			t["time"] = float(t["time"]) - delta
 			if float(t["time"]) <= 0.0:
 				due.append(t)
@@ -205,8 +213,11 @@ func SendCustomEvent(event_name: String) -> void:
 	if not _udon_call(event_name):
 		push_warning("SendCustomEvent: %s has no event '%s'" % [name, event_name])
 
+## The delay runs from the time of the frame the event is scheduled in (Unity: the event is due
+## when Time.time has grown by `delay`), so that frame's own delta does not count, whether the
+## call comes before this behaviour's turn in the frame (a UI event, another behaviour) or after.
 func SendCustomEventDelayedSeconds(event_name: String, delay: float, timing: int = 0) -> void:
-	_udon_timers.append({"name": event_name, "time": maxf(delay, 0.0), "timing": timing})
+	_udon_timers.append({"name": event_name, "time": maxf(delay, 0.0), "timing": timing, "since": Engine.get_process_frames()})
 
 func SendCustomEventDelayedFrames(event_name: String, frames: int, timing: int = 0) -> void:
 	_udon_frame_timers.append({"name": event_name, "frame": Engine.get_process_frames() + maxi(frames, 1), "timing": timing})

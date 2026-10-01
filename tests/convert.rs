@@ -312,3 +312,28 @@ fn a_partial_class_is_known_by_the_file_named_after_it() {
     let other = prog.classes.iter().find(|c| c.name == "Other").unwrap();
     assert_eq!(other.script_file(), Some("Scripts/Helpers.cs"));
 }
+
+#[test]
+fn bool_or_and_evaluate_both_operands() {
+    // (vrcbce: `ballsMoving |= StepOneBall(i, moved)` must step every ball)
+    let out = convert_source(
+        "using UdonSharp; public class T : UdonSharpBehaviour {
+            bool Step(int i) { return i > 0; }
+            public bool Run(bool flag, int mask) {
+                bool moving = false;
+                for (int i = 0; i < 4; i++) { moving |= Step(i); }
+                bool all = true;
+                all &= Step(1);
+                bool both = Step(1) | Step(2);
+                bool plain = flag | moving;
+                int bits = mask | 4;
+                return moving & all & both & plain && bits > 0;
+            } }",
+    );
+    let code = out.source;
+    assert!(code.contains("moving = Step(i) or moving"), "the call first, so that it is always made:\n{}", code);
+    assert!(code.contains("all = Step(1) and all"), "{}", code);
+    assert!(code.contains("U.b_or(Step(1), Step(2))"), "two calls: both are arguments\n{}", code);
+    assert!(code.contains("flag or moving"), "no calls: the plain operator\n{}", code);
+    assert!(code.contains("mask | 4"), "ints keep the bit operator\n{}", code);
+}

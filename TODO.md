@@ -222,8 +222,10 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       * A rect with a negative size (stretched with insets larger than the parent): a Control
         cannot be negative; children anchored to it are off (flagged, not compared).
       * An InputField smaller than one line of its font keeps Godot's minimum height.
-      * Plain Transform children and 3D components (AudioSource, colliders) under a UI control
-        have no 3D frame unless the control is a canvas.
+      * 3D components (AudioSource, colliders, meshes) and plain Transforms without UI below
+        them under a UI control have no 3D frame unless the control is a canvas. (A plain
+        Transform that holds UI is a Control: see the vrcbce item.) A plain Transform whose
+        only UI is a nested prefab instance is not recognized as holding UI.
       * The pointer takes the nearest canvas shape; it does not fall through to a canvas behind
         when the nearest one has no control under the pointer.
       * The pixel check does not compare text glyphs, translucent graphics or widgets drawn by
@@ -345,8 +347,69 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
             16 radial Images on the "Sprites" canvas. A filled sprite with no fill amount draws
             nothing (the reference and the dump report it); `fillCenter` of a script is the
             sprite's setting now.
-      - [ ] One table runs: a scenario that opens the menu and starts a game.
-      - [ ] In `scripts/test_world_community.sh` (and so in CI).
+      - [x] A plain Transform inside a canvas with RectTransforms below it (vrcbce's in-game
+            UI: timer circle, timer text, winner text below `LookAtHead`, which a script turns
+            to the player). The importer made the Transform a Node3D and its RectTransforms
+            "outside every canvas": nothing of them was drawn, and the Image / text components
+            had no node, so script fields that refer to them (through the stripped components
+            of the nested prefab instance) stayed null (`timerCountdown.fillAmount` on null
+            every frame). Such a Transform is a Control now: no size, at its local position
+            from the parent's pivot, with its rotation and scale; what is below it is laid out
+            against no parent rect, as Unity does. The reference tool models the same.
+            `tests/unity_ui`: canvas "Plain" (16 nodes: offset, turned and scaled, tilted in
+            3D, nested twice, inactive, and a Transform without UI that stays an object in
+            space).
+      - [x] A Button whose onClick calls `UdonBehaviour.Interact` (how vrcbce unlocks its
+            table: a button → `ActivaterUdonEvent.Interact` → `SendCustomEvent`) was reported
+            as an unsupported persistent call. It is wired to the behaviour's `Interact` now
+            (fixture: the BL button, 1 check).
+      - [x] One table runs (`scenarios/vrcbce.gd`, 22 checks): the table is unlocked by using
+            its "Enable Table" object, player 1 signs up and the game starts through the
+            menu's buttons, the intro animation ends, the break is played, the balls collide
+            and come to rest, the turn passes; the ball shadows are under the balls throughout.
+            What it took, each with a test of its own:
+            * `x |= f()` and `x &= f()` (and `|` / `&`) on bools evaluate both sides in C#; the
+              converter wrote `x = x or f()`, which stops calling `f` once `x` is true: after
+              the first moving ball no other ball was stepped (no friction, no collisions among
+              them, the turn never ended). The side that may do something goes first now, or
+              both become arguments of `U.b_or` / `U.b_and` (tests/convert.rs, coverage
+              TSystem). 48 lines change in the cloned repositories (the glb loader writes
+              `&` / `|` throughout).
+            * a delayed event counted the delta of the frame it was scheduled in and ran before
+              that frame's `Update`: vrcbce's intro animation (an `Update` countdown that
+              switches the shadow constraints off) and the event of the same length that
+              switches them on again ended in the wrong order. The delay runs from the
+              scheduling frame's time, and a frame's delayed events come after its `Update`
+              (coverage TVRC).
+            * references stored by the importer are NodePaths of the saved scene; a control
+              that gets a canvas of its own at start (it is not in the plane of its canvas)
+              takes what is below it along. `U.resolve_ref` looks through such canvases.
+            * the offset of a PositionConstraint is in the space of the constrained object's
+              parent (the shadows are 0.2 below the balls under a parent scaled 0.15); the
+              solver added it in world space (fixture: Scaled / Under).
+            * an inactive GameObject was only hidden when it was UI: `m_IsActive` was applied
+              to prefab-instance overrides alone (the table's guideline stood on the table; 35
+              inactive objects of the MS-VRCSA table were saved visible and hidden only by
+              their scripts). Hidden at import now (fixture: Sleeper).
+      - [x] In `scripts/test_world_community.sh` (and so in CI): the scenario on the M.O.O.N
+            table, headless and on the display, and the UI reference comparison and pixel check
+            of the three menu styles.
+      - [ ] vrcbce's desktop UI (a screen-space canvas, 10 nodes per menu style) is off: its
+            plain Transforms are turned out of the canvas plane (`Shot Angle`: -90 degrees about
+            x, scale 75; `desktop_hitpower`) and their RectTransform children are turned back
+            (and scaled 0.02), so the result is in the plane again. A Control shows the planar
+            projection of its own rotation and scale, the holder's projection has no height,
+            and nothing below it can undo that. Plan:
+            - [ ] a plain Transform holder never turns or scales as a Control; it hands its 3D
+                  rotation and scale down, and each RectTransform below it shows the projection
+                  of the composed transform (its Unity values stay its own);
+            - [ ] the same for holders in world canvases (what is still out of the plane
+                  after composing gets a canvas of its own);
+            - [ ] `tests/unity_ui`: the vrcbce pattern on a screen canvas and a world canvas.
+      - [ ] Not done for vrcbce: its eight custom shaders are approximated (the doctor lists
+            them: `Silent/Filamented` 17 materials, ghost balls, surface colour masks, the
+            guideline); the cue is not played through the desktop player as on the MS-VRCSA
+            table; the sample scene with all 18 tables is imported but not run.
 - [ ] Then continue with the open items below (Animator; VRChat constraint components; ...).
 
 - [x] Upstream fixed the 1MB direct-jump limit. Update the upstream godot-sandbox tooling to get the fixes.

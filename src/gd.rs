@@ -169,6 +169,20 @@ impl GExpr {
     pub fn bin(self, op: &'static str, rhs: GExpr) -> GExpr {
         GExpr::Binary(Box::new(self), op, Box::new(rhs))
     }
+    /// Could evaluating this do something (a call, or source the producer rendered itself)?
+    /// Names, literals, members, indices and operators on them cannot.
+    pub fn may_have_effects(&self) -> bool {
+        match self {
+            GExpr::Ident(_) | GExpr::Int(_) | GExpr::Float(_) | GExpr::Str(_) | GExpr::Bool(_) | GExpr::Null => false,
+            GExpr::Raw(_) | GExpr::Call(..) | GExpr::MethodCall(..) | GExpr::Lambda { .. } => true,
+            GExpr::Member(t, _) | GExpr::Unary(_, t) | GExpr::As(t, _) | GExpr::Is(t, _) | GExpr::Paren(t) => t.may_have_effects(),
+            GExpr::Index(t, i) => t.may_have_effects() || i.may_have_effects(),
+            GExpr::Binary(a, _, b) => a.may_have_effects() || b.may_have_effects(),
+            GExpr::Ternary { cond, then, els } => cond.may_have_effects() || then.may_have_effects() || els.may_have_effects(),
+            GExpr::Array(items) => items.iter().any(|i| i.may_have_effects()),
+            GExpr::Dict(items) => items.iter().any(|(k, v)| k.may_have_effects() || v.may_have_effects()),
+        }
+    }
     pub fn not(self) -> GExpr {
         GExpr::Unary("not", Box::new(self))
     }

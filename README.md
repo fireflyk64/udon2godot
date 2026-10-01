@@ -22,7 +22,7 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 | [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | 1.9k | 0 | 6/6 | imported world, fields decoded from the Udon variable table: player list, player settings, groups, event dispatcher, 16/16 scenario checks |
 | [UdonUtils](https://github.com/Guribo/UdonUtils) (TLP runtime-testing example scene) | 148 | 19.4k | 0 | 148/148 | imported world; the package's own TestController runs its 17 test cases: the 7 single-player ones pass, 10 report "requires 2 players" (`scenarios/udonutils_tests.gd`, 6 checks) |
 | [VUdon-Udonity](https://github.com/Varneon/VUdon-Udonity), [UdonCombatSystem](https://github.com/Toly65/UdonCombatSystem), [vrchat-glb-loader](https://github.com/vr-voyage/vrchat-glb-loader), [3d-model-loader-tablet](https://github.com/vr-voyage/vrchat-3d-model-loader-tablet), [UdonZip](https://github.com/Foorack/UdonZip) (no example scene, or one that needs packages that are not in the repository) | 169 | 25.1k | 0 | 169/169 (`scripts/compile_check_refs.sh`) | — |
-| [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table) | 21 | 7.1k | 0 | 21/21 | — |
+| [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table, prefabs) | 21 | 7.1k | 0 | 21/21 | imported table prefab: unlocked, joined and started through its menu, a break is played, the turn ends (22 scenario checks); the canvases of its three menu styles match the Unity reference (`scripts/test_world_community.sh`) |
 | [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | — |
 | `tests/coverage/*.cs` API coverage fixtures (18 files) | 21 | 3.0k | 0 | all | 954/954 checks |
 | `tests/unity_fixture` Unity scene + prefabs through unidot + udon_integration | 5 | — | 0 | 5/5 | 77 headless / 110 display / 25 player / 16 VR checks |
@@ -195,6 +195,11 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   along z) gets a canvas of its own in the same place of the tree, at start for imported values
   and at the end of the frame for values a script set. Scripts keep addressing the control;
   `transform.parent`, `GetChild`, `Find` and `childCount` see through the helper nodes.
+* **Plain Transforms inside a canvas.** An object without a RectTransform below a canvas has
+  no rect, but the RectTransforms below it are still UI of that canvas (Unity lays them out
+  against no parent rect). It becomes a Control of no size at its local position, so what
+  hangs below it is drawn, and a script that turns it (a label that faces the player) turns
+  UI.
 * **Layout groups** run Unity's rebuild algorithm (HorizontalLayoutGroup, VerticalLayoutGroup,
   GridLayoutGroup, ContentSizeFitter, AspectRatioFitter, LayoutElement) and place children the
   way Unity does, by writing their anchors, anchored position and size delta.
@@ -441,7 +446,7 @@ another argument list: styled parsing, string comparisons and ranges, binary sea
 (the coordinate convention shared with unidot) and `TNulls` (null where the generated code
 has a value type, members that hide or override base members).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 1074 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 1079 checks pass.
 
 ### Debug switches
 

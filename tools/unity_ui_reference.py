@@ -937,6 +937,10 @@ class Layout:
                 self.linear(n, kind, cfg, axis)
         for c in n.children:
             if not c.is_rect:
+                # a plain Transform inside a canvas: the rects below it are UI of that canvas,
+                # laid out against no parent rect (their anchored position is their local position)
+                if has_rect_below(c):
+                    self.set_axis(c, axis, shown and c.active)
                 continue
             self.place(c, axis)
             arf = c.comp("AspectRatioFitter")
@@ -1469,6 +1473,11 @@ def find_canvases(roots):
     return out
 
 
+def has_rect_below(n):
+    """Does a plain Transform hold UI (a RectTransform somewhere below it)?"""
+    return any(c.is_rect or has_rect_below(c) for c in n.children)
+
+
 def local_matrix(n):
     """Node local space → parent local space (a laid-out rect's origin is its pivot)."""
     if n.is_rect and n.laid:
@@ -1523,8 +1532,8 @@ def describe_canvas(canvas, layout, screen):
 
     def walk(n, parent_m, shown, negative, alpha):
         for c in n.children:
-            if not c.is_rect:
-                continue
+            if not c.is_rect and not has_rect_below(c):
+                continue   # (a plain Transform with UI below it is a rect of no size at its origin)
             m = mat_mul(parent_m, local_matrix(c))
             calpha = alpha * group_alpha(c)
             q = c.local_rotation
@@ -1683,8 +1692,11 @@ def _drawn_problems(e, d):
         want_t, got_t = " ".join(e["text"].split()), " ".join(str(d["text"]).split())
         if want_t != got_t:
             out.append("text %r, Unity shows %r" % (got_t[:80], want_t[:80]))
-    if "font" in e and "text" in d and str(d.get("font", "")).lower() != e["font"].lower():
-        out.append("font %r, Unity's font asset is made from %r (in the project)" % (d.get("font", ""), e["font"]))
+    # (a font file may carry its style in its family name: "TT Norms Black" of the family "TT Norms")
+    if "font" in e and "text" in d:
+        got, want = str(d.get("font", "")).lower(), e["font"].lower()
+        if got != want and not got.startswith(want + " "):
+            out.append("font %r, Unity's font asset is made from %r (in the project)" % (d.get("font", ""), e["font"]))
     if "font_size" in e and "font_size" in d and abs(e["font_size"] - d["font_size"]) > 0.51:
         out.append("font size %s, Unity %s" % (d["font_size"], e["font_size"]))
     return out

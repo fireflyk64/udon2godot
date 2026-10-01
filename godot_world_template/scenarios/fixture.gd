@@ -40,10 +40,24 @@ func run(r):
 	for c in probe.get_parent().get_children() if probe != null else []:
 		if not (c is WorldEnvironment) and c.owner != null and not String(c.name).begins_with("Udon"):
 			roots.append(String(c.name))
-	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid"]
+	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper"]
 	r.check(roots.slice(0, want.size()) == want, "scene roots in Unity's order: " + str(roots))
+	# an inactive GameObject is hidden, whatever its components say; SetActive shows it
+	var sleeper: Node = r.find("Sleeper")
+	r.check(sleeper is Node3D and not (sleeper as Node3D).visible, "an inactive GameObject with an enabled component is hidden: " + str(sleeper))
+	if sleeper is Node3D:
+		r.u().set_active(sleeper, true)
+		r.check((sleeper as Node3D).is_visible_in_tree() and r.u().is_active(sleeper), "SetActive(true) shows it")
+		r.u().set_active(sleeper, false)
 	await _constraint_checks(r)
 	await _ui_checks(r, fx)
+	# a Button whose onClick calls UdonBehaviour.Interact (beside its SendCustomEvent)
+	var bl: Node = r.find("BL")
+	var interacted: int = int(fx.get("interacted"))
+	if bl != null:
+		r.u().ui_press(bl, null)
+		await r.wait(3)
+	r.check(int(fx.get("interacted")) == interacted + 1, "onClick → UdonBehaviour.Interact: %d → %d" % [interacted, int(fx.get("interacted"))])
 	return true
 
 
@@ -61,13 +75,15 @@ func _constraint_checks(r) -> void:
 	r.check(twin is Node3D and ball is Node3D and (twin as Node3D).global_transform.basis.is_equal_approx((ball as Node3D).global_transform.basis) and not (ball as Node3D).global_transform.basis.is_equal_approx(Basis.IDENTITY), "... and the rotation of Ball")
 	var idle: Node = r.find("Idle")
 	r.check(near.call(idle, Vector3(9, 9, 9)), "a constraint that is not active moves nothing: " + (str(u.get_position(idle)) if idle != null else "missing"))
+	var under: Node = r.find("Scaled/Under")
+	r.check(near.call(under, Vector3(5, 0.9, -3)), "the offset is in the space of the parent (scaled 0.5: 0.2 is 0.1): " + (str(u.get_position(under)) if under != null else "missing"))
 	var mid: Node = r.find("Mid")
 	r.check(near.call(mid, Vector3(-0.25, 7, 2.25)), "two weighted sources, x and z only: " + (str(u.get_position(mid)) if mid != null else "missing"))
 	# the source moves, the constrained objects follow
 	if ball is Node3D and shadow is Node3D:
 		u.set_position(ball, Vector3(4, 2, -1))
 		await r.wait(3)
-		r.check(near.call(shadow, Vector3(4, 1.8, -1)) and near.call(twin, Vector3(5, 2, -1)), "the constrained objects follow their source: " + str(u.get_position(shadow)))
+		r.check(near.call(shadow, Vector3(4, 1.8, -1)) and near.call(twin, Vector3(5, 2, -1)) and near.call(under, Vector3(4, 1.9, -1)), "the constrained objects follow their source: " + str(u.get_position(shadow)))
 
 
 ## UiCanvas: 1000 × 600 px at scale 0.001 (1 × 0.6 m) centred at Unity (0, 1.5, 3); buttons TL/TR/

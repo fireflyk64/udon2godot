@@ -62,7 +62,8 @@ def added(h):
     return "\n".join(l for l in h.split("\n")[1:] if l.startswith("+"))
 
 # ---- 1. scene nodes may be any Node; plugin hooks for GameObject nodes and component overrides
-NOT_UI = ("shaderlab", "shader_info", "shader_ref", "ParticleSystem", "mat_slots", "bias", "msaa", "get_godot_extension", "source_mesh")
+NOT_UI = ("shaderlab", "shader_info", "shader_ref", "ParticleSystem", "mat_slots", "bias", "msaa", "get_godot_extension", "source_mesh",
+          "An inactive GameObject shows nothing")   # (hiding inactive objects is a fix of its own)
 def oa_edit(h):
     lines = h.split("\n")
     # mixed hunks: the preloads and the type table
@@ -82,8 +83,20 @@ s = open(p).read()
 s, count = re.subn(r"(func create_(?:cloth_)?godot_node\((?:x?state): RefCounted, new_parent: )Node3D\b", r"\1Node", s)
 open(p, "w").write(s)
 print("object_adapter.gd: %d more node signatures" % count)
+# the constraint classes (a plugin hook for Unity's Animations constraints) are not UI: they share
+# a hunk with the canvas group, so they are taken out of the file again
+s = open(p).read()
+start, end = s.find("class UnidotConstraint:"), s.find("class UnidotMonoBehaviour:")
+if start >= 0:
+    assert end > start
+    s = s[:start] + s[end:]
+    s, count = re.subn(r'(?m)^\t"(\w+Constraint)": Unidot\1,$', r'\t# "\1": Unidot\1,', s)
+    assert count == 6, count
+    open(p, "w").write(s)
+    print("object_adapter.gd: constraint classes left out")
 print("scene_node_state.gd: %d of %d hunks" % apply("scene_node_state.gd", lambda h: True))
-print("convert_scene.gd: %d of %d hunks" % apply("convert_scene.gd", lambda h: "sky_material" not in added(h)))
+# (not UI either: skybox materials, the order of a scene's roots)
+print("convert_scene.gd: %d of %d hunks" % apply("convert_scene.gd", lambda h: "sky_material" not in added(h) and "scene_roots" not in added(h)))
 
 # the UI plugin is loaded by the asset database (the fork also has a generic extra-plugin setting,
 # which is not part of this branch)

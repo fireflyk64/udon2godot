@@ -1371,6 +1371,37 @@ func find_transform(n: Node, path: String) -> Node:
 		cur = RT.identity(next)
 	return cur
 
+## The node a reference stored by the importer points at (a NodePath from `from`, as the scene
+## was saved). A control that is not in the plane of its canvas gets a canvas of its own when
+## the scene starts, and what was below it is then inside that canvas: where the saved path no
+## longer leads anywhere, each step looks through such canvases, as Transform.Find does.
+func resolve_ref(from: Node, path: NodePath) -> Node:
+	var direct: Node = from.get_node_or_null(path)
+	if direct != null or path.is_empty() or path.is_absolute():
+		return direct
+	var cur: Node = from
+	for i in range(path.get_name_count()):
+		var seg: String = String(path.get_name(i))
+		if seg == ".":
+			continue
+		if seg == "..":
+			cur = cur.get_parent()
+			if cur == null:
+				return null
+			continue
+		var next: Node = cur.get_node_or_null(seg)
+		if next == null:
+			var s: Node = RT.store(cur)
+			for host in [RT.child_host(s), s, RT.child_host(cur)]:
+				if host != null and host != cur:
+					next = host.get_node_or_null(seg)
+					if next != null:
+						break
+		if next == null:
+			return null
+		cur = next
+	return RT.identity(cur)
+
 ## GameObject.Find: the first active GameObject of that name, in the order of the hierarchy; a
 ## name with slashes is a path from it, a leading slash starts at the roots of the scene. Only
 ## GameObjects are looked at: not the nodes their components became, nor the viewport and root
@@ -4492,6 +4523,13 @@ func ui_click_viewport(vp: SubViewport, px: Vector2) -> bool:
 # ---------------------------------------------------------------------------
 # Strings & formatting
 # ---------------------------------------------------------------------------
+
+## C#'s `&` and `|` on bools: both operands are evaluated (they are arguments here).
+func b_and(a: bool, b: bool) -> bool:
+	return a and b
+
+func b_or(a: bool, b: bool) -> bool:
+	return a or b
 
 func bool_str(b: bool) -> String:
 	return "True" if b else "False"
@@ -9209,9 +9247,14 @@ func _solve_one(n: Node3D, c: Dictionary) -> void:
 	var cur_rot: Quaternion = get_global_rotation(n)
 	match kind:
 		"position":
-			var goal: Vector3 = avg_pos + _cget(c, ["translationOffset", "positionOffset"], Vector3.ZERO)
+			# the offset and the axes that follow are those of the object's local position (the
+			# space of its parent): shadows 0.2 below the balls under a parent scaled 0.15 are
+			# 0.03 below them in the world
+			var parent: Node = go_parent(n)
+			var goal: Vector3 = (inverse_transform_point(parent, avg_pos) if parent is Node3D or parent is Control else avg_pos) + _cget(c, ["translationOffset", "positionOffset"], Vector3.ZERO)
 			var mask: Vector3 = _axis_mask(c, "translationAxis", "affectP")
-			set_position(n, _masked(cur_pos, cur_pos.lerp(goal, weight), mask))
+			var cur_local: Vector3 = get_local_position(n)
+			set_local_position(n, _masked(cur_local, cur_local.lerp(goal, weight), mask))
 		"rotation":
 			var goal: Quaternion = _avg_rotation(rotations, weights) * euler_v(_cget(c, ["rotationOffset"], Vector3.ZERO))
 			var mask: Vector3 = _axis_mask(c, "rotationAxis", "affect")

@@ -1239,6 +1239,31 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("FontLost", c, {"pos": (0, -90), "size": (660, 50)}, [renderer(), tmp("A font asset without its font file", 36, font=FONT_ASSET_LOST)])
     f.node("FontDefault", c, {"pos": (0, -150), "size": (660, 50)}, [renderer(), tmp("The default font asset", 36)])
 
+    # ---- Plain: plain Transforms inside a canvas --------------------------------------------------
+    # an object without a RectTransform below a canvas has no rect: the RectTransforms below it
+    # are still UI of that canvas, laid out against no parent rect, so their anchored position
+    # is their local position (vrcbce's in-game UI hangs below a Transform that turns to the
+    # player)
+    c = b.world_canvas("Plain", (9.2, 1.5, 2), (600, 400))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.14, 0.12, 0.1, 1))
+    holder = f.node("Holder", c, pos=(100, 50, 0))
+    b.img("HeldImage", holder, {"pos": (0, 0), "size": (80, 40)}, color=(0.9, 0.3, 0.2, 1))
+    # (anchors against no rect: stretching adds nothing, the pivot decides where it lies)
+    f.node("HeldText", holder, {"amin": (0, 0), "amax": (1, 1), "pos": (0, -40), "size": (160, 30)}, [renderer(), tmp("below a plain Transform", 14, halign=2, valign=512)])
+    b.img("HeldCorner", holder, {"amin": (1, 1), "amax": (1, 1), "pivot": (0, 0), "pos": (50, 10), "size": (30, 30)}, color=(0.2, 0.7, 0.9, 1))
+    turned = f.node("Turned", c, pos=(-150, 50, 0), rot=(0, 0, 30), scale=(2, 2, 2))
+    b.img("TurnedImage", turned, {"pivot": (0, 0), "pos": (0, 0), "size": (50, 30)}, color=(0.3, 0.8, 0.3, 1))
+    tilted = f.node("Tilted", c, pos=(-150, -100, 0), rot=(40, 0, 0))
+    b.img("TiltedImage", tilted, {"pos": (0, 0), "size": (60, 40)}, color=(0.8, 0.8, 0.2, 1))
+    deep = f.node("Deep", c, pos=(150, -100, 0))
+    deeper = f.node("Deeper", deep, pos=(20, 10, 0))
+    deep_image = b.img("DeepImage", deeper, {"pos": (0, 0), "size": (90, 60)}, color=(0.6, 0.3, 0.8, 1))
+    inner = f.node("Inner", deep_image, pos=(10, 0, 0))
+    b.img("InnerImage", inner, {"pos": (0, 0), "size": (30, 20)}, color=(1, 1, 1, 1))
+    hidden_holder = f.node("HiddenHolder", c, pos=(0, 150, 0), active=False)
+    b.img("HiddenImage", hidden_holder, {"pos": (0, 0), "size": (60, 30)}, color=(1, 0, 0, 1))
+    f.node("Only3D", c, pos=(0, -150, 0))   # nothing of the UI below it: an object in space as before
+
     # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
     c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1000, 640))
     b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.13, 0.12, 0.15, 1))
