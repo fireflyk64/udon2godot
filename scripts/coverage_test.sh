@@ -8,8 +8,7 @@ PROJ=godot_project
 BIN=target/release/udon2godot
 
 cargo build --release -q
-rm -rf "$PROJ/addons/udon_runtime"
-cp -r runtime/addons/udon_runtime "$PROJ/addons/"
+install_runtime "$PROJ"
 rm -rf "$PROJ/converted_coverage"
 "$BIN" --report -o "$PROJ/converted_coverage" --res-prefix res://converted_coverage tests/coverage > /tmp/udon2godot_coverage_convert.log 2>&1
 CONV=$?

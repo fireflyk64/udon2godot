@@ -17,7 +17,7 @@ if [ ! -f "$OUT/unity_fixture/Fixture/Fixture.tscn" ] || [ -n "$STALE" ] || [ "$
   scripts/import_world.sh tests/unity_fixture "$OUT" > "$OUT.import.log" 2>&1 || true
   grep -E "class\(es\)|import finished|did not finish|scripts attached" "$OUT.import.log"
 else
-  rm -rf "$OUT/addons/udon_runtime"; cp -r runtime/addons/udon_runtime "$OUT/addons/"
+  install_runtime "$OUT"
   cp godot_project/addons/godot_sandbox/bin/*.so "$OUT/addons/godot_sandbox/bin/" 2>/dev/null || true   # a rebuilt sandbox library
   cp godot_world_template/world_runner.gd "$OUT/"; cp godot_world_template/scenarios/*.gd "$OUT/scenarios/"
   cargo build --release -q && target/release/udon2godot -q --manifest "$OUT/converted/udon_manifest.json" -o "$OUT/converted" --res-prefix res://converted $(find tests/unity_fixture -name "*.cs")

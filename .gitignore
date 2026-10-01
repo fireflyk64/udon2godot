@@ -20,3 +20,5 @@
 
 # Godot regenerates uid files for the runtime copy in the test project (the source is runtime/)
 /godot_project/addons/udon_runtime/**/*.uid
+# the run-time half of unidot_importer, copied from refs/unidot_importer by the test scripts
+/godot_project/addons/unidot_importer

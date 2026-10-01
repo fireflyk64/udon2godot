@@ -8,8 +8,7 @@ PORT="${1:-27777}"
 PROJ=godot_project
 LOGS=$(mktemp -d)
 
-rm -rf "$PROJ/addons/udon_runtime"
-cp -r runtime/addons/udon_runtime "$PROJ/addons/"
+install_runtime "$PROJ"
 # class_name registrations need a scan
 mkdir -p "$PROJ/.godot"
 [ -f "$PROJ/.godot/extension_list.cfg" ] || echo "res://addons/godot_sandbox/bin/godot-riscv.gdextension" > "$PROJ/.godot/extension_list.cfg"

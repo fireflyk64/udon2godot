@@ -311,22 +311,22 @@ type AspectRatioFitter : Behaviour kind=component gd=Control extern=UnityEngineU
   IsDestroyed(): bool => not is_instance_valid($0)
   SetLayoutHorizontal(): void => pass
   SetLayoutVertical(): void => pass
-  aspectMode: AspectRatioFitter.AspectMode => int(U.prop_get($0, "aspectMode", 0))
-  aspectRatio: float => float(U.prop_get($0, "aspectRatio", 1.0))
-  set aspectMode: AspectRatioFitter.AspectMode => U.ui_aspect_set($0, "aspectMode", $v)
-  set aspectRatio: float => U.ui_aspect_set($0, "aspectRatio", $v)
+  aspectMode: AspectRatioFitter.AspectMode => int(U.ui_aspect_get($0, "mode", 0))
+  aspectRatio: float => float(U.ui_aspect_get($0, "ratio", 1.0))
+  set aspectMode: AspectRatioFitter.AspectMode => U.ui_aspect_set($0, "mode", int($v))
+  set aspectRatio: float => U.ui_aspect_set($0, "ratio", float($v))
 
 type LayoutElement
   CalculateLayoutInputHorizontal(): void => pass
   CalculateLayoutInputVertical(): void => pass
   IsActive(): bool => $0.is_visible_in_tree()
   IsDestroyed(): bool => not is_instance_valid($0)
-  flexibleHeight: float => U.ui_flexible_get($0, "y")
-  flexibleWidth: float => U.ui_flexible_get($0, "x")
-  layoutPriority: int => !stored int(U.prop_get($0, "layoutPriority", 1))
-  set flexibleHeight: float => U.ui_flexible_set($0, "y", $v)
-  set flexibleWidth: float => U.ui_flexible_set($0, "x", $v)
-  set layoutPriority: int => !stored U.prop_set($0, "layoutPriority", $v)
+  flexibleHeight: float => U.ui_element_get($0, "flex", 1)
+  flexibleWidth: float => U.ui_element_get($0, "flex", 0)
+  layoutPriority: int => int(U.ui_element_value($0, "priority", 1))
+  set flexibleHeight: float => U.ui_element_set($0, "flex", 1, $v)
+  set flexibleWidth: float => U.ui_element_set($0, "flex", 0, $v)
+  set layoutPriority: int => U.ui_element_set_value($0, "priority", int($v))
 
 type LayoutGroup
   IsActive(): bool => $0.is_visible_in_tree()
@@ -335,12 +335,6 @@ type LayoutGroup
 type HorizontalOrVerticalLayoutGroup
   IsActive(): bool => $0.is_visible_in_tree()
   IsDestroyed(): bool => not is_instance_valid($0)
-  childForceExpandHeight: bool => !stored bool(U.prop_get($0, "childForceExpandHeight", true))
-  childForceExpandWidth: bool => !stored bool(U.prop_get($0, "childForceExpandWidth", true))
-  spacing: float => float($0.get_theme_constant("separation"))
-  set childForceExpandHeight: bool => !stored U.prop_set($0, "childForceExpandHeight", $v)
-  set childForceExpandWidth: bool => !stored U.prop_set($0, "childForceExpandWidth", $v)
-  set spacing: float => $0.add_theme_constant_override("separation", int($v))
 
 type HorizontalLayoutGroup
 
@@ -353,8 +347,8 @@ type GridLayoutGroup
   IsDestroyed(): bool => not is_instance_valid($0)
   SetLayoutHorizontal(): void => pass
   SetLayoutVertical(): void => pass
-  flexibleHeight: float => 0.0
-  flexibleWidth: float => 0.0
+  flexibleHeight: float => -1.0
+  flexibleWidth: float => -1.0
   layoutPriority: int => 0
 
 type ContentSizeFitter
@@ -362,7 +356,7 @@ type ContentSizeFitter
   IsDestroyed(): bool => not is_instance_valid($0)
 
 type Canvas
-  ForceUpdateCanvases(): void => pass
+  ForceUpdateCanvases(): void => U.ui_force_layout(null)
   additionalShaderChannels: AdditionalCanvasShaderChannels => !stored U.prop_get($0, "additionalShaderChannels", 0)
   cachedSortingLayerValue: int => 0
   isRootCanvas: bool => U.ui_canvas_get($0, "isRootCanvas", true)
@@ -523,10 +517,10 @@ type ToggleGroup
 type RectTransform
   ForceUpdateRectTransforms(): void => pass
   GetLocalCorners(Vector3[]): void => U.rect_local_corners($0, $1)
-  SetInsetAndSizeFromParentEdge(RectTransform.Edge, float, float): void => !stub pass
+  SetInsetAndSizeFromParentEdge(RectTransform.Edge, float, float): void => U.rect_set_inset($0, $1, $2, $3)
   drivenByObject: Object => null
   hierarchyCount: int => $0.get_child_count() + 1
-  set anchoredPosition3D: Vector3 => U.rect_set_anchored_position($0, Vector2($v.x, $v.y))
+  set anchoredPosition3D: Vector3 => U.rect_set_anchored_position3d($0, $v)
   set hierarchyCapacity: int => pass
 
 type CanvasRenderer
@@ -564,22 +558,22 @@ type Sprite
   vertices: Vector2[] => []
 
 type LayoutUtility kind=static extern=UnityEngineUILayoutUtility
-  static GetFlexibleHeight(RectTransform): float => U.ui_flexible_get($1, "y")
-  static GetFlexibleSize(RectTransform, int): float => U.ui_flexible_get($1, "x" if $2 == 0 else "y")
-  static GetFlexibleWidth(RectTransform): float => U.ui_flexible_get($1, "x")
-  static GetMinHeight(RectTransform): float => U.ui_min_size($1, "y")
-  static GetMinSize(RectTransform, int): float => U.ui_min_size($1, "x" if $2 == 0 else "y")
-  static GetMinWidth(RectTransform): float => U.ui_min_size($1, "x")
-  static GetPreferredHeight(RectTransform): float => U.ui_preferred_size($1, "y")
-  static GetPreferredSize(RectTransform, int): float => U.ui_preferred_size($1, "x" if $2 == 0 else "y")
-  static GetPreferredWidth(RectTransform): float => U.ui_preferred_size($1, "x")
+  static GetFlexibleHeight(RectTransform): float => U.ui_layout_ask($1, 2, 1)
+  static GetFlexibleSize(RectTransform, int): float => U.ui_layout_ask($1, 2, $2)
+  static GetFlexibleWidth(RectTransform): float => U.ui_layout_ask($1, 2, 0)
+  static GetMinHeight(RectTransform): float => U.ui_layout_ask($1, 0, 1)
+  static GetMinSize(RectTransform, int): float => U.ui_layout_ask($1, 0, $2)
+  static GetMinWidth(RectTransform): float => U.ui_layout_ask($1, 0, 0)
+  static GetPreferredHeight(RectTransform): float => U.ui_layout_ask($1, 1, 1)
+  static GetPreferredSize(RectTransform, int): float => U.ui_layout_ask($1, 1, $2)
+  static GetPreferredWidth(RectTransform): float => U.ui_layout_ask($1, 1, 0)
 
 type LayoutRebuilder kind=static extern=UnityEngineUILayoutRebuilder
-  static ForceRebuildLayoutImmediate(RectTransform): void => pass
+  static ForceRebuildLayoutImmediate(RectTransform): void => U.ui_force_layout($1)
   static GraphicUpdateComplete(): void => pass
   static IsDestroyed(): bool => false
   static LayoutComplete(): void => pass
-  static MarkLayoutForRebuild(RectTransform): void => pass
+  static MarkLayoutForRebuild(RectTransform): void => U.ui_mark_layout($1)
   static Rebuild(CanvasUpdate): void => pass
   static transform: Transform => null
 

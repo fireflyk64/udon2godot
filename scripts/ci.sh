@@ -6,7 +6,9 @@
 #    + catalog audit: no unmapped extern, no unmapped overload         (udon2godot --coverage-overloads)
 # 2. API coverage fixtures                                                (scripts/coverage_test.sh)
 # 3. host + client over ENet                                              (scripts/net_test.sh)
-# 4. Unity fixture scene through unidot + udon_integration                (scripts/test_unity_fixture.sh)
+# 4. Unity UI without scripting: rect_transform.gd unit tests, a canvas-only
+#    Unity scene imported by unidot alone, compared with Unity's rectangles (scripts/test_ui.sh)
+#    Unity fixture scene through unidot + udon_integration                (scripts/test_unity_fixture.sh)
 # 5. MS-VRCSA-Billiards import + gameplay scenario (+ screenshots on X)   (scripts/test_world_billiards.sh)
 # 6. community prefab worlds with an example scene, when cloned            (scripts/test_world_community.sh)
 set -uo pipefail
@@ -34,6 +36,7 @@ else
 fi
 run coverage scripts/coverage_test.sh
 run net scripts/net_test.sh
+run ui env REIMPORT=1 scripts/test_ui.sh "$WORLDS/ui"
 run fixture env REIMPORT=1 scripts/test_unity_fixture.sh "$WORLDS/fixture"
 run billiards env REIMPORT=1 scripts/test_world_billiards.sh "$WORLDS/billiards"
 # community prefab worlds (scripts/setup_deps.sh --community; repositories that are not cloned are skipped)

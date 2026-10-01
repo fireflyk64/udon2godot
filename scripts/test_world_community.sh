@@ -34,7 +34,7 @@ world() {
     scripts/import_world.sh "$src" "$out" > "$out.import.log" 2>&1 || true
     grep -E "class\(es\)|import finished|did not finish|scripts attached|unknown scripts" "$out.import.log"
   else
-    rm -rf "$out/addons/udon_runtime"; cp -r runtime/addons/udon_runtime "$out/addons/"
+    install_runtime "$out"
     cp godot_project/addons/godot_sandbox/bin/*.so "$out/addons/godot_sandbox/bin/" 2>/dev/null || true
     cp godot_world_template/world_runner.gd "$out/"; cp godot_world_template/scenarios/*.gd "$out/scenarios/"
     local files=()

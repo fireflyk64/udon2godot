@@ -22,7 +22,7 @@ if [ ! -f "$OUT/MS-VRCSA-Billiards/DefaultScene/MS-VRCSA_Scene.tscn" ] || [ -n "
   scripts/import_world.sh refs/MS-VRCSA-Billiards "$OUT" || true
 else
   # refresh runtime, converted scripts and runner without a full asset import
-  rm -rf "$OUT/addons/udon_runtime"; cp -r runtime/addons/udon_runtime "$OUT/addons/"
+  install_runtime "$OUT"
   cp godot_project/addons/godot_sandbox/bin/*.so "$OUT/addons/godot_sandbox/bin/" 2>/dev/null || true   # a rebuilt sandbox library
   cp godot_world_template/world_runner.gd "$OUT/"; mkdir -p "$OUT/scenarios"; cp godot_world_template/scenarios/*.gd "$OUT/scenarios/"
   mkdir -p "$OUT/tests"; cp godot_world_template/tests/*.gd "$OUT/tests/"

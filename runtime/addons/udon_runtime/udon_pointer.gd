@@ -1,6 +1,6 @@
 ## Pointer for imported worlds: turns a ray (the camera through the mouse, the view centre when
 ## the mouse is captured, or a ray a VR controller supplies with `set_ray`) into
-##   * mouse events for the world canvas under it (raycast against the `udon_ui_shape` areas of
+##   * mouse events for the world canvas under it (raycast against the `unidot_ui_shape` areas of
 ##     udon_integration, hit from the readable side only, then `SubViewport.push_input` at the
 ##     pixel `U.ui_world_to_viewport` maps the hit to), including hover enter/exit;
 ##   * `Interact()` on the behaviour whose collider is hit (within its `proximity`, unless
@@ -124,7 +124,7 @@ func _update_hit() -> void:
 		if a.is_empty():
 			break
 		var area: Node = a["collider"]
-		if area.is_in_group("udon_ui_shape") and area.get_parent() != null and area.get_parent().has_meta("udon_canvas"):
+		if area.is_in_group("unidot_ui_shape") and area.get_parent() != null and area.get_parent().has_meta("unidot_canvas"):
 			var cv: Node3D = area.get_parent()
 			# readable from the -Z side of the canvas node: the ray must run against that normal
 			if ray_dir.dot(cv.global_transform.basis.z) > 0.0 and ray_origin.distance_to(a["position"]) <= body_d:
@@ -200,9 +200,9 @@ func _apply_hit(new_hit: Dictionary) -> void:
 
 
 func _viewport_of(cv: Node) -> SubViewport:
-	if cv == null or not cv.has_meta("udon_canvas"):
+	if cv == null or not cv.has_meta("unidot_canvas"):
 		return null
-	return cv.get_node_or_null(cv.get_meta("udon_canvas").get("viewport", NodePath())) as SubViewport
+	return cv.get_node_or_null(cv.get_meta("unidot_canvas").get("viewport", NodePath())) as SubViewport
 
 
 func _push_motion(cv: Node, px: Vector2) -> void:

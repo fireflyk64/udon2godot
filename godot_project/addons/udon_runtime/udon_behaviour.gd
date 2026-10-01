@@ -92,10 +92,15 @@ func _udon_start() -> void:
 	if _udon_has.get("Start", false):
 		call("Start")
 
+## Leaving the tree is the end of the behaviour only when it (or an ancestor) is being freed. A
+## node that is moved (Transform.SetParent, a control that gets a canvas of its own) leaves and
+## enters again and must stay registered: Unity does not destroy an object it reparents.
 func _exit_tree() -> void:
-	if _udon_ready:
-		Udon._unregister_behaviour(self)
+	if not _udon_ready:
+		return
+	if Udon._behaviour_leaving(self):
 		_udon_call("OnDestroy")
+		_udon_ready = false
 
 func _process(delta: float) -> void:
 	Udon._note_process(delta)

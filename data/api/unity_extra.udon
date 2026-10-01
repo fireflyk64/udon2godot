@@ -1312,88 +1312,105 @@ type VideoPlayer : Behaviour kind=component gd=VideoStreamPlayer extern=UnityEng
   EnableAudioTrack(ushort, bool): void => pass
   IsAudioTrackEnabled(ushort): bool => true
 
-type HorizontalOrVerticalLayoutGroup : Behaviour kind=component gd=BoxContainer extern=UnityEngineUIHorizontalOrVerticalLayoutGroup
-  spacing: float => $0.get_theme_constant("separation")
-  set spacing: float => $0.add_theme_constant_override("separation", int($v))
-  childAlignment: int => $0.alignment
-  set childAlignment: int => $0.alignment = clampi($v / 3, 0, 2)
-  childForceExpandWidth: bool => U.layout_get($0, "childForceExpandWidth", true)
-  set childForceExpandWidth: bool => U.layout_set($0, "childForceExpandWidth", $v)
-  childForceExpandHeight: bool => U.layout_get($0, "childForceExpandHeight", true)
-  set childForceExpandHeight: bool => U.layout_set($0, "childForceExpandHeight", $v)
-  childControlWidth: bool => U.layout_get($0, "childControlWidth", false)
-  set childControlWidth: bool => U.layout_set($0, "childControlWidth", $v)
-  childControlHeight: bool => U.layout_get($0, "childControlHeight", false)
-  set childControlHeight: bool => U.layout_set($0, "childControlHeight", $v)
-  childScaleWidth: bool => false
-  set childScaleWidth: bool => pass
-  childScaleHeight: bool => false
-  set childScaleHeight: bool => pass
-  reverseArrangement: bool => false
-  set reverseArrangement: bool => pass
-  padding: object => {"left": 0, "right": 0, "top": 0, "bottom": 0}
-  set padding: object => pass
-  minWidth: float => $0.get_combined_minimum_size().x
-  minHeight: float => $0.get_combined_minimum_size().y
-  preferredWidth: float => $0.get_combined_minimum_size().x
-  preferredHeight: float => $0.get_combined_minimum_size().y
-  flexibleWidth: float => 1.0
-  flexibleHeight: float => 1.0
+type RectOffset kind=class gd=Dictionary extern=UnityEngineRectOffset
+  ctor() => {"left": 0, "right": 0, "top": 0, "bottom": 0}
+  ctor(int, int, int, int) => {"left": $1, "right": $2, "top": $3, "bottom": $4}
+  left: int => int($0.get("left", 0))
+  set left: int => $0.left = $v
+  right: int => int($0.get("right", 0))
+  set right: int => $0.right = $v
+  top: int => int($0.get("top", 0))
+  set top: int => $0.top = $v
+  bottom: int => int($0.get("bottom", 0))
+  set bottom: int => $0.bottom = $v
+  horizontal: int => int($0.get("left", 0)) + int($0.get("right", 0))
+  vertical: int => int($0.get("top", 0)) + int($0.get("bottom", 0))
+
+# Unity's layout components are metadata of the Control (unidot's ui_integration writes it, its
+# runtime/layout_group.gd runs Unity's layout from it): the same data whether a value comes from
+# the Unity file or from a script.
+type HorizontalOrVerticalLayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUIHorizontalOrVerticalLayoutGroup
+  spacing: float => float(U.ui_layout_get($0, "spacing", 0.0))
+  set spacing: float => U.ui_layout_set($0, "spacing", float($v))
+  childForceExpandWidth: bool => bool(U.ui_layout_get($0, "expand_w", true))
+  set childForceExpandWidth: bool => U.ui_layout_set($0, "expand_w", $v)
+  childForceExpandHeight: bool => bool(U.ui_layout_get($0, "expand_h", true))
+  set childForceExpandHeight: bool => U.ui_layout_set($0, "expand_h", $v)
+  childControlWidth: bool => bool(U.ui_layout_get($0, "control_w", true))
+  set childControlWidth: bool => U.ui_layout_set($0, "control_w", $v)
+  childControlHeight: bool => bool(U.ui_layout_get($0, "control_h", true))
+  set childControlHeight: bool => U.ui_layout_set($0, "control_h", $v)
+  childScaleWidth: bool => bool(U.ui_layout_get($0, "scale_w", false))
+  set childScaleWidth: bool => U.ui_layout_set($0, "scale_w", $v)
+  childScaleHeight: bool => bool(U.ui_layout_get($0, "scale_h", false))
+  set childScaleHeight: bool => U.ui_layout_set($0, "scale_h", $v)
+  reverseArrangement: bool => bool(U.ui_layout_get($0, "reverse", false))
+  set reverseArrangement: bool => U.ui_layout_set($0, "reverse", $v)
+  childAlignment: int => int(U.ui_layout_get($0, "align", 0))
+  set childAlignment: int => U.ui_layout_set($0, "align", int($v))
+  padding: RectOffset => U.ui_layout_padding($0)
+  set padding: RectOffset => U.ui_layout_set($0, "padding", $v)
+  minWidth: float => U.ui_layout_ask($0, 0, 0)
+  minHeight: float => U.ui_layout_ask($0, 0, 1)
+  preferredWidth: float => U.ui_layout_ask($0, 1, 0)
+  preferredHeight: float => U.ui_layout_ask($0, 1, 1)
+  flexibleWidth: float => U.ui_layout_ask($0, 2, 0)
+  flexibleHeight: float => U.ui_layout_ask($0, 2, 1)
   layoutPriority: int => 0
   CalculateLayoutInputHorizontal(): void => pass
   CalculateLayoutInputVertical(): void => pass
-  SetLayoutHorizontal(): void => pass
-  SetLayoutVertical(): void => pass
+  SetLayoutHorizontal(): void => U.ui_force_layout($0)
+  SetLayoutVertical(): void => U.ui_force_layout($0)
 
-type HorizontalLayoutGroup : HorizontalOrVerticalLayoutGroup kind=component gd=HBoxContainer extern=UnityEngineUIHorizontalLayoutGroup
-type VerticalLayoutGroup : HorizontalOrVerticalLayoutGroup kind=component gd=VBoxContainer extern=UnityEngineUIVerticalLayoutGroup
+type HorizontalLayoutGroup : HorizontalOrVerticalLayoutGroup kind=component gd=Control extern=UnityEngineUIHorizontalLayoutGroup
+type VerticalLayoutGroup : HorizontalOrVerticalLayoutGroup kind=component gd=Control extern=UnityEngineUIVerticalLayoutGroup
 
-type GridLayoutGroup : Behaviour kind=component gd=GridContainer extern=UnityEngineUIGridLayoutGroup
-  cellSize: Vector2 => U.layout_get($0, "cellSize", Vector2(100, 100))
-  set cellSize: Vector2 => U.layout_set($0, "cellSize", $v)
-  spacing: Vector2 => Vector2($0.get_theme_constant("h_separation"), $0.get_theme_constant("v_separation"))
-  set spacing: Vector2 => $0.add_theme_constant_override("h_separation", int($v.x)) ;; $0.add_theme_constant_override("v_separation", int($v.y))
-  constraint: int => 1
-  set constraint: int => pass
-  constraintCount: int => $0.columns
-  set constraintCount: int => $0.columns = maxi($v, 1)
-  startCorner: int => 0
-  set startCorner: int => pass
-  startAxis: int => 0
-  set startAxis: int => pass
-  childAlignment: int => 0
-  set childAlignment: int => pass
-  padding: object => {"left": 0, "right": 0, "top": 0, "bottom": 0}
-  set padding: object => pass
-  minWidth: float => $0.get_combined_minimum_size().x
-  minHeight: float => $0.get_combined_minimum_size().y
-  preferredWidth: float => $0.get_combined_minimum_size().x
-  preferredHeight: float => $0.get_combined_minimum_size().y
+type GridLayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUIGridLayoutGroup
+  cellSize: Vector2 => U.ui_layout_get($0, "cell", Vector2(100, 100))
+  set cellSize: Vector2 => U.ui_layout_set($0, "cell", $v)
+  spacing: Vector2 => U.ui_layout_get($0, "spacing2", Vector2.ZERO)
+  set spacing: Vector2 => U.ui_layout_set($0, "spacing2", $v)
+  constraint: int => int(U.ui_layout_get($0, "constraint", 0))
+  set constraint: int => U.ui_layout_set($0, "constraint", int($v))
+  constraintCount: int => int(U.ui_layout_get($0, "count", 2))
+  set constraintCount: int => U.ui_layout_set($0, "count", maxi(int($v), 1))
+  startCorner: int => int(U.ui_layout_get($0, "corner", 0))
+  set startCorner: int => U.ui_layout_set($0, "corner", int($v))
+  startAxis: int => int(U.ui_layout_get($0, "axis", 0))
+  set startAxis: int => U.ui_layout_set($0, "axis", int($v))
+  childAlignment: int => int(U.ui_layout_get($0, "align", 0))
+  set childAlignment: int => U.ui_layout_set($0, "align", int($v))
+  padding: RectOffset => U.ui_layout_padding($0)
+  set padding: RectOffset => U.ui_layout_set($0, "padding", $v)
+  minWidth: float => U.ui_layout_ask($0, 0, 0)
+  minHeight: float => U.ui_layout_ask($0, 0, 1)
+  preferredWidth: float => U.ui_layout_ask($0, 1, 0)
+  preferredHeight: float => U.ui_layout_ask($0, 1, 1)
 
-type LayoutGroup : Behaviour kind=component gd=Container extern=UnityEngineUILayoutGroup
-  childAlignment: int => 0
-  set childAlignment: int => pass
-  padding: object => {"left": 0, "right": 0, "top": 0, "bottom": 0}
-  set padding: object => pass
-  minWidth: float => $0.get_combined_minimum_size().x
-  minHeight: float => $0.get_combined_minimum_size().y
-  preferredWidth: float => $0.get_combined_minimum_size().x
-  preferredHeight: float => $0.get_combined_minimum_size().y
-  flexibleWidth: float => 1.0
-  flexibleHeight: float => 1.0
+type LayoutGroup : Behaviour kind=component gd=Control extern=UnityEngineUILayoutGroup
+  childAlignment: int => int(U.ui_layout_get($0, "align", 0))
+  set childAlignment: int => U.ui_layout_set($0, "align", int($v))
+  padding: RectOffset => U.ui_layout_padding($0)
+  set padding: RectOffset => U.ui_layout_set($0, "padding", $v)
+  minWidth: float => U.ui_layout_ask($0, 0, 0)
+  minHeight: float => U.ui_layout_ask($0, 0, 1)
+  preferredWidth: float => U.ui_layout_ask($0, 1, 0)
+  preferredHeight: float => U.ui_layout_ask($0, 1, 1)
+  flexibleWidth: float => U.ui_layout_ask($0, 2, 0)
+  flexibleHeight: float => U.ui_layout_ask($0, 2, 1)
   layoutPriority: int => 0
   CalculateLayoutInputHorizontal(): void => pass
   CalculateLayoutInputVertical(): void => pass
-  SetLayoutHorizontal(): void => pass
-  SetLayoutVertical(): void => pass
+  SetLayoutHorizontal(): void => U.ui_force_layout($0)
+  SetLayoutVertical(): void => U.ui_force_layout($0)
 
 type ContentSizeFitter : Behaviour kind=component gd=Control extern=UnityEngineUIContentSizeFitter
-  horizontalFit: int => 0
-  set horizontalFit: int => pass
-  verticalFit: int => 0
-  set verticalFit: int => pass
-  SetLayoutHorizontal(): void => pass
-  SetLayoutVertical(): void => pass
+  horizontalFit: int => int(U.ui_fitter_get($0, "h"))
+  set horizontalFit: int => U.ui_fitter_set($0, "h", int($v))
+  verticalFit: int => int(U.ui_fitter_get($0, "v"))
+  set verticalFit: int => U.ui_fitter_set($0, "v", int($v))
+  SetLayoutHorizontal(): void => U.ui_force_layout($0)
+  SetLayoutVertical(): void => U.ui_force_layout($0)
 
 type CanvasScaler : Behaviour kind=component gd=CanvasLayer extern=UnityEngineUICanvasScaler
   uiScaleMode: int => 0

@@ -15,7 +15,7 @@ func _init() -> void:
 	_U = root.get_node("U")
 	_Udon = root.get_node("Udon")
 	var only: Array = OS.get_cmdline_user_args()
-	var names: Array = ["TCoord", "TMath", "TMathB", "TStrings", "TArrays", "TTransform", "TPhysics", "TMedia", "TUI", "TVRC", "T2D", "TParticles", "TSystem", "TNav", "TAnim", "TExt", "TOverloads", "TNulls"]
+	var names: Array = ["TCoord", "TMath", "TMathB", "TStrings", "TArrays", "TTransform", "TPhysics", "TMedia", "TUI", "TRect", "TVRC", "T2D", "TParticles", "TSystem", "TNav", "TAnim", "TExt", "TOverloads", "TNulls"]
 	for n in names:
 		if not only.is_empty() and not only.has(n):
 			continue
@@ -50,10 +50,12 @@ func run_fixture(name: String) -> void:
 		# the navigation map syncs on physics ticks
 		for i in range(3):
 			await physics_frame
-	if name == "TCoord":
+	if name == "TCoord" or name == "TRect":
 		_U.coord_mode = _U.CoordMode.UNIDOT
 	target.call("RunTests")
 	var extra: Array = []
+	if name == "TRect":
+		_U.coord_mode = _U.CoordMode.UNITY
 	if name == "TCoord":
 		_U.coord_mode = _U.CoordMode.UNITY
 		if not target.global_position.is_equal_approx(Vector3(-1, 2, 3)):
@@ -71,6 +73,8 @@ func run_fixture(name: String) -> void:
 		target.set("failCount", fc0)
 		target.set("total", int(target.get("total")) + extra.size())
 	if target.has_method("AfterFrames"):
+		if name == "TRect":
+			_U.coord_mode = _U.CoordMode.UNIDOT
 		if name == "TVRC":
 			# a remote player joins after the tests ran
 			var p = load("res://addons/udon_runtime/udon_player.gd").new()
@@ -91,6 +95,8 @@ func run_fixture(name: String) -> void:
 				await process_frame
 			i += 1
 		target.call("AfterFrames")
+		if name == "TRect":
+			_U.coord_mode = _U.CoordMode.UNITY
 	var late: Array = _godot_checks_late(name, target, host)
 	if not late.is_empty():
 		var fc1: int = int(target.get("failCount"))
@@ -118,6 +124,28 @@ func run_fixture(name: String) -> void:
 func _godot_checks_late(name: String, target: Node3D, _host: Node3D) -> Array:
 	var out: Array = []
 	match name:
+		"TRect":
+			# the script moved `Mover` onto a 3D spot: it is drawn there, on a canvas of its own
+			var RT = _U.RT
+			var cv: Node = _host.get_node("Canvas")
+			var mover: Control = target.get("mover")
+			var child: Control = target.get("child")
+			var itemb: Control = target.get("itemB")
+			var centre: Vector3 = RT.drawn_point(mover, mover.size * 0.5)
+			var edge: Vector3 = RT.drawn_point(mover, Vector2(mover.size.x, mover.size.y * 0.5))
+			var want: Dictionary = {
+				"the moved rect got a canvas of its own": RT.holder_of(mover) != null and RT.is_island(RT.holder_of(mover)),
+				"it is drawn on the spot (%s)" % str(centre): centre.distance_to(Vector3(3, 0.5, -1)) < 0.003,
+				# 40 units wide at scale 0.01, turned 90 degrees about y: +x points along -z
+				"... facing the spot's way (%s)" % str(edge): edge.distance_to(Vector3(3, 0.5, -1.2)) < 0.003,
+				"the canvas still has three child objects": RT.logical_children(cv).size() == 3,
+				"Control rotation is the Unity z angle, negated": is_equal_approx(child.rotation, -PI / 2.0),
+				"Control scale": child.scale.is_equal_approx(Vector2(2, 2)),
+				"SetParent moved the control under the panel": itemb.get_parent() == target.get("panel"),
+			}
+			for k in want:
+				if not want[k]:
+					out.append("engine: " + k)
 		"TAnim":
 			var want: Dictionary = {
 				"follower moved by the solver": target.get_node("Follower").position.is_equal_approx(Vector3(4, 2, 0)),
@@ -226,8 +254,8 @@ func _godot_checks(name: String, target: Node3D, _host: Node3D) -> Array:
 				"button normal colour tints": btn.self_modulate == Color.RED,
 				"button focus neighbour": btn.focus_neighbor_bottom == btn.get_path_to(ui.get_node("Slider")),
 				"mask clips": rect.clip_contents,
-				"layout preferred width": is_equal_approx(rect.custom_minimum_size.x, 120.0),
-				"layout flexible": rect.size_flags_horizontal & Control.SIZE_EXPAND != 0,
+				"layout preferred width": is_equal_approx((rect.get_meta("unidot_layout_element")["pref"] as Vector2).x, 120.0),
+				"layout flexible": is_equal_approx((rect.get_meta("unidot_layout_element")["flex"] as Vector2).x, 2.0),
 			}
 			for k in want:
 				if not want[k]:
@@ -376,6 +404,7 @@ func _build_scene(name: String, target: Node3D, host: Node3D) -> void:
 			layer.add_child(dd)
 			var rect := Control.new()
 			rect.name = "Rect"
+			rect.set_meta("unidot_layout_element", {"min": Vector2(-1, -1), "pref": Vector2(-1, -1), "flex": Vector2(-1, -1), "ignore": false, "priority": 1, "enabled": true})
 			layer.add_child(rect)
 			var btn := Button.new()
 			btn.name = "Button"
@@ -383,6 +412,41 @@ func _build_scene(name: String, target: Node3D, host: Node3D) -> void:
 			var l3 := Label3D.new()
 			l3.name = "Label3D"
 			target.add_child(l3)
+		"TRect":
+			# a world canvas built with the importer's own code (unidot's rect_transform.gd):
+			# 400 x 200 at Unity (1, 1, 2), scale 0.01
+			var RT = _U.RT
+			var defaults: Dictionary = RT._defaults()
+			var cv := Node3D.new()
+			cv.name = "Canvas"
+			host.add_child(cv)
+			var croot := Control.new()
+			croot.name = "Canvas"
+			RT.build_island(cv, croot, {"anchored_position": Vector2(1, 1), "z": 2.0, "size_delta": Vector2(400, 200), "scale": Vector3(0.01, 0.01, 0.01), "anchor_min": Vector2.ZERO, "anchor_max": Vector2.ZERO})
+			var mk := func(cls: String, nm: String, parent: Control, v: Dictionary) -> Control:
+				var c: Control = ClassDB.instantiate(cls)
+				c.name = nm
+				parent.add_child(c)
+				var full: Dictionary = defaults.duplicate()
+				full.merge(v, true)
+				RT.set_values(c, full)
+				return c
+			var panel: Control = mk.call("Control", "Panel", croot, {"size_delta": Vector2(200, 100)})
+			mk.call("TextureRect", "Child", panel, {"anchored_position": Vector2(20, 10), "size_delta": Vector2(40, 20)})
+			var lst: Control = mk.call("Control", "List", croot, {"anchored_position": Vector2(150, 0), "size_delta": Vector2(100, 200)})
+			lst.set_meta("unidot_layout", {"type": "vertical", "padding": [4, 4, 4, 4], "spacing": 2.0, "align": 0, "control_w": true, "control_h": false, "expand_w": true, "expand_h": false, "scale_w": false, "scale_h": false, "reverse": false})
+			lst.set_meta("unidot_fitter", {"h": 0, "v": 0})
+			mk.call("TextureRect", "ItemA", lst, {"size_delta": Vector2(10, 20)}).set_meta("unidot_no_sprite", true)
+			var ib: Control = mk.call("TextureRect", "ItemB", lst, {"size_delta": Vector2(10, 30)})
+			ib.set_meta("unidot_no_sprite", true)
+			ib.set_meta("unidot_layout_element", {"min": Vector2(-1, -1), "pref": Vector2(-1, -1), "flex": Vector2(-1, -1), "ignore": false, "priority": 1, "enabled": true})
+			_U._ui_layout_helper(lst, true)
+			mk.call("TextureRect", "Mover", croot, {"anchored_position": Vector2(-150, 50), "size_delta": Vector2(40, 40)})
+			var spot := Node3D.new()
+			spot.name = "Spot"
+			host.add_child(spot)
+			spot.position = Vector3(-3, 0.5, -1)                                # Unity (3, 0.5, -1)
+			spot.quaternion = Quaternion(0.0, -sin(PI / 4.0), 0.0, cos(PI / 4.0))  # Unity 90 degrees about y
 		"TVRC":
 			var other := Node3D.new()
 			other.name = "Other"
@@ -519,6 +583,17 @@ func _wire(name: String, t: Node3D, host: Node3D, script) -> void:
 			t.set("rect", ui.get_node("Rect"))
 			t.set("button", ui.get_node("Button"))
 			t.set("label3d", t.get_node("Label3D"))
+		"TRect":
+			var cv := host.get_node("Canvas")
+			var croot: Control = _U.RT.root_control(cv)
+			t.set("canvas", cv)
+			t.set("panel", croot.get_node("Panel"))
+			t.set("child", croot.get_node("Panel/Child"))
+			t.set("list", croot.get_node("List"))
+			t.set("itemA", croot.get_node("List/ItemA"))
+			t.set("itemB", croot.get_node("List/ItemB"))
+			t.set("mover", croot.get_node("Mover"))
+			t.set("spot", host.get_node("Spot"))
 		"TVRC":
 			var other := host.get_node("Other")
 			other.set_script(script)

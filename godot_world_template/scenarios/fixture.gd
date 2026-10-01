@@ -48,12 +48,13 @@ func run(r):
 ## button centres (texture orientation) and clicks through the window.
 func _ui_checks(r, fx: Node) -> void:
 	var cv: Node = r.find("UiCanvas")
-	r.check(cv != null and cv.has_meta("udon_canvas"), "UiCanvas imported as a world canvas")
-	if cv == null or not cv.has_meta("udon_canvas"):
+	r.check(cv != null and cv.has_meta("unidot_canvas"), "UiCanvas imported as a world canvas")
+	if cv == null or not cv.has_meta("unidot_canvas"):
 		return
-	var cfg: Dictionary = cv.get_meta("udon_canvas")
+	var cfg: Dictionary = cv.get_meta("unidot_canvas")
 	var ps: Vector2 = cfg.get("plane_size", Vector2.ZERO)
-	r.check(ps.is_equal_approx(Vector2(1000, 600)), "plane fits the canvas rect exactly (no container overflow): " + str(ps))
+	# (the plane covers whole viewport pixels: at most one pixel more than the content)
+	r.check(ps.x >= 1000.0 and ps.x < 1001.0 and ps.y >= 600.0 and ps.y < 601.0, "plane fits the canvas content (no container overflow): " + str(ps))
 	var vp: SubViewport = cv.get_node_or_null(cfg.get("viewport", NodePath()))
 	r.check(vp != null and vp.size == Vector2i(1024, 615), "viewport 1024 px per metre: " + str(vp.size if vp else null))
 	var u: Node = r.u()
@@ -82,8 +83,8 @@ func _ui_checks(r, fx: Node) -> void:
 	# its child Screen 1 m above, the 0.4 x 0.2 m canvas sits on it with ScreenBtn in the middle.
 	var scv: Node = r.find("ScreenCanvas")
 	var sbtn: Node = r.find("ScreenBtn")
-	r.check(scv != null and scv.has_meta("udon_canvas") and sbtn is BaseButton, "canvas under a prefab-instance child is imported with its button: %s %s" % [str(scv), str(sbtn)])
-	if scv != null and scv.has_meta("udon_canvas") and sbtn is BaseButton:
+	r.check(scv != null and scv.has_meta("unidot_canvas") and sbtn is BaseButton, "canvas under a prefab-instance child is imported with its button: %s %s" % [str(scv), str(sbtn)])
+	if scv != null and scv.has_meta("unidot_canvas") and sbtn is BaseButton:
 		var holder: Node = r.find("Holder")
 		r.check(holder != null and holder.is_ancestor_of(scv), "the canvas hangs under the prefab instance: " + str(scv.get_path()))
 		var spos: Vector3 = u.get_position(sbtn)
@@ -152,6 +153,10 @@ func _ui_checks(r, fx: Node) -> void:
 				if n is Label:
 					slabel = n
 		r.check(int(fx.get("itemsSpawned")) == 2 and spawned is Control and cv.is_ancestor_of(spawned), "two items instantiated under the canvas: %s" % str(spawned))
+		# SetParent(canvas) puts a RectTransform among the canvas's controls, and localPosition = 0
+		# is the canvas pivot: Unity draws the items over the Center button
+		r.check(spawned is Control and spawned.get_viewport() == vp and u.go_parent(spawned) == cv, "a spawned item is drawn by the canvas and has it as its parent: %s" % str(u.go_parent(spawned) if spawned != null else null))
+		r.check(spawned is Control and u.get_position(spawned).is_equal_approx(Vector3(0, 1.5, 3)) and u.get_local_position(spawned).is_zero_approx(), "localPosition 0 under the canvas is the canvas pivot: %s" % str(u.get_position(spawned) if spawned != null else null))
 		r.check(slabel != null and str(slabel.text) == "item 2", "the instance's Text was found and set: " + str(slabel.text if slabel else null))
 	# SDK components referenced through the SDK's DLL (one GUID, the class is the fileID): the GUID
 	# alone used to mean VRC_Pickup, which tagged audio sources, object syncs and UI shapes as pickups
@@ -208,6 +213,12 @@ func _ui_checks(r, fx: Node) -> void:
 	await r.wait(3)
 	await r.shot("ui")
 	var colors: Dictionary = {"TL": Color(1, 0, 0), "TR": Color(0, 1, 0), "BL": Color(0, 0, 1), "BR": Color(1, 1, 0), "Center": Color(1, 1, 1), "ScaledBtn": Color(1, 0, 1)}
+	# the items spawned at the canvas pivot lie over the Center button: out of the way for sampling
+	for item_name in ["SpawnedItem1", "SpawnedItem2"]:
+		var item: Node = r.find(item_name)
+		if item != null:
+			u.set_active(item, false)
+	await r.wait(2)
 	var win: Vector2 = Vector2(r.root.get_viewport().get_visible_rect().size)
 	var tl_px: Vector2 = r.project(u.to_gd_v(expect["TL"]))
 	var br_px: Vector2 = r.project(u.to_gd_v(expect["BR"]))
@@ -310,14 +321,14 @@ func _rect_is(c: Node, x: float, y: float, w: float, h: float) -> bool:
 	return c is Control and absf(c.position.x - x) < 0.6 and absf(c.position.y - y) < 0.6 and absf(c.size.x - w) < 0.6 and absf(c.size.y - h) < 0.6
 
 
-## Unity auto layout (udon_layout_group.gd): a vertical list with a ContentSizeFitter that grows
+## Unity auto layout (unidot runtime/layout_group.gd): a vertical list with a ContentSizeFitter that grows
 ## with instantiated entries, a horizontal row with a fixed and two flexible elements, a grid.
 func _layout_checks(r, fx: Node) -> void:
 	await r.wait(3)
 	var vlist: Node = r.find("VList")
 	var a: Node = r.find("VItemA")
 	var b: Node = r.find("VItemB")
-	r.check(vlist is Control and vlist.get_node_or_null("UdonLayout") != null, "layout group gets its layout helper: " + str(vlist))
+	r.check(vlist is Control and vlist.get_node_or_null("UnidotLayout") != null, "layout group gets its layout helper: " + str(vlist))
 	if not (vlist is Control):
 		return
 	# 240 wide, padding 10 / 10 / 5 / 5, spacing 4: children are stretched to 220 and keep their 40 px

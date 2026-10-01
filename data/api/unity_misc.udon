@@ -720,16 +720,16 @@ type InputField : Selectable kind=component gd=LineEdit extern=UnityEngineUIInpu
   isFocused: bool => $0.has_focus()
 
 type LayoutElement : Behaviour kind=component gd=Control extern=UnityEngineUILayoutElement
-  preferredWidth: float => $0.custom_minimum_size.x
-  set preferredWidth: float => $0.custom_minimum_size.x = $v
-  preferredHeight: float => $0.custom_minimum_size.y
-  set preferredHeight: float => $0.custom_minimum_size.y = $v
-  minWidth: float => $0.custom_minimum_size.x
-  set minWidth: float => $0.custom_minimum_size.x = $v
-  minHeight: float => $0.custom_minimum_size.y
-  set minHeight: float => $0.custom_minimum_size.y = $v
-  ignoreLayout: bool => false
-  set ignoreLayout: bool => pass
+  preferredWidth: float => U.ui_element_get($0, "pref", 0)
+  set preferredWidth: float => U.ui_element_set($0, "pref", 0, $v)
+  preferredHeight: float => U.ui_element_get($0, "pref", 1)
+  set preferredHeight: float => U.ui_element_set($0, "pref", 1, $v)
+  minWidth: float => U.ui_element_get($0, "min", 0)
+  set minWidth: float => U.ui_element_set($0, "min", 0, $v)
+  minHeight: float => U.ui_element_get($0, "min", 1)
+  set minHeight: float => U.ui_element_set($0, "min", 1, $v)
+  ignoreLayout: bool => bool(U.ui_element_value($0, "ignore", false))
+  set ignoreLayout: bool => U.ui_element_set_value($0, "ignore", $v)
 
 type UnityEvent kind=class gd=Signal extern=UnityEngineEventsUnityEvent
   Invoke(): void => $0.emit()

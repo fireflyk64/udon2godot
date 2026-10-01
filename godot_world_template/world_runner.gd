@@ -15,6 +15,7 @@
 ##             --vr (OpenXR player: controller rays, trigger / grip / sticks) or --vr-sim (the same
 ##                     player with simulated controllers, for scenarios)
 ##             --scenario res://scenarios/x.gd  (drive the world; see godot_world_template/scenarios)
+##             --static  (do not run the converted behaviours: the scene as imported)
 ##             --player-data <file>  (keep the local player's PlayerData between runs; --play
 ##                     uses user://udon_player_data.dat unless told otherwise, "" turns it off)
 extends SceneTree
@@ -62,6 +63,8 @@ func _init() -> void:
 		quit(2)
 		return
 	_scene = ps.instantiate()
+	if _args.has("static"):
+		_strip_scripts(_scene)
 	root.add_child(_scene)
 	current_scene = _scene
 	print("[world_runner] loaded %s: %d nodes, %d converted behaviours" % [path, _count(_scene), _count_udon(_scene)])
@@ -267,12 +270,10 @@ func wheel(notches: int) -> void:
 			Input.parse_input_event(e)
 			await process_frame
 
-## World point (Godot space) at the centre of a control on a world canvas.
+## World point (Godot space) at the centre of a control on a world canvas: where it is drawn
+## (through its viewport and the plane or inline view that shows it).
 func control_world(ctl: Control) -> Vector3:
-	var uu: Node = u()
-	var cv: Node = uu._ui_world_canvas(ctl)
-	var px: Vector2 = ctl.get_global_transform() * (ctl.size * 0.5)
-	return uu.to_gd_v(uu.ui_viewport_to_world(cv, px))
+	return control_world_at(ctl, Vector2(0.5, 0.5))
 
 ## Look at a control of a world canvas (desktop player) and click it through the window.
 func click_control(ctl: Control) -> void:
@@ -286,10 +287,16 @@ func click_control(ctl: Control) -> void:
 ## Stand the desktop player `dist` metres in front of a world-canvas control (its readable side)
 ## and look at it.
 func face_control(ctl: Control, dist: float = 1.5) -> void:
-	var cv: Node3D = u()._ui_world_canvas(ctl)
 	var w: Vector3 = control_world(ctl)
-	var normal: Vector3 = -cv.global_transform.basis.z.normalized() if cv != null else Vector3.FORWARD
+	# the readable side: right x down points into the screen
+	var right: Vector3 = control_world_at(ctl, Vector2(1.0, 0.5)) - control_world_at(ctl, Vector2(0.0, 0.5))
+	var down: Vector3 = control_world_at(ctl, Vector2(0.5, 1.0)) - control_world_at(ctl, Vector2(0.5, 0.0))
+	var normal: Vector3 = -right.cross(down)
+	if normal.length_squared() < 1e-18:
+		normal = Vector3.FORWARD
 	normal.y = 0.0
+	if normal.length_squared() < 1e-18:
+		normal = Vector3.FORWARD
 	await place_player(w + normal.normalized() * dist)
 	if _player != null:
 		_player.look_at_point(w)
@@ -339,10 +346,8 @@ func type_text(text: String, submit: bool = true) -> void:
 
 ## World point (Godot space) at a fraction of a control's rect on a world canvas (0..1, top-left origin).
 func control_world_at(ctl: Control, frac: Vector2) -> Vector3:
-	var uu: Node = u()
-	var cv: Node = uu._ui_world_canvas(ctl)
-	var px: Vector2 = ctl.get_global_transform() * (ctl.size * frac)
-	return uu.to_gd_v(uu.ui_viewport_to_world(cv, px))
+	var d: Vector3 = u().RT.drawn_point(ctl, ctl.size * frac)
+	return Vector3(-d.x, d.y, d.z)
 
 func udon() -> Node:
 	return root.get_node("Udon")
@@ -483,10 +488,10 @@ func _frame_node(path: String) -> void:
 ## the fitted plane fills the view.
 func _face_canvas(path: String) -> void:
 	var n: Node = _scene.get_node_or_null(path) if _scene.has_node(path) else _scene.find_child(path, true, false)
-	if n == null or not n.has_meta("udon_canvas"):
+	if n == null or not n.has_meta("unidot_canvas"):
 		print("[world_runner] face: no world canvas at " + path)
 		return
-	var cfg: Dictionary = n.get_meta("udon_canvas")
+	var cfg: Dictionary = n.get_meta("unidot_canvas")
 	var plane: MeshInstance3D = n.get_node_or_null(cfg.get("plane", NodePath()))
 	if plane == null:
 		print("[world_runner] face: canvas without plane " + path)
@@ -504,6 +509,15 @@ func _face_canvas(path: String) -> void:
 	_place_camera(center + normal * dist, center)
 	root.get_node("RunnerCamera").fov = fov
 	print("[world_runner] facing %s: center=%s size=%.2fx%.2f m normal=%s" % [path, str(center), size.x, size.y, str(normal)])
+
+
+## --static: the scene as imported, without its converted behaviours (layout checks compare it
+## with what the Unity files describe; scripts move things in their Start).
+func _strip_scripts(n: Node) -> void:
+	if n.has_meta("udon_class"):
+		n.set_script(null)
+	for c in n.get_children():
+		_strip_scripts(c)
 
 
 func _has_visible_light() -> bool:

@@ -360,6 +360,8 @@ func _looks_down_z(n: Node) -> bool:
 
 ## Orientation of the Unity transform a node stands for, in Godot space (scale removed).
 func unity_basis(n_: Node) -> Basis:
+	if _is_rect(n_):
+		return RT.godot_from_unity(RT.world_matrix(n_)).basis.orthonormalized()
 	var n: Node3D = n_ as Node3D
 	if n == null:
 		return Basis()
@@ -368,6 +370,8 @@ func unity_basis(n_: Node) -> Basis:
 
 ## The Unity transform a node stands for, in Godot space (scale kept).
 func unity_transform(n_: Node) -> Transform3D:
+	if _is_rect(n_):
+		return RT.godot_from_unity(RT.world_matrix(n_))
 	var n: Node3D = n_ as Node3D
 	if n == null:
 		return Transform3D()
@@ -381,19 +385,19 @@ func vec_back() -> Vector3:
 	return Vector3(0.0, 0.0, -1.0)
 
 func forward(n_: Node) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_basis(n) * to_gd_v(Vector3(0.0, 0.0, 1.0))).normalized()
 
 func right(n_: Node) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_basis(n) * to_gd_v(Vector3(1.0, 0.0, 0.0))).normalized()
 
 func up(n_: Node) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_basis(n) * to_gd_v(Vector3(0.0, 1.0, 0.0))).normalized()
@@ -405,52 +409,55 @@ func _parent_invertible(n: Node3D) -> bool:
 	return p == null or not is_zero_approx(p.global_transform.basis.determinant())
 
 func get_position(n_: Node) -> Vector3:
+	if _is_rect(n_):
+		return _rt_v(RT.world_position(n_))
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			return _ui_get_world_position(n_)
 		return Vector3.ZERO
 	return from_gd_v(n.global_position)
 
 func set_position(n_: Node, p: Vector3) -> void:
+	if _is_rect(n_):
+		RT.set_world_position(n_, _to_rt_v(p))
+		return
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			_ui_set_world_position(n_, p)
 		return
 	if not _parent_invertible(n):
 		return
 	n.global_position = to_gd_v(p)
 
 func get_local_position(n_: Node) -> Vector3:
+	if _is_rect(n_):
+		return RT.local_position(n_)
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			return _ui_get_local_position(n_)
 		return Vector3.ZERO
 	return from_gd_v(n.position)
 
 func set_local_position(n_: Node, p: Vector3) -> void:
+	if _is_rect(n_):
+		RT.set_local_position(n_, p)
+		return
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			_ui_set_local_position(n_, p)
 		return
 	n.position = to_gd_v(p)
 
 func get_global_rotation(n_: Node) -> Quaternion:
+	if _is_rect(n_):
+		return _rt_q(RT.world_rotation(n_))
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			return _ui_get_world_rotation(n_)
 		return Quaternion()
 	return from_gd_q(unity_basis(n).get_rotation_quaternion())
 
 func set_global_rotation(n_: Node, q: Quaternion) -> void:
+	if _is_rect(n_):
+		RT.set_world_rotation(n_, _to_rt_q(q))
+		return
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			_ui_set_world_rotation(n_, q)
 		return
 	if not _parent_invertible(n):
 		return
@@ -462,126 +469,74 @@ func set_global_rotation(n_: Node, q: Quaternion) -> void:
 	t.basis = b.scaled(s)
 	n.global_transform = t
 
-# --- RectTransforms: controls inside canvases --------------------------------------------------
-# A world canvas is a Node3D (`udon_canvas` meta, mode "world") whose SubViewport holds the UI; the
-# root Control covers the Unity canvas rect (its position/scale are the fit and pixel density).
-# Root units are the canvas units of Unity (x right, y down); the canvas node's local space has
-# X mirrored (the plane's texture U runs along -X) and Y up, with the Unity pivot at the origin.
-# A RectTransform's Unity position is its pivot point.
+# --- RectTransforms -----------------------------------------------------------------------------
+# Unity UI is converted by unidot (ui_integration.gd): a RectTransform GameObject is a Control, a
+# world canvas a Node3D holder with a SubViewport and a plane. Everything a script reads or writes
+# on a RectTransform goes through unidot's runtime/rect_transform.gd, the code the importer itself
+# uses, so a value set from Udon and the same value in the Unity file give the same node. A
+# control that a script moves out of the plane of its canvas (a menu put on a tilted anchor)
+# becomes a canvas of its own there (`RT.promote`); scripts keep addressing the control.
+const RT := preload("res://addons/unidot_importer/runtime/rect_transform.gd")
 
-## The world canvas whose viewport holds `c`, or null for screen-space canvases and loose controls.
-func _ui_world_canvas(c: Control) -> Node:
-	var n: Node = c.get_parent()
-	while n != null and not (n is SubViewport):
-		n = n.get_parent()
-	if n == null:
-		return null
-	var cv: Node = n.get_parent()
-	if cv is Node3D and cv.has_meta("udon_canvas") and str(cv.get_meta("udon_canvas").get("mode", "")) == "world":
-		return cv
-	return null
+## Nodes whose transform is a RectTransform inside a canvas. A canvas below a plain Transform is
+## an ordinary Node3D as far as position, rotation and scale go.
+func _is_rect(n: Node) -> bool:
+	if n is Control:
+		return true
+	return n is Node3D and n.has_meta(RT.META_CANVAS) and RT.is_nested(n)
 
-## The canvas's pivot in root units.
-func _ui_canvas_pivot(cfg: Dictionary) -> Vector2:
-	var pv: Vector2 = cfg.get("pivot", Vector2(0.5, 0.5))
-	var rs: Vector2 = cfg.get("size", Vector2.ZERO)
-	return Vector2(pv.x * rs.x, (1.0 - pv.y) * rs.y)
+## A node that has a transform at all: Node3D or RectTransform.
+func _xform_node(n: Node) -> Node:
+	return n if (n is Node3D or n is Control) else null
 
-func _ui_root_to_local(cfg: Dictionary, r: Vector2) -> Vector3:
-	var pv: Vector2 = _ui_canvas_pivot(cfg)
-	return Vector3(pv.x - r.x, pv.y - r.y, 0.0)
+# rect_transform.gd works in Unity space as unidot mirrors it (x → -x); scripts see the space of
+# the coordinate mode.
+func _rt_v(v: Vector3) -> Vector3:
+	return from_gd_v(Vector3(-v.x, v.y, v.z))
 
-func _ui_local_to_root(cfg: Dictionary, l: Vector3) -> Vector2:
-	var pv: Vector2 = _ui_canvas_pivot(cfg)
-	return Vector2(pv.x - l.x, pv.y - l.y)
+func _to_rt_v(v: Vector3) -> Vector3:
+	var g: Vector3 = to_gd_v(v)
+	return Vector3(-g.x, g.y, g.z)
 
-## Transform from the parent of `c` into root units (identity for children of the root).
-func _ui_parent_to_root(c: Control, root: Control) -> Transform2D:
-	var parent: Node = c.get_parent()
-	if parent == root or not (parent is CanvasItem):
-		return Transform2D.IDENTITY
-	return root.get_global_transform().affine_inverse() * parent.get_global_transform()
+func _rt_q(q: Quaternion) -> Quaternion:
+	return from_gd_q(Quaternion(q.x, -q.y, -q.z, q.w))
 
-## Unity local position of a RectTransform: its pivot relative to the parent's pivot, Y up.
-func _ui_parent_pivot(c: Control) -> Vector2:
-	var parent: Node = c.get_parent()
-	if parent is Control:
-		var vp: Node = parent.get_parent()
-		if vp is SubViewport and vp.get_parent() != null and vp.get_parent().has_meta("udon_canvas"):
-			var cfg: Dictionary = vp.get_parent().get_meta("udon_canvas")
-			if str(cfg.get("mode", "")) == "world":
-				return _ui_canvas_pivot(cfg)
-			return Vector2(cfg.get("size", parent.size)) * 0.5
-		return parent.pivot_offset
-	return Vector2.ZERO
+func _to_rt_q(q: Quaternion) -> Quaternion:
+	var g: Quaternion = to_gd_q(q)
+	return Quaternion(g.x, -g.y, -g.z, g.w)
 
-func _ui_get_local_position(c: Control) -> Vector3:
-	var d: Vector2 = c.position + c.pivot_offset - _ui_parent_pivot(c)
-	return Vector3(d.x, -d.y, 0.0)
-
-func _ui_set_local_position(c: Control, p: Vector3) -> void:
-	c.position = _ui_parent_pivot(c) + Vector2(p.x, -p.y) - c.pivot_offset
-
-## World position (script space) of a control's pivot; screen-space canvases report pixels, Y up.
-func _ui_get_world_position(c: Control) -> Vector3:
-	var cv: Node = _ui_world_canvas(c)
-	if cv == null:
-		var gp: Vector2 = c.global_position + c.pivot_offset
-		return Vector3(gp.x, -gp.y, 0.0)
-	var root: Control = canvas_root(cv)
-	var cfg: Dictionary = cv.get_meta("udon_canvas")
-	var xf: Transform2D = root.get_global_transform().affine_inverse() * c.get_global_transform()
-	var r: Vector2 = xf * c.pivot_offset
-	return from_gd_v(cv.global_transform * _ui_root_to_local(cfg, r))
-
-func _ui_set_world_position(c: Control, p: Vector3) -> void:
-	var cv: Node = _ui_world_canvas(c)
-	if cv == null:
-		c.global_position = Vector2(p.x, -p.y) - c.pivot_offset
-		return
-	var root: Control = canvas_root(cv)
-	var cfg: Dictionary = cv.get_meta("udon_canvas")
-	var r: Vector2 = _ui_local_to_root(cfg, cv.global_transform.affine_inverse() * to_gd_v(p))
-	var t: Vector2 = _ui_parent_to_root(c, root).affine_inverse() * r
-	c.position = t - c.pivot_offset
-
-## World rotation of a control: the canvas orientation turned about its normal by the control's
-## accumulated 2D rotation (Godot's 2D angle is positive from +x towards +y, which is the same
-## sense as a turn about the canvas's local +Z once both axes are flipped).
-func _ui_get_world_rotation(c: Control) -> Quaternion:
-	var cv: Node = _ui_world_canvas(c)
-	if cv == null:
-		return Quaternion()
-	var root: Control = canvas_root(cv)
-	var ang: float = (root.get_global_transform().affine_inverse() * c.get_global_transform()).get_rotation()
-	var b: Basis = cv.global_transform.basis.orthonormalized() * Basis(Vector3(0.0, 0.0, 1.0), ang)
-	return from_gd_q(b.get_rotation_quaternion())
-
-func _ui_set_world_rotation(c: Control, q: Quaternion) -> void:
-	var cv: Node = _ui_world_canvas(c)
-	if cv == null:
-		return
-	var root: Control = canvas_root(cv)
-	var rel: Basis = cv.global_transform.basis.orthonormalized().inverse() * Basis(to_gd_q(q).normalized())
-	var ang: float = rel.get_euler(EULER_ORDER_YXZ).z
-	var parent_ang: float = _ui_parent_to_root(c, root).get_rotation()
-	c.rotation = ang - parent_ang
+## The world canvas whose viewport holds `c` (for a canvas's root control: that canvas), or null
+## for screen-space canvases and loose controls.
+func _ui_world_canvas(c: Node) -> Node:
+	var own: Node = RT.holder_of(c)
+	if own != null and RT.is_island(own):
+		return own
+	return RT.island_of(c)
 
 ## Viewport pixel under a world point on a world canvas (any point: the plane is unbounded here).
 func ui_world_to_viewport(canvas_node: Node, world_point: Vector3) -> Vector2:
-	var cfg: Dictionary = canvas_node.get_meta("udon_canvas")
 	var root: Control = canvas_root(canvas_node)
-	var r: Vector2 = _ui_local_to_root(cfg, canvas_node.global_transform.affine_inverse() * to_gd_v(world_point))
-	return root.get_global_transform() * r
+	var m: Transform3D = RT.world_matrix(canvas_node)
+	if root == null or RT._singular(m.basis):
+		return Vector2(-1e5, -1e5)
+	var l: Vector3 = m.affine_inverse() * _to_rt_v(world_point)
+	var size: Vector2 = RT.rect_size(canvas_node)
+	var pv: Vector2 = RT.pivot(canvas_node)
+	return root.get_global_transform() * Vector2(l.x + pv.x * size.x, (1.0 - pv.y) * size.y - l.y)
 
 ## World point (script space) of a viewport pixel of a world canvas.
 func ui_viewport_to_world(canvas_node: Node, px: Vector2) -> Vector3:
-	var cfg: Dictionary = canvas_node.get_meta("udon_canvas")
 	var root: Control = canvas_root(canvas_node)
+	if root == null:
+		return Vector3.ZERO
 	var r: Vector2 = root.get_global_transform().affine_inverse() * px
-	return from_gd_v(canvas_node.global_transform * _ui_root_to_local(cfg, r))
+	var size: Vector2 = RT.rect_size(canvas_node)
+	var pv: Vector2 = RT.pivot(canvas_node)
+	return _rt_v(RT.world_matrix(canvas_node) * Vector3(r.x - pv.x * size.x, (1.0 - pv.y) * size.y - r.y, 0.0))
 
 func get_local_rotation(n_: Node) -> Quaternion:
+	if _is_rect(n_):
+		return RT.local_rotation(n_)
 	var n: Node3D = n_ as Node3D
 	if n == null:
 		return Quaternion()
@@ -591,6 +546,9 @@ func get_local_rotation(n_: Node) -> Quaternion:
 	return from_gd_q(b.get_rotation_quaternion())
 
 func set_local_rotation(n_: Node, q: Quaternion) -> void:
+	if _is_rect(n_):
+		RT.set_local_rotation(n_, q)
+		return
 	var n: Node3D = n_ as Node3D
 	if n == null:
 		return
@@ -603,20 +561,21 @@ func set_local_rotation(n_: Node, q: Quaternion) -> void:
 ## a zero scale makes their transforms singular), so such nodes are hidden instead and report the
 ## requested scale back.
 func get_local_scale(n_: Node) -> Vector3:
+	if _is_rect(n_):
+		return RT.local_scale(n_)
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			return Vector3(n_.scale.x, n_.scale.y, 1.0)
 		return Vector3.ONE
 	if n.has_meta("udon_zero_scale"):
 		return n.get_meta("udon_zero_scale")
 	return n.scale
 
 func set_local_scale(n_: Node, s: Vector3) -> void:
+	if _is_rect(n_):
+		RT.set_local_scale(n_, s)
+		return
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			n_.scale = Vector2(s.x, s.y)
 		return
 	var degenerate: bool = absf(s.x) < 1e-5 or absf(s.y) < 1e-5 or absf(s.z) < 1e-5
 	if n is CollisionObject3D:
@@ -638,40 +597,34 @@ func set_local_scale(n_: Node, s: Vector3) -> void:
 	n.scale = s
 
 func lossy_scale(n_: Node) -> Vector3:
+	if _is_rect(n_):
+		return RT.lossy_scale(n_)
 	var n: Node3D = n_ as Node3D
 	if n == null:
-		if n_ is Control:
-			# canvas scale times the control's accumulated 2D scale (the root's pixel density removed)
-			var cv: Node = _ui_world_canvas(n_)
-			var root: Control = canvas_root(cv) if cv != null else null
-			var s2: Vector2 = (root.get_global_transform().affine_inverse() * n_.get_global_transform()).get_scale() if root != null else n_.get_global_transform().get_scale()
-			var gs: Vector3 = cv.global_transform.basis.get_scale() if cv != null else Vector3.ONE
-			# a RectTransform's z scale has no Control counterpart; UI scales are uniform in practice
-			return Vector3(gs.x * s2.x, gs.y * s2.y, gs.z * s2.x)
 		return Vector3.ZERO
 	return n.global_transform.basis.get_scale()
 
 ## Unity localToWorldMatrix / worldToLocalMatrix in script space.
 func local_to_world_matrix(n_: Node) -> Transform3D:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Transform3D()
 	return from_gd_t(unity_transform(n))
 
 func world_to_local_matrix(n_: Node) -> Transform3D:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Transform3D()
 	return from_gd_t(unity_transform(n).affine_inverse())
 
 func set_right(n_: Node, r: Vector3) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	set_global_rotation(n, from_to_rotation(right(n), r) * get_global_rotation(n))
 
 func set_up(n_: Node, u_: Vector3) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	set_global_rotation(n, from_to_rotation(up(n), u_) * get_global_rotation(n))
@@ -803,43 +756,43 @@ func aabb_closest_point(b: AABB, p: Vector3) -> Vector3:
 # ---------------------------------------------------------------------------
 
 func transform_direction(n_: Node, v: Vector3) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_basis(n) * to_gd_v(v))
 
 func inverse_transform_direction(n_: Node, v: Vector3) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_basis(n).inverse() * to_gd_v(v))
 
 func transform_vector(n_: Node, v: Vector3) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_transform(n).basis * to_gd_v(v))
 
 func inverse_transform_vector(n_: Node, v: Vector3) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_transform(n).basis.inverse() * to_gd_v(v))
 
 func transform_point(n_: Node, p: Vector3) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_transform(n) * to_gd_v(p))
 
 func inverse_transform_point(n_: Node, p: Vector3) -> Vector3:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return Vector3.ZERO
 	return from_gd_v(unity_transform(n).affine_inverse() * to_gd_v(p))
 
 func look_at(n_: Node, target: Vector3, up_: Vector3) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	var d: Vector3 = target - get_position(n)
@@ -849,7 +802,7 @@ func look_at(n_: Node, target: Vector3, up_: Vector3) -> void:
 
 ## space: 0 = Self (Unity default), 1 = World
 func rotate_euler(n_: Node, euler_deg: Vector3, space: int) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	var q: Quaternion = euler_v(euler_deg)
@@ -859,7 +812,7 @@ func rotate_euler(n_: Node, euler_deg: Vector3, space: int) -> void:
 		set_global_rotation(n, (q * get_global_rotation(n)).normalized())
 
 func rotate_axis(n_: Node, axis: Vector3, angle_deg: float, space: int) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	var q: Quaternion = angle_axis(angle_deg, axis)
@@ -869,7 +822,7 @@ func rotate_axis(n_: Node, axis: Vector3, angle_deg: float, space: int) -> void:
 		set_global_rotation(n, (q * get_global_rotation(n)).normalized())
 
 func rotate_around(n_: Node, point: Vector3, axis: Vector3, angle_deg: float) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	var q: Quaternion = angle_axis(angle_deg, axis)
@@ -878,7 +831,7 @@ func rotate_around(n_: Node, point: Vector3, axis: Vector3, angle_deg: float) ->
 	set_global_rotation(n, (q * get_global_rotation(n)).normalized())
 
 func translate(n_: Node, v: Vector3, space: int) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	if space == 0:
@@ -887,7 +840,7 @@ func translate(n_: Node, v: Vector3, space: int) -> void:
 		set_position(n, get_position(n) + v)
 
 func translate_relative(n_: Node, v: Vector3, relative_to: Node) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	if relative_to == null:
@@ -896,14 +849,14 @@ func translate_relative(n_: Node, v: Vector3, relative_to: Node) -> void:
 		set_position(n, get_position(n) + transform_direction(relative_to, v))
 
 func set_position_and_rotation(n_: Node, p: Vector3, q: Quaternion) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	set_position(n, p)
 	set_global_rotation(n, q)
 
 func set_local_position_and_rotation(n_: Node, p: Vector3, q: Quaternion) -> void:
-	var n: Node3D = n_ as Node3D
+	var n: Node = _xform_node(n_)
 	if n == null:
 		return
 	set_local_position(n, p)
@@ -914,7 +867,10 @@ func set_parent(n: Node, parent: Node, world_stays: bool) -> void:
 		return
 	if parent == null:
 		parent = n.get_tree().current_scene if n.is_inside_tree() else null
-	if n.get_parent() == parent:
+	if go_parent(n) == parent:
+		return
+	if RT.is_ui(n):
+		_ui_set_parent(n, parent, world_stays)
 		return
 	if n.is_inside_tree() and parent != null:
 		n.reparent(parent, world_stays)
@@ -923,6 +879,37 @@ func set_parent(n: Node, parent: Node, world_stays: bool) -> void:
 			n.get_parent().remove_child(n)
 		parent.add_child(n)
 
+## SetParent on a RectTransform: UI children of a canvas live under its root control, and
+## Unity keeps either the world placement or the local values (anchors, anchored position ...).
+func _ui_set_parent(n: Node, parent: Node, world_stays: bool) -> void:
+	var s: Node = RT.store(n)
+	var before: Transform3D = RT.world_matrix(n)
+	var host: Node = RT.child_host(RT.store(parent)) if parent != null else null
+	if host == null:
+		return
+	if s.is_inside_tree() and host.is_inside_tree():
+		s.reparent(host, false)
+	else:
+		if s.get_parent() != null:
+			s.get_parent().remove_child(s)
+		host.add_child(s)
+	if not world_stays or not _is_rect(n):
+		return
+	var pm: Transform3D = RT._parent_world(n)
+	if RT._singular(pm.basis):
+		return
+	var local: Transform3D = pm.affine_inverse() * before
+	RT.set_local_scale(n, local.basis.get_scale())
+	RT.set_local_rotation(n, local.basis.orthonormalized().get_rotation_quaternion())
+	RT.set_local_position(n, local.origin)
+
+## Transform.parent: the parent GameObject (the viewport and holder nodes of a canvas are not
+## objects of their own).
+func go_parent(n: Node) -> Node:
+	if n == null:
+		return null
+	return RT.logical_parent(n)
+
 func root_of(n: Node) -> Node:
 	var cur: Node = n
 	while cur.get_parent() != null and cur.get_parent() != cur.get_tree().root:
@@ -930,16 +917,35 @@ func root_of(n: Node) -> Node:
 	return cur
 
 func is_child_of(n: Node, parent: Node) -> bool:
-	return parent != null and (parent == n or parent.is_ancestor_of(n))
+	if parent == null or n == null:
+		return false
+	return parent == n or RT.store(parent).is_ancestor_of(RT.store(n)) or parent.is_ancestor_of(n)
 
 func detach_children(n: Node) -> void:
-	for c in n.get_children():
-		c.reparent(n.get_parent(), true)
+	for c in go_children(n):
+		set_parent(c, null, true)
 
 func set_sibling_index(n: Node, i: int) -> void:
-	var p: Node = n.get_parent()
-	if p != null:
-		p.move_child(n, i if i >= 0 else p.get_child_count() - 1)
+	var s: Node = RT.store(n)
+	var p: Node = s.get_parent()
+	if p == null:
+		return
+	var sibs: Array = go_children(go_parent(n))
+	if i < 0 or i >= sibs.size() - 1:
+		p.move_child(s, p.get_child_count() - 1)
+		return
+	# the index counts GameObjects: land where the object now at that index sits
+	var target: Node = RT.store(sibs[i])
+	if target != s and target.get_parent() == p:
+		p.move_child(s, target.get_index())
+
+## Transform.GetSiblingIndex: the position among the parent's child GameObjects.
+func sibling_index(n: Node) -> int:
+	var p: Node = go_parent(n)
+	if p == null:
+		return n.get_index() if n != null else 0
+	var i: int = go_children(p).find(RT.identity(n))
+	return i if i >= 0 else n.get_index()
 
 # ---------------------------------------------------------------------------
 # GameObject / components
@@ -1078,18 +1084,19 @@ const _TYPE_ALIASES: Dictionary = {
 	# uGUI / TextMeshPro: the converter passes the Unity names for Control-based components.
 	# "@clip" = a clipping Control, "@meta:x" = a node carrying metadata x (set by the importer).
 	"Graphic": ["Control"], "MaskableGraphic": ["Control"], "RectTransform": ["Control"], "CanvasRenderer": ["Control"],
-	"LayoutElement": ["Control"], "ContentSizeFitter": ["Control"], "AspectRatioFitter": ["Control"],
+	"LayoutElement": ["@meta:unidot_layout_element"], "ContentSizeFitter": ["@meta:unidot_fitter"], "AspectRatioFitter": ["@meta:unidot_aspect"],
 	"Text": ["Label", "RichTextLabel"], "TMP_Text": ["Label", "RichTextLabel"], "TextMeshProUGUI": ["Label", "RichTextLabel"],
 	"Image": ["TextureRect", "Panel", "ColorRect", "BaseButton", "@meta:udon_image"], "RawImage": ["TextureRect"],
 	"Selectable": ["BaseButton", "Range", "LineEdit", "OptionButton", "TextEdit"], "Button": ["BaseButton"], "Toggle": ["BaseButton"],
 	"Slider": ["Range"], "Scrollbar": ["ScrollBar"], "Dropdown": ["OptionButton"], "TMP_Dropdown": ["OptionButton"],
 	"InputField": ["LineEdit", "TextEdit"], "TMP_InputField": ["LineEdit", "TextEdit"], "VRCUrlInputField": ["LineEdit", "TextEdit"],
 	"ScrollRect": ["ScrollContainer"], "Mask": ["@clip", "Control"], "RectMask2D": ["@clip", "Control"],
-	"CanvasGroup": ["@meta:udon_canvas_group", "Control"], "Outline": ["@meta:udon_effect_outline", "Label", "RichTextLabel", "Button"],
-	"Shadow": ["@meta:udon_effect_shadow", "Label", "RichTextLabel", "Button"], "BaseMeshEffect": ["Label", "RichTextLabel", "Button"],
-	"Canvas": ["@meta:udon_canvas", "CanvasLayer"], "CanvasScaler": ["@meta:udon_canvas", "CanvasLayer"], "GraphicRaycaster": ["@meta:udon_canvas", "CanvasLayer"],
-	"HorizontalLayoutGroup": ["HBoxContainer", "BoxContainer"], "VerticalLayoutGroup": ["VBoxContainer", "BoxContainer"],
-	"HorizontalOrVerticalLayoutGroup": ["BoxContainer"], "GridLayoutGroup": ["GridContainer"], "LayoutGroup": ["Container"],
+	"CanvasGroup": ["@meta:unidot_canvas_group", "Control"], "Outline": ["@meta:unidot_effect_outline", "Label", "RichTextLabel", "Button"],
+	"Shadow": ["@meta:unidot_effect_shadow", "Label", "RichTextLabel", "Button"], "BaseMeshEffect": ["Label", "RichTextLabel", "Button"],
+	"Canvas": ["@meta:unidot_canvas", "@meta:unidot_canvas_nested", "CanvasLayer"], "CanvasScaler": ["@meta:unidot_canvas", "CanvasLayer"], "GraphicRaycaster": ["@meta:unidot_canvas", "@meta:unidot_canvas_nested", "CanvasLayer"],
+	"HorizontalLayoutGroup": ["@layout:horizontal"], "VerticalLayoutGroup": ["@layout:vertical"],
+	"HorizontalOrVerticalLayoutGroup": ["@layout:horizontal", "@layout:vertical"], "GridLayoutGroup": ["@layout:grid"],
+	"LayoutGroup": ["@meta:unidot_layout"],
 }
 
 ## VRC components are provider adapters: a node "has" one when the world registered it
@@ -1112,8 +1119,8 @@ func node_is_type(n, type_name: String) -> bool:
 		return true
 	if _VRC_COMPONENTS.has(type_name):
 		return n is Node and Udon.has_component(n, _VRC_COMPONENTS[type_name])
-	if (type_name == "Canvas" or type_name == "CanvasLayer") and n is Node and n.has_meta("udon_canvas"):
-		return true  # world-space canvas container (udon_integration); GetComponent passes Godot class names
+	if (type_name == "Canvas" or type_name == "CanvasLayer") and n is Node and (n.has_meta(RT.META_CANVAS) or n.has_meta("unidot_canvas_nested")):
+		return true  # a converted canvas (unidot's ui_integration); GetComponent passes Godot class names
 	if _TYPE_ALIASES.has(type_name):
 		for a in _TYPE_ALIASES[type_name]:
 			if a == "@udon":
@@ -1124,6 +1131,10 @@ func node_is_type(n, type_name: String) -> bool:
 					return true
 			elif a.begins_with("@meta:"):
 				if n is Node and n.has_meta(a.substr(6)):
+					return true
+			elif a.begins_with("@layout:"):
+				# a Unity layout group of that kind (unidot's `unidot_layout` metadata)
+				if n is Node and n.has_meta("unidot_layout") and str(n.get_meta("unidot_layout").get("type", "")) == a.substr(8):
 					return true
 			elif n.is_class(a):
 				return true
@@ -1139,10 +1150,7 @@ func node_is_type(n, type_name: String) -> bool:
 ## Unity GetComponent: the node itself, then direct children that are "component-like".
 ## The root Control of a world-space canvas container, null for other nodes.
 func canvas_root(n: Node) -> Control:
-	if n == null or not n.has_meta("udon_canvas"):
-		return null
-	var cfg: Dictionary = n.get_meta("udon_canvas")
-	return n.get_node_or_null(cfg.get("root", NodePath())) as Control
+	return RT.root_control(n)
 
 func get_component(n: Node, type_name: String):
 	if n == null or not is_instance_valid(n):
@@ -1169,7 +1177,7 @@ const _UNIDOT_HELPER_NAMES: Array = ["MeshRenderer", "SkinnedMeshRenderer", "Cam
 func _is_helper_child(c: Node) -> bool:
 	if c == null or c.get_parent() == null:
 		return false
-	if c is CollisionShape3D or c is CollisionShape2D or c.has_meta("udon_component_child"):
+	if c is CollisionShape3D or c is CollisionShape2D or c.has_meta("udon_component_child") or c.has_meta(RT.META_HELPER):
 		return true
 	var nm := String(c.name)
 	return nm.trim_suffix("2") in _UNIDOT_COLLIDER_NAMES or nm in _UNIDOT_HELPER_NAMES or nm.begins_with("UiShape")
@@ -1190,8 +1198,10 @@ func go_children(n: Node) -> Array:
 	var out: Array = []
 	if n == null:
 		return out
-	for c in n.get_children():
-		if not _is_component_child(c):
+	# UI: a canvas's children are the controls in its viewport; a control that became a canvas of
+	# its own at run time is still the same child
+	for c in RT.logical_children(n):
+		if not _is_component_child(RT.store(c)) and not _is_component_child(c):
 			out.append(c)
 	return out
 
@@ -1203,8 +1213,8 @@ func go_child(n: Node, i: int) -> Node:
 	return kids[i] if i >= 0 and i < kids.size() else null
 
 func _is_component_child(c: Node) -> bool:
-	if c.has_meta("udon_component_child"):
-		return true  # a second UdonSharp behaviour of the same GameObject
+	if c.has_meta("udon_component_child") or c.has_meta(RT.META_HELPER):
+		return true  # a second UdonSharp behaviour of the same GameObject, an importer helper
 	if c is CollisionObject3D or c is CollisionObject2D:
 		# unidot_importer turns a Collider without a Rigidbody into a StaticBody3D/Area3D child
 		# named after the collider type; those are components, other bodies are objects
@@ -1293,7 +1303,30 @@ func get_components_in_parent(n: Node, type_name: String, _include_inactive: boo
 		cur = cur.get_parent()
 	return out
 
+## Unity layout components a script adds, with Unity's defaults for a new component.
+const _UI_LAYOUT_COMPONENTS: Dictionary = {
+	"HorizontalLayoutGroup": ["unidot_layout", {"type": "horizontal", "padding": {"left": 0, "right": 0, "top": 0, "bottom": 0}, "spacing": 0.0, "align": 0, "control_w": true, "control_h": true, "expand_w": true, "expand_h": true, "scale_w": false, "scale_h": false, "reverse": false}],
+	"VerticalLayoutGroup": ["unidot_layout", {"type": "vertical", "padding": {"left": 0, "right": 0, "top": 0, "bottom": 0}, "spacing": 0.0, "align": 0, "control_w": true, "control_h": true, "expand_w": true, "expand_h": true, "scale_w": false, "scale_h": false, "reverse": false}],
+	"GridLayoutGroup": ["unidot_layout", {"type": "grid", "padding": {"left": 0, "right": 0, "top": 0, "bottom": 0}, "align": 0, "cell": Vector2(100, 100), "spacing2": Vector2.ZERO, "corner": 0, "axis": 0, "constraint": 0, "count": 2}],
+	"ContentSizeFitter": ["unidot_fitter", {"h": 0, "v": 0}],
+	"AspectRatioFitter": ["unidot_aspect", {"mode": 0, "ratio": 1.0}],
+	"LayoutElement": ["unidot_layout_element", {"min": Vector2(-1, -1), "pref": Vector2(-1, -1), "flex": Vector2(-1, -1), "ignore": false, "priority": 1, "enabled": true}],
+}
+
 func add_component(n: Node, type_name: String):
+	if _UI_LAYOUT_COMPONENTS.has(type_name):
+		var ctl: Control = _ui_ctl(n)
+		if ctl == null:
+			push_warning("AddComponent: " + type_name + " needs a RectTransform")
+			return null
+		var spec: Array = _UI_LAYOUT_COMPONENTS[type_name]
+		if not ctl.has_meta(spec[0]):
+			ctl.set_meta(spec[0], (spec[1] as Dictionary).duplicate(true))
+		if type_name == "LayoutElement":
+			_ui_layout_dirty(ctl)
+		else:
+			_ui_layout_helper(ctl, true).queue_layout()
+		return ctl
 	if ClassDB.class_exists(type_name):
 		var c = ClassDB.instantiate(type_name)
 		if c is Node:
@@ -1311,32 +1344,31 @@ func node_path_from_unity(path: String) -> String:
 			parts[i] = parts[i].validate_node_name()
 	return "/".join(parts)
 
-## Transform.Find: a child (or child path) by Unity name. Children of a converted Canvas live in
-## its viewport (`udon_canvas` metadata), so each step also looks there.
+## Transform.Find: a child (or child path) by Unity name. Children of a converted canvas live
+## in its viewport, and a control may sit in a canvas of its own: each step looks through those.
 func find_transform(n: Node, path: String) -> Node:
 	if n == null or path == "":
 		return null
 	var np: String = node_path_from_unity(path)
-	var r: Node = n.get_node_or_null(np)
-	if r != null:
-		return r
 	var cur: Node = n
 	for seg in np.split("/"):
 		if seg == "" or seg == ".":
 			continue
 		if seg == "..":
-			cur = cur.get_parent()
+			cur = go_parent(cur)
 			if cur == null:
 				return null
 			continue
-		var next: Node = cur.get_node_or_null(seg)
-		if next == null and cur.has_meta("udon_canvas"):
-			var croot: Node = cur.get_node_or_null(cur.get_meta("udon_canvas").get("root", NodePath()))
-			if croot != null:
-				next = croot.get_node_or_null(seg)
+		var s: Node = RT.store(cur)
+		var next: Node = null
+		for host in [RT.child_host(s), s, cur]:
+			if host != null:
+				next = host.get_node_or_null(seg)
+				if next != null:
+					break
 		if next == null:
 			return null
-		cur = next
+		cur = RT.identity(next)
 	return cur
 
 func find_object(name_: String) -> Node:
@@ -3865,53 +3897,103 @@ func scroll_set_h(s: ScrollContainer, v: float) -> void:
 ## Unity's Scrollbar.size (handle size 0..1). The imported bar keeps page = 0 so that `value`
 ## spans 0..1 as in Unity; the size is only remembered.
 func scrollbar_get_size(bar: Range) -> float:
-	if bar != null and bar.has_meta("udon_scrollbar"):
-		return float(bar.get_meta("udon_scrollbar").get("size", 1.0))
+	if bar != null and bar.has_meta("unidot_scrollbar"):
+		return float(bar.get_meta("unidot_scrollbar").get("size", 1.0))
 	return 1.0
 
 func scrollbar_set_size(bar: Range, v: float) -> void:
 	if bar == null:
 		return
-	var cfg: Dictionary = bar.get_meta("udon_scrollbar") if bar.has_meta("udon_scrollbar") else {}
+	var cfg: Dictionary = bar.get_meta("unidot_scrollbar") if bar.has_meta("unidot_scrollbar") else {}
 	cfg["size"] = clampf(v, 0.0, 1.0)
-	bar.set_meta("udon_scrollbar", cfg)
+	bar.set_meta("unidot_scrollbar", cfg)
 
 func scroll_content(s: ScrollContainer) -> Control:
 	return s.get_child(0) if s.get_child_count() > 0 else null
 
-func rect_get_pivot(c: Control) -> Vector2:
-	return c.pivot_offset / c.size if c.size.x > 0.0 and c.size.y > 0.0 else Vector2(0.5, 0.5)
+# RectTransform properties: unidot's rect_transform.gd (the importer's own code) does the work.
+func rect_get_pivot(c: Node) -> Vector2:
+	return RT.pivot(c) if RT.is_ui(c) else Vector2(0.5, 0.5)
 
-func rect_set_pivot(c: Control, p: Vector2) -> void:
-	c.pivot_offset = p * c.size
+func rect_set_pivot(c: Node, p: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_pivot(c, p)
 
-func rect_set_anchor_min(c: Control, v: Vector2) -> void:
-	c.anchor_left = v.x
-	c.anchor_top = 1.0 - v.y
+func rect_get_anchor_min(c: Node) -> Vector2:
+	return RT.anchor_min(c) if RT.is_ui(c) else Vector2(0.5, 0.5)
 
-func rect_set_anchor_max(c: Control, v: Vector2) -> void:
-	c.anchor_right = v.x
-	c.anchor_bottom = 1.0 - v.y
+func rect_set_anchor_min(c: Node, v: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_anchor_min(c, v)
 
-func rect_set_offset_min(c: Control, v: Vector2) -> void:
-	c.offset_left = v.x
-	c.offset_bottom = -v.y
+func rect_get_anchor_max(c: Node) -> Vector2:
+	return RT.anchor_max(c) if RT.is_ui(c) else Vector2(0.5, 0.5)
 
-func rect_set_offset_max(c: Control, v: Vector2) -> void:
-	c.offset_right = v.x
-	c.offset_top = -v.y
+func rect_set_anchor_max(c: Node, v: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_anchor_max(c, v)
 
-func rect_set_size_axis(c: Control, axis: int, size: float) -> void:
-	if axis == 0:
-		c.size.x = size
-	else:
-		c.size.y = size
+func rect_get_offset_min(c: Node) -> Vector2:
+	return RT.offset_min(c) if RT.is_ui(c) else Vector2.ZERO
 
-func rect_world_corners(c: Control, into: Array) -> void:
-	var r: Rect2 = c.get_global_rect()
-	var corners: Array = [Vector3(r.position.x, r.end.y, 0.0), Vector3(r.position.x, r.position.y, 0.0), Vector3(r.end.x, r.position.y, 0.0), Vector3(r.end.x, r.end.y, 0.0)]
+func rect_set_offset_min(c: Node, v: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_offset_min(c, v)
+
+func rect_get_offset_max(c: Node) -> Vector2:
+	return RT.offset_max(c) if RT.is_ui(c) else Vector2.ZERO
+
+func rect_set_offset_max(c: Node, v: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_offset_max(c, v)
+
+func rect_get_anchored_position(c: Node) -> Vector2:
+	return RT.anchored_position(c) if RT.is_ui(c) else Vector2.ZERO
+
+func rect_set_anchored_position(c: Node, v: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_anchored_position(c, v)
+
+func rect_get_anchored_position3d(c: Node) -> Vector3:
+	if not RT.is_ui(c):
+		return Vector3.ZERO
+	var v: Dictionary = RT.values(c)
+	return Vector3(v["anchored_position"].x, v["anchored_position"].y, float(v["z"]))
+
+func rect_set_anchored_position3d(c: Node, p: Vector3) -> void:
+	if not RT.is_ui(c):
+		return
+	RT.set_anchored_position(c, Vector2(p.x, p.y))
+	var lp: Vector3 = RT.local_position(c)
+	RT.set_local_position(c, Vector3(lp.x, lp.y, p.z))
+
+func rect_get_size_delta(c: Node) -> Vector2:
+	return RT.size_delta(c) if RT.is_ui(c) else Vector2.ZERO
+
+func rect_set_size_delta(c: Node, v: Vector2) -> void:
+	if RT.is_ui(c):
+		RT.set_size_delta(c, v)
+
+## RectTransform.rect: in the rect's own space (origin at the pivot, y up).
+func rect_get_rect(c: Node) -> Rect2:
+	return RT.rect(c) if RT.is_ui(c) else Rect2()
+
+func rect_set_size_axis(c: Node, axis: int, size: float) -> void:
+	if RT.is_ui(c):
+		RT.set_size_with_current_anchors(c, axis, size)
+
+## RectTransform.SetInsetAndSizeFromParentEdge(edge: Left 0, Right 1, Top 2, Bottom 3, inset, size)
+func rect_set_inset(c: Node, edge: int, inset: float, size: float) -> void:
+	if RT.is_ui(c):
+		RT.set_inset_and_size_from_parent_edge(c, edge, inset, size)
+
+## RectTransform.GetWorldCorners: bottom-left, top-left, top-right, bottom-right.
+func rect_world_corners(c: Node, into: Array) -> void:
+	if not RT.is_ui(c):
+		return
+	var corners: Array = RT.world_corners(c)
 	for i in range(mini(4, into.size())):
-		into[i] = corners[i]
+		into[i] = _rt_v(corners[i])
 
 func app_is_focused() -> bool:
 	return DisplayServer.window_is_focused()
@@ -3983,9 +4065,9 @@ func ui_find(root: Node, name_: String) -> Node:
 ## Click a world-space canvas (converted by unidot's udon_integration) at a world point: the hit
 ## is mapped to viewport pixels and delivered as mouse press/release events.
 func ui_click_world(canvas_node: Node, world_point: Vector3) -> bool:
-	if canvas_node == null or not canvas_node.has_meta("udon_canvas"):
+	if canvas_node == null or not canvas_node.has_meta(RT.META_CANVAS):
 		return false
-	var cfg: Dictionary = canvas_node.get_meta("udon_canvas")
+	var cfg: Dictionary = canvas_node.get_meta(RT.META_CANVAS)
 	if str(cfg.get("mode", "")) != "world":
 		return false
 	var vp: SubViewport = canvas_node.get_node_or_null(cfg["viewport"])
@@ -4029,9 +4111,11 @@ func prop_get(o, key: String, default = null):
 	if o is Object:
 		if o.get("data") is Dictionary:
 			return o.data.get(key, default)
-		if o.has_meta("udon_props"):
-			var d: Dictionary = o.get_meta("udon_props")
-			return d.get(key, default)
+		if o.has_meta("udon_props") and (o.get_meta("udon_props") as Dictionary).has(key):
+			return o.get_meta("udon_props")[key]
+		# values the scene importer stored for components it only keeps the settings of
+		if o.has_meta("unidot_props"):
+			return (o.get_meta("unidot_props") as Dictionary).get(key, default)
 	return default
 
 ## Nodes and resources keep stored values in `udon_props` metadata; dictionaries hold them directly.
@@ -6707,45 +6791,173 @@ func ui_sprite_state_set(n: Node, d: Dictionary) -> void:
 		n.texture_focused = d.get("selectedSprite")
 
 ## LayoutElement.flexibleWidth/Height: size flags expand + stretch ratio.
-func ui_flexible_get(n: Node, axis: String) -> float:
-	if not (n is Control):
-		return 0.0
-	var flags: int = n.size_flags_horizontal if axis == "x" else n.size_flags_vertical
-	return n.size_flags_stretch_ratio if flags & Control.SIZE_EXPAND else 0.0
+# --- Unity layout components ---------------------------------------------------------------------
+# HorizontalLayoutGroup / VerticalLayoutGroup / GridLayoutGroup, ContentSizeFitter,
+# AspectRatioFitter and LayoutElement are metadata of the Control (`unidot_layout`,
+# `unidot_fitter`, `unidot_aspect`, `unidot_layout_element`): unidot's importer writes it from the
+# Unity file, its runtime/layout_group.gd runs Unity's layout from it, and these functions are how
+# a script reads and changes the same data.
+const LayoutGroup := preload("res://addons/unidot_importer/runtime/layout_group.gd")
 
-func ui_flexible_set(n: Node, axis: String, v: float) -> void:
-	if not (n is Control):
+func _ui_ctl(n) -> Control:
+	if not (n is Node):
+		return null
+	return RT.child_host(RT.store(n)) as Control
+
+## The node that runs Unity's layout for a control (created when a script adds a layout component).
+func _ui_layout_helper(ctl: Control, create: bool) -> Node:
+	var h: Node = ctl.get_node_or_null("UnidotLayout")
+	if h == null and create:
+		h = Node.new()
+		h.name = "UnidotLayout"
+		h.set_meta(RT.META_HELPER, true)
+		h.set_script(LayoutGroup)
+		ctl.add_child(h)
+	return h
+
+## Something a layout depends on changed: rebuild at the end of the frame, as Unity does.
+func _ui_layout_dirty(ctl: Control) -> void:
+	var cur: Node = ctl
+	while cur is Control:
+		var h: Node = cur.get_node_or_null("UnidotLayout")
+		if h != null and h.has_method("queue_layout"):
+			h.queue_layout()
+			return
+		cur = cur.get_parent()
+
+func ui_layout_get(n, key: String, default):
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_layout"):
+		return default
+	return (ctl.get_meta("unidot_layout") as Dictionary).get(key, default)
+
+func ui_layout_set(n, key: String, value) -> void:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_layout"):
 		return
-	var flags: int = Control.SIZE_EXPAND_FILL if v > 0.0 else Control.SIZE_FILL
-	if axis == "x":
-		n.size_flags_horizontal = flags
-	else:
-		n.size_flags_vertical = flags
-	if v > 0.0:
-		n.size_flags_stretch_ratio = v
+	var cfg: Dictionary = (ctl.get_meta("unidot_layout") as Dictionary).duplicate()
+	cfg[key] = value
+	ctl.set_meta("unidot_layout", cfg)
+	_ui_layout_helper(ctl, true).queue_layout()
+
+## LayoutGroup.padding: a RectOffset (left, right, top, bottom). The object is the group's own, so
+## `group.padding.left = 8` changes the group, as in Unity.
+func ui_layout_padding(n) -> Dictionary:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_layout"):
+		return {"left": 0, "right": 0, "top": 0, "bottom": 0}
+	var cfg: Dictionary = ctl.get_meta("unidot_layout")
+	var p = cfg.get("padding")
+	if p is Dictionary:
+		return p
+	var d: Dictionary = {"left": 0, "right": 0, "top": 0, "bottom": 0}
+	if p is Array and p.size() >= 4:
+		d = {"left": int(p[0]), "right": int(p[1]), "top": int(p[2]), "bottom": int(p[3])}
+	cfg = cfg.duplicate()
+	cfg["padding"] = d
+	ctl.set_meta("unidot_layout", cfg)
+	return d
+
+## LayoutUtility.GetMinSize / GetPreferredSize / GetFlexibleSize and the ILayoutElement values of
+## a component: which = 0 min, 1 preferred, 2 flexible; axis 0 horizontal, 1 vertical.
+func ui_layout_ask(n, which: int, axis: int) -> float:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null:
+		return 0.0
+	var h: Node = LayoutGroup.new()
+	var res: Array = h._ask(ctl, clampi(axis, 0, 1))
+	h.free()
+	return float(res[clampi(which, 0, 2)])
+
+func ui_fitter_get(n, key: String) -> int:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_fitter"):
+		return 0
+	return int((ctl.get_meta("unidot_fitter") as Dictionary).get(key, 0))
+
+func ui_fitter_set(n, key: String, mode: int) -> void:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null:
+		return
+	var f: Dictionary = (ctl.get_meta("unidot_fitter") as Dictionary).duplicate() if ctl.has_meta("unidot_fitter") else {"h": 0, "v": 0}
+	f[key] = mode
+	ctl.set_meta("unidot_fitter", f)
+	_ui_layout_helper(ctl, true).queue_layout()
+
+func ui_aspect_get(n, key: String, default):
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_aspect"):
+		return default
+	return (ctl.get_meta("unidot_aspect") as Dictionary).get(key, default)
+
+func ui_aspect_set(n, key: String, value) -> void:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null:
+		return
+	var a: Dictionary = (ctl.get_meta("unidot_aspect") as Dictionary).duplicate() if ctl.has_meta("unidot_aspect") else {"mode": 0, "ratio": 1.0}
+	a[key] = value
+	ctl.set_meta("unidot_aspect", a)
+	_ui_layout_helper(ctl, true).queue_layout()
+
+## LayoutElement.minWidth / preferredHeight / flexibleWidth ...: kind "min" | "pref" | "flex",
+## -1 = not set.
+func ui_element_get(n, kind: String, axis: int) -> float:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_layout_element"):
+		return -1.0
+	var v: Vector2 = (ctl.get_meta("unidot_layout_element") as Dictionary).get(kind, Vector2(-1, -1))
+	return v[clampi(axis, 0, 1)]
+
+func ui_element_set(n, kind: String, axis: int, value: float) -> void:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null:
+		return
+	var e: Dictionary = _ui_element(ctl)
+	var v: Vector2 = e.get(kind, Vector2(-1, -1))
+	v[clampi(axis, 0, 1)] = value
+	e[kind] = v
+	ctl.set_meta("unidot_layout_element", e)
+	_ui_layout_dirty(ctl)
+
+func _ui_element(ctl: Control) -> Dictionary:
+	if ctl.has_meta("unidot_layout_element"):
+		return (ctl.get_meta("unidot_layout_element") as Dictionary).duplicate()
+	return {"min": Vector2(-1, -1), "pref": Vector2(-1, -1), "flex": Vector2(-1, -1), "ignore": false, "priority": 1, "enabled": true}
+
+## LayoutElement.ignoreLayout / layoutPriority
+func ui_element_value(n, key: String, default):
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null or not ctl.has_meta("unidot_layout_element"):
+		return default
+	return (ctl.get_meta("unidot_layout_element") as Dictionary).get(key, default)
+
+func ui_element_set_value(n, key: String, value) -> void:
+	var ctl: Control = _ui_ctl(n)
+	if ctl == null:
+		return
+	var e: Dictionary = _ui_element(ctl)
+	e[key] = value
+	ctl.set_meta("unidot_layout_element", e)
+	_ui_layout_dirty(ctl)
+
+# ILayoutElement values of graphics and selectables (Image.preferredWidth, Text.minHeight ...)
+func ui_flexible_get(n: Node, axis: String) -> float:
+	return ui_layout_ask(n, 2, 0 if axis == "x" else 1)
 
 func ui_min_size(n: Node, axis: String) -> float:
-	if not (n is Control):
-		return 0.0
-	var s: Vector2 = n.get_combined_minimum_size()
-	return s.x if axis == "x" else s.y
+	return ui_layout_ask(n, 0, 0 if axis == "x" else 1)
 
 func ui_preferred_size(n: Node, axis: String) -> float:
-	if not (n is Control):
-		return 0.0
-	var s: Vector2 = n.get_combined_minimum_size()
-	if n.custom_minimum_size == Vector2.ZERO:
-		s = s.max(n.size)
-	return s.x if axis == "x" else s.y
+	return ui_layout_ask(n, 1, 0 if axis == "x" else 1)
 
 ## The Canvas a UI node belongs to: the world-canvas container (`udon_canvas` metadata) or the
 ## nearest CanvasLayer / SubViewport ancestor.
 func ui_canvas(n: Node) -> Node:
 	var cur: Node = n
 	while cur != null:
-		if cur.has_meta("udon_canvas") or cur is CanvasLayer:
+		if cur.has_meta(RT.META_CANVAS) or cur is CanvasLayer:
 			return cur
-		if cur is SubViewport and cur.get_parent() != null and cur.get_parent().has_meta("udon_canvas"):
+		if cur is SubViewport and cur.get_parent() != null and cur.get_parent().has_meta(RT.META_CANVAS):
 			return cur.get_parent()
 		cur = cur.get_parent()
 	return null
@@ -6754,7 +6966,7 @@ func ui_canvas_get(n: Node, key: String, default = null):
 	var c := ui_canvas(n)
 	if c == null:
 		return default
-	var cfg: Dictionary = c.get_meta("udon_canvas") if c.has_meta("udon_canvas") else {}
+	var cfg: Dictionary = c.get_meta(RT.META_CANVAS) if c.has_meta(RT.META_CANVAS) else {}
 	match key:
 		"pixelRect", "renderingDisplaySize":
 			var size: Vector2 = cfg.get("size", Vector2.ZERO)
@@ -6804,7 +7016,7 @@ func ui_texture_size(n: Node, axis: String) -> float:
 func ui_effect_get(n: Node, kind: String, key: String, default = null):
 	if n == null:
 		return default
-	var d: Dictionary = n.get_meta("udon_effect_" + kind) if n.has_meta("udon_effect_" + kind) else {}
+	var d: Dictionary = n.get_meta("unidot_effect_" + kind) if n.has_meta("unidot_effect_" + kind) else {}
 	if d.has(key):
 		return d[key]
 	if n is Control:
@@ -6822,9 +7034,9 @@ func ui_effect_get(n: Node, kind: String, key: String, default = null):
 func ui_effect_set(n: Node, kind: String, key: String, value) -> void:
 	if n == null:
 		return
-	var d: Dictionary = n.get_meta("udon_effect_" + kind) if n.has_meta("udon_effect_" + kind) else {}
+	var d: Dictionary = n.get_meta("unidot_effect_" + kind) if n.has_meta("unidot_effect_" + kind) else {}
 	d[key] = value
-	n.set_meta("udon_effect_" + kind, d)
+	n.set_meta("unidot_effect_" + kind, d)
 	if not (n is Control):
 		return
 	var enabled: bool = bool(d.get("enabled", true))
@@ -6842,29 +7054,6 @@ func ui_effect_set(n: Node, kind: String, key: String, value) -> void:
 			n.add_theme_constant_override("shadow_offset_y", int(round(-dist2.y)))
 
 ## AspectRatioFitter: {aspectMode, aspectRatio}; modes 1/2 resize the Control, 3/4 fit the parent.
-func ui_aspect_set(n: Node, key: String, value) -> void:
-	prop_set(n, key, value)
-	if not (n is Control):
-		return
-	var mode: int = int(prop_get(n, "aspectMode", 0))
-	var ratio: float = maxf(float(prop_get(n, "aspectRatio", 1.0)), 0.001)
-	match mode:
-		1:
-			n.size = Vector2(n.size.x, n.size.x / ratio)
-		2:
-			n.size = Vector2(n.size.y * ratio, n.size.y)
-		3, 4:
-			var parent := n.get_parent() as Control
-			if parent != null:
-				var ps: Vector2 = parent.size
-				var w: float = ps.x
-				var h: float = w / ratio
-				if (h > ps.y) == (mode == 3):
-					h = ps.y
-					w = h * ratio
-				n.size = Vector2(w, h)
-				n.position = (ps - n.size) * 0.5
-
 ## Dropdown options as OptionData dictionaries {text, image}.
 ## `dropdown.value = i` (Unity raises onValueChanged when the value changes) and
 ## SetValueWithoutNotify; the caption that the imported Unity label shows follows.
@@ -6880,8 +7069,8 @@ func dd_set_value(n: Node, i: int, notify: bool) -> void:
 		o.item_selected.emit(clamped)
 
 func dd_refresh(n: Node) -> void:
-	if n != null and n.has_method("udon_refresh_caption"):
-		n.udon_refresh_caption()
+	if n != null and n.has_method("refresh_caption"):
+		n.refresh_caption()
 
 func dd_options(n: Node) -> Array:
 	var out: Array = []
@@ -7109,20 +7298,38 @@ func toggle_group_clear(g) -> void:
 		for b in g.get_buttons():
 			b.set_pressed_no_signal(false)
 
-## RectTransform.GetLocalCorners: bottom-left, top-left, top-right, bottom-right (Unity order)
-func rect_local_corners(c: Control, out: Array) -> void:
-	if not (c is Control) or out.size() < 4:
+## LayoutRebuilder.ForceRebuildLayoutImmediate / Canvas.ForceUpdateCanvases: run Unity's auto
+## layout (unidot's runtime/layout_group.gd helpers) now, inner groups first; null = everything.
+func ui_force_layout(n: Node) -> void:
+	var top: Node = RT.store(n) if n != null else get_tree().current_scene
+	if top == null:
 		return
-	var s: Vector2 = c.size
-	var p: Vector2 = rect_get_pivot(c) * s
-	out[0] = Vector3(-p.x, -(s.y - p.y), 0.0)
-	out[1] = Vector3(-p.x, p.y, 0.0)
-	out[2] = Vector3(s.x - p.x, p.y, 0.0)
-	out[3] = Vector3(s.x - p.x, -(s.y - p.y), 0.0)
+	for _pass in range(2):
+		_ui_layout_walk(top)
 
-func rect_set_anchored_position(c: Control, v: Vector2) -> void:
-	if c is Control:
-		c.position = v
+func _ui_layout_walk(n: Node) -> void:
+	for c in n.get_children():
+		_ui_layout_walk(c)
+	var helper: Node = n.get_node_or_null("UnidotLayout")
+	if helper != null and helper.has_method("layout_now"):
+		helper.layout_now()
+
+## LayoutRebuilder.MarkLayoutForRebuild: the layout runs at the end of the frame.
+func ui_mark_layout(n: Node) -> void:
+	var cur: Node = RT.store(n) if n != null else null
+	while cur != null:
+		var helper: Node = cur.get_node_or_null("UnidotLayout")
+		if helper != null and helper.has_method("queue_layout"):
+			helper.queue_layout()
+		cur = cur.get_parent()
+
+## RectTransform.GetLocalCorners: bottom-left, top-left, top-right, bottom-right (Unity order)
+func rect_local_corners(c: Node, out: Array) -> void:
+	if not RT.is_ui(c) or out.size() < 4:
+		return
+	var corners: Array = RT.local_corners(c)
+	for i in range(4):
+		out[i] = corners[i]
 
 # ---------------------------------------------------------------------------
 # System extras: TimeSpan parsing, Guid, BitConverter widths, dates, vectors, rects, matrices

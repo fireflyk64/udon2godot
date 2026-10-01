@@ -6,6 +6,17 @@ case "$(basename "${GODOT:-godot.sh}")" in
 esac
 GODOT="scripts/godot.sh"
 
+# The runtime a project needs to run converted scripts: udon_runtime, and the run-time half of
+# unidot_importer (rect_transform.gd and the canvas scripts udon_runtime calls for Unity UI).
+#   install_runtime <project dir>
+install_runtime() {
+  local proj="$1"
+  mkdir -p "$proj/addons/unidot_importer"
+  rm -rf "$proj/addons/udon_runtime" "$proj/addons/unidot_importer/runtime"
+  cp -r runtime/addons/udon_runtime "$proj/addons/"
+  cp -r refs/unidot_importer/runtime "$proj/addons/unidot_importer/runtime"
+}
+
 # Print the launcher's messages found in log files (a memory or lifetime cap that fired).
 godot_guard_report() {
   grep -h "^godot.sh:" "$@" 2>/dev/null | sed 's/^/!! /' || true

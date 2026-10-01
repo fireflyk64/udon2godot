@@ -75,6 +75,28 @@ func _register_behaviour(b: Node) -> void:
 	provider._on_behaviour_registered(b)
 	_phys_note_behaviour(b)
 
+## A behaviour is leaving the tree: true when it is being destroyed (it or an ancestor is queued
+## for deletion), false when it is only being moved. A node that was removed and has not come
+## back by the end of the frame is unregistered then.
+func _behaviour_leaving(b: Node) -> bool:
+	var n: Node = b
+	while n != null:
+		if n.is_queued_for_deletion():
+			_unregister_behaviour(b)
+			return true
+		n = n.get_parent()
+	_behaviour_check_detached.call_deferred(b)
+	return false
+
+func _behaviour_check_detached(b) -> void:
+	if not is_instance_valid(b):
+		# freed without queue_free (the scene is being torn down)
+		for i in range(_behaviours.size() - 1, -1, -1):
+			if not is_instance_valid(_behaviours[i]):
+				_behaviours.remove_at(i)
+	elif not (b as Node).is_inside_tree():
+		_unregister_behaviour(b)
+
 func _unregister_behaviour(b: Node) -> void:
 	_behaviours.erase(b)
 
@@ -331,6 +353,7 @@ func instantiate_at(source, pos: Vector3, rot: Quaternion, parent: Node = null) 
 func _spawn(source, parent: Node, world_position_stays: bool) -> Node:
 	if source is PackedScene:
 		var inst: Node = source.instantiate()
+		U.RT.apply_prefab_rect(inst)   # a UI prefab's root gets its own rect when it is instanced
 		var p: Node = parent if parent != null else get_tree().current_scene
 		if p == null:
 			p = get_tree().root

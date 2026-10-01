@@ -4,53 +4,103 @@ Status legend: [x] done and verified, [~] implemented but needs more coverage, [
 
 ## RectTransform and canvas positioning (pool table UI) — current work
 
-The pool table's canvases are much better than they were but still show positioning errors.
-Starting point (2026-09-30): the importer converts a RectTransform in `_configure_rect`
-(`udon_integration.gd`), while scripts go through separate catalog mappings that do not agree with
-it (`anchoredPosition => $0.position`, `sizeDelta => $0.size`, `anchorMin` reads `anchor_top`
-unflipped, `rect => get_rect()`, `localRotation` of a Control is always identity,
-`SetInsetAndSizeFromParentEdge` is a stub, `LayoutRebuilder.ForceRebuildLayoutImmediate` does
-nothing); `udon_canvas_plane.gd` repeats the anchor maths a third time for nested canvases.
+The pool table's canvases showed positioning errors. What was found (2026-09-30):
 
-- [ ] Survey: every Canvas, RectTransform and UI component in the pool table's prefabs and scene
-      (`MS-VRCSA_Table-Original.prefab` 144 RectTransforms, `Table.prefab` 18,
-      `BilliardsLoadMenu.prefab` 8) and every script line that reads or writes a UI transform.
-      A tool prints them with the rectangle Unity computes (anchors, offsets, pivot, scale,
-      rotation, render mode, scaler, layout components), so the distinct cases are listed here.
-- [ ] Reference rectangles: for each surveyed canvas, the expected rectangle of every node in canvas
-      units, computed from the Unity data alone (independent of the importer), compared with the
-      imported world's laid-out Controls. Acceptance: every pool table UI node within 0.5 unit /
-      1 % of the reference, hidden menus included; the list of mismatches is the work queue.
-- [ ] Observe the broken cases on the imported table (screenshots of each canvas next to the
-      reference rectangles) and note each one here before fixing it.
-- [ ] Tests first for each case found: a minimal Unity fixture (scene or prefab) that reproduces
-      it and a check that fails before the fix. Cases known so far: stretched anchors with
-      offsets, non-centre pivots, scaled and rotated rects, negative sizes, zero-size parents with
-      overflowing children, nested canvases, world canvas scale chains, canvas scaler modes.
-- [ ] Layout groups: a test for each kind — Horizontal, Vertical, Grid — and for the components
-      that work with them (ContentSizeFitter, LayoutElement, AspectRatioFitter), covering padding,
-      spacing, child alignment (9 values), control size / force expand on both axes, reverse
-      arrangement, grid start corner / start axis / constraints, nested groups, inactive and
-      `ignoreLayout` children, groups driven by a fitter on the same object and on the parent.
-- [ ] One implementation for import and runtime: a RectTransform module (anchors, offsets, pivot,
-      size delta, anchored position, local position / rotation / scale, rect, corners) used by the
-      importer when it builds a Control and by every script-side property (`anchoredPosition`,
-      `sizeDelta`, `anchorMin/Max`, `offsetMin/Max`, `pivot`, `rect`, `localPosition`,
-      `localRotation`, `localScale`, `SetSizeWithCurrentAnchors`, `SetInsetAndSizeFromParentEdge`,
-      `GetLocalCorners`, `GetWorldCorners`, `SetParent(worldPositionStays)`). Acceptance: a test
-      sets each property from a converted script and reads back Unity's numbers, and the same
-      values written at import give the same Control.
-- [ ] Separate the UI code from the Udon code in unidot: RectTransform / Canvas / UI component
-      conversion and its runtime scripts (canvas plane, layout groups, scroll rect, dropdown) live
-      in unidot without any reference to Udon; `udon_integration.gd` keeps script attachment,
-      field assignment and UnityEvent → `SendCustomEvent` wiring and calls the UI module through a
-      plugin seam. Acceptance: a canvas-only Unity scene imports with the Udon plugin disabled and
-      its rectangles pass the same checks; the UI part is a commit series that applies to
-      upstream unidot on its own.
-- [ ] Unit tests for the RectTransform module and canvas import that run without scripting
-      (no sandbox, no converted scripts): property round trips, layout groups, canvas fit.
-- [ ] Pool table verification: every canvas of the imported table matches the reference
-      rectangles and the screenshots; `scripts/test_world_billiards.sh` checks it.
+* The table's UI is not flat. `intl.menu` is a 0 x 0 canvas at scale 0.005 whose children are
+  tilted 45 degrees about x (`MenuAnchor`, `StartMenu`) or pushed along z (`OtherMenu` 7 cm,
+  the scorecard texts 77 cm); the importer drew all of it in the one plane of the canvas.
+* `BilliardsModule.SetTableTransforms` and `MenuManager` put seven UI elements on 3D spots of
+  the table model at run time (`setTransform`: world position and rotation of `.NAME_0`,
+  `.NAME_1`, `.SCORE_0`, `.SCORE_1`, `.SNOOKER_INSTRUCTIONS`, `.MENU`, `.JOINMENU`); the runtime
+  projected those onto the canvas plane.
+* A root canvas was placed from `m_LocalPosition`, whose x / y Unity leaves at 0 for a
+  RectTransform (the scorecard canvas sat 0.86 m too low); the position is the anchored position.
+* Script properties went through catalog mappings that disagreed with the importer
+  (`anchoredPosition => $0.position`, `sizeDelta => $0.size`, `anchorMin` with y unflipped,
+  `rect => get_rect()`, `localRotation` of a Control always identity, `transform.parent`
+  returning the canvas's viewport), and `pivot_offset` was computed from the size delta, which is
+  wrong for stretched rects.
+* RectTransform overrides on prefab instances were dropped ("Unable to convert Transform
+  properties"), and Godot resets the anchors of an instanced Control root on load
+  (`layout_mode = 0` is stored for a Control saved outside the tree).
+* The table uses no layout groups (59 Images, 52 TextMeshPro, 23 Buttons, 3 Toggles, 2 Sliders,
+  11 Canvases of which 8 nested).
+
+- [x] Survey and reference rectangles: `tools/unity_ui_reference.py <assets> <scene> --survey`
+      reads the Unity files alone (its own YAML reader, nested prefab instances with
+      modifications and stripped objects), lays the UI out with Unity's rules (anchors, pivots,
+      rotation / scale in 3D, CanvasScaler, layout groups, fitters) and prints every node's world
+      corners and the case counts; `--compare dump.json` holds an imported scene against it.
+      The Godot side is `refs/unidot_importer/test/ui_dump.gd` (`scenarios/canvas_dump.gd` in a
+      world; `world_runner.gd --static` runs the scene without its scripts): each corner is
+      followed through what is rendered (control -> viewport pixel -> quad or inline view).
+- [x] One implementation for import and run time: `refs/unidot_importer/runtime/
+      rect_transform.gd`. Unity values live in the Control itself (anchors, offsets,
+      `pivot_offset_ratio`, rotation, scale), what a Control cannot hold in `unidot_rect`
+      metadata; every setter Unity scripts use (`anchoredPosition`, `sizeDelta`, `anchorMin/Max`,
+      `offsetMin/Max`, `pivot`, `SetSizeWithCurrentAnchors`, `SetInsetAndSizeFromParentEdge`,
+      `localPosition / Rotation / Scale`, world position and rotation, `GetLocal/WorldCorners`,
+      `SetParent`) goes through it, from the importer and from `U.rect_*` / `U.set_position`.
+      Unit tests `test/rect_transform_test.gd` (153 checks, in and outside the tree); coverage
+      fixture `TRect.cs` sets every property from a converted script (50 checks + 7 engine-side).
+- [x] UI nodes in 3D: a canvas is an "island" (Node3D holder + SubViewport + plane). A control
+      whose transform leaves the plane of its canvas (tilt about x / y over 0.5 degrees, more
+      than 1 mm along z; `unidot/ui/flatten_depth`) gets a canvas of its own in the same place of
+      the tree: at start for imported values, at the end of the frame for values a script set
+      (so `SetParent(true)` followed by `localPosition = 0` does not build one). Scripts keep
+      addressing the control; `transform.parent`, `GetChild`, `Find`, `childCount`,
+      `GetSiblingIndex` see through the holder and viewport nodes. A nested canvas is drawn
+      inside the canvas around it while coplanar and on its own quad otherwise; planes follow
+      their rect, content and world scale every frame (`runtime/canvas_plane.gd`).
+- [x] Separation: Unity UI import is `refs/unidot_importer/ui_integration.gd`, a built-in plugin
+      with no reference to Udon (commit "Unity UI import as a built-in plugin"), with its runtime
+      scripts in unidot's `runtime/` (canvas_plane, canvas_scaler, layout_group, scroll_rect,
+      dropdown). `udon_integration.gd` (1948 -> 1270 lines) keeps scripts, fields, SDK components
+      and receives UnityEvent calls through the `ui_unity_event` hook. `udon_runtime` loads
+      `addons/unidot_importer/runtime/` (`install_runtime` in `scripts/_godot_env.sh`).
+- [x] Unit tests without scripting: `scripts/test_ui.sh` (in `ci.sh`) imports `tests/unity_ui`
+      (written by `tools/gen_ui_fixture.py`) with unidot alone - no sandbox, no udon_runtime, no
+      udon plugin - and compares the running scene with the reference: 18 canvases, 378 of 378
+      nodes within 2 mm + 1 %. Canvases: Rects (anchors, pivots, offsets, scale, z rotation,
+      mirrored, zero-size parents, hidden), Spatial (tilted, turned, flipped, z offsets, nested),
+      Metres (scale-1 canvas with scaled panels and widgets), Layouts, Nested (in place, prefab
+      instances, coplanar and tilted), Cards (prefab instances with RectTransform overrides, in
+      a layout group), Placed (pivot, rotated and scaled parents, empty root, hidden canvas),
+      seven screen canvases (every CanvasScaler mode).
+- [x] Layout groups: `runtime/layout_group.gd` is Unity's rebuild (LayoutRebuilder order,
+      HorizontalOrVerticalLayoutGroup, GridLayoutGroup, ContentSizeFitter, AspectRatioFitter,
+      LayoutUtility priorities) and places children by writing their anchors, anchored position
+      and size delta. 43 fixture panels: horizontal (6 alignments, reverse, control / expand
+      width and both, flexible, squeezed below preferred and below minimum, child scale, pivots,
+      inactive and ignored children), vertical (alignments, control width / height, reverse,
+      expand without control, layout priority), grid (flexible, 4 start corners, vertical start
+      axis, fixed rows / columns, alignment, one child, empty, inactive / ignored), fitters
+      (vertical list, horizontal min, both with a corner pivot, grid rows, nested groups, fitter
+      on a child), aspect ratio (4 modes, stretched width), inactive group. Scripts reach the
+      same data: `GetComponent<VerticalLayoutGroup>()`, `spacing`, `padding` (RectOffset),
+      `childAlignment`, `childControl*`, `LayoutElement.*`, `ContentSizeFitter.*Fit`,
+      `LayoutUtility.Get*`, `LayoutRebuilder.ForceRebuildLayoutImmediate` (TRect).
+- [ ] Pool table verification: static comparison of the imported table with the reference,
+      the seven elements on their spots after the scripts ran, screenshots;
+      `scripts/test_world_billiards.sh` checks it.
+- [ ] Left over from this work, not positioning of the pool table:
+      * ScrollRect is a Godot ScrollContainer: the scrolled object and Unity's Scrollbar children
+        are not where Unity puts them (2 known mismatches in `tests/unity_fixture`); a Unity-style
+        scroller (content moved by its anchored position) would fix both and make
+        `content.anchoredPosition` scripts work.
+      * Slider fill / handle rects do not follow the value, Toggle graphics do not follow isOn
+        (Unity draws these with child objects; the Godot widget's own drawing is now empty).
+      * UI component overrides on prefab instances (text, colour, sprite of an instance).
+      * A rect with a negative size (stretched with insets larger than the parent): a Control
+        cannot be negative; children anchored to it are off (flagged, not compared).
+      * An InputField smaller than one line of its font keeps Godot's minimum height.
+      * Plain Transform children and 3D components (AudioSource, colliders) under a UI control
+        have no 3D frame unless the control is a canvas.
+      * TextMeshPro (3D) outside a canvas (the table's "winner" text) is not converted.
+      * The pointer takes the nearest canvas shape; it does not fall through to a canvas behind
+        when the nearest one has no control under the pointer.
+      * A branch off upstream unidot with only the UI commits (the fork's hooks in
+        `object_adapter.gd` were introduced by earlier, mixed commits).
 - [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts /
       sprites / 9-slice, Dropdown templates; Animator; constraints components; ...).
 

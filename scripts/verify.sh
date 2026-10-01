@@ -15,8 +15,7 @@ BIN=target/release/udon2godot
 PROJ=godot_project
 
 echo "== runtime → project"
-rm -rf "$PROJ/addons/udon_runtime"
-cp -r runtime/addons/udon_runtime "$PROJ/addons/"
+install_runtime "$PROJ"
 
 echo "== convert fixture"
 "$BIN" -q -o "$PROJ/converted" --res-prefix res://converted tests/fixtures/Counter.cs
