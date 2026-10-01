@@ -3373,6 +3373,37 @@ func new_material(_shader) -> Material:
 	return StandardMaterial3D.new()
 
 ## Map common Unity material properties onto StandardMaterial3D / ShaderMaterial.
+var _shader_uniforms: Dictionary = {}   # Shader → {uniform name: true}
+
+## The uniform of a shader material that a Unity property name stands for. A hand-written port
+## names its uniforms like the Unity properties (`_Floor`); other shaders drop the underscore.
+func _shader_uniform(m: ShaderMaterial, k: String) -> String:
+	var sh: Shader = m.shader
+	if sh == null:
+		return k.trim_prefix("_")
+	if not _shader_uniforms.has(sh):
+		var names: Dictionary = {}
+		for u in sh.get_shader_uniform_list():
+			names[str(u.get("name", ""))] = true
+		_shader_uniforms[sh] = names
+	return k if (_shader_uniforms[sh] as Dictionary).has(k) else k.trim_prefix("_")
+
+## A value as a shader uniform takes it: arrays of colours and numbers packed.
+func _shader_value(value):
+	if value is Array and not (value as Array).is_empty():
+		var first = value[0]
+		if first is Color:
+			var colors := PackedColorArray()
+			for c in value:
+				colors.append(c if c is Color else Color.BLACK)
+			return colors
+		if first is float or first is int:
+			var numbers := PackedFloat32Array()
+			for f in value:
+				numbers.append(float(f))
+			return numbers
+	return value
+
 func mat_set(m: Material, key, value) -> void:
 	if m == null:
 		return
@@ -3380,7 +3411,7 @@ func mat_set(m: Material, key, value) -> void:
 		value = rt_texture(value)
 	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
-		m.set_shader_parameter(_shader_param_name(k), value)
+		m.set_shader_parameter(_shader_uniform(m, k), _shader_value(value))
 		return
 	if m is BaseMaterial3D:
 		match k:
@@ -3410,7 +3441,7 @@ func mat_get(m: Material, key, default):
 		return default
 	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
-		var v = m.get_shader_parameter(_shader_param_name(k))
+		var v = m.get_shader_parameter(_shader_uniform(m, k))
 		return v if v != null else default
 	if m is BaseMaterial3D:
 		match k:
@@ -3439,7 +3470,7 @@ func mat_prop_name(key) -> String:
 func mat_has(m: Material, key) -> bool:
 	var k: String = _prop_names[key] if (key is int and _prop_names.has(key)) else str(key)
 	if m is ShaderMaterial:
-		return m.get_shader_parameter(_shader_param_name(k)) != null
+		return m.get_shader_parameter(_shader_uniform(m, k)) != null
 	return k in ["_Color", "_BaseColor", "_MainTex", "_EmissionColor", "_Metallic", "_Glossiness", "_Smoothness"] or m.has_meta("udon_" + _shader_param_name(k))
 
 func mat_copy(dst: Material, src: Material) -> void:

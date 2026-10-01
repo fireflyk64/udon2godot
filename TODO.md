@@ -239,20 +239,27 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
             `Frame.png`, `Bar.png`, `Sheet.png` written by the fixture generator and a "Sprites"
             canvas (27 Images); the pixel check maps 25 points of every such Image through the
             slices and checks that holes show what is behind; `TWidgets` drives a filled Image.
-- [ ] Pool table shader ports. 12 custom shaders are approximated with StandardMaterial3D
-      (`world_doctor.py` lists them): the cloth has no tint / detail / rim lights, the scorecard
-      lamps do not follow the score, the shot timer does not run, the guide line is not cut at
-      the table's edge, and the desktop key hint (`metaphira/GameUI`, a screen overlay) hangs in
-      the world as a quad.
-      - [ ] Script-set properties reach a port's uniforms (`SetFloat("_Floor")` was sent as
-            `Floor`, which no port has; colour arrays, matrices in Unity space).
-      - [ ] `metaphira/TableSurface` (tint map, cloth detail, Oklab hue shift, timer rim lights).
-      - [ ] `metaphira/Scorecard`, `metaphira/Timer`.
-      - [ ] `harry_t/cliptable` (guide line), `harry_t/text_alpha`, `harry_t/twoframe`.
-      - [ ] `metaphira/GameUI` (screen overlay).
-      - [ ] `metaphira/CueCenter`; `metaphira/Physics` / `PhysicsDummy` if they are visible.
-      - [ ] Checks: the materials are ShaderMaterials after import, the uniforms the scripts set
-            arrive (scenario), screenshots.
+- [x] Pool table shader ports. 12 custom shaders were approximated with StandardMaterial3D: the
+      cloth had no tint / detail / rim lights, the scorecard lamps did not follow the score, the
+      shot timer did not run, the guide line was not cut at the table's edge, and the desktop
+      key hint (`metaphira/GameUI`, a screen overlay) hung in the world as a quad.
+      - [x] Script-set properties reach a port's uniforms: `SetFloat("_Floor")` was sent as
+            `Floor`, which no port has (the ball shadows lay on the floor under the table);
+            `U.mat_set` uses the Unity name when the shader has that uniform, and packs colour
+            and number arrays.
+      - [x] `metaphira/TableSurface` (tint map, cloth detail, Oklab hue shift, timer rim lights).
+      - [x] `metaphira/Scorecard`, `metaphira/Timer`.
+      - [x] `harry_t/cliptable` (guide line; the table's matrix is in Unity space, the port
+            mirrors Godot's world x), `harry_t/text_alpha`, `harry_t/twoframe`.
+      - [x] `metaphira/GameUI` (screen overlay), `metaphira/CueCenter` (the scene's reflections
+            stand in for the shader's own cubemap).
+      - [x] Checks in `scenarios/billiards.gd` (55 checks): the ports are in use, GraphicsManager's
+            scorecard has the 15 lamp colours and the game mode, the shadows the table height,
+            the guide line its half extents and matrix, the cloth its textures and keyword.
+      Left without a port: `metaphira/Physics` / `PhysicsDummy` (materials nothing uses),
+      `Custom/StandardScrollingEmissive` (another table model), `metaphira/ScreenOverlay`
+      (camera override module). No Unity pictures to compare with: the ports follow the
+      shader sources line by line.
 - [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts,
       Dropdown templates; Animator; constraints components; ...).
 
@@ -304,9 +311,9 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       an imported controller.
 - [~] Official pool table (MS-VRCSA-Billiards): converts (30 classes, 0 errors), imports, runs; the
       scenario plays a break and screenshots render the table with its skybox, ball shadows (ported
-      shader), cast shadows (`world_runner --shadows`) and UI boards. Open: cue/desktop interaction
-      through a player controller, the 12 scripts the package does not ship (reported by the doctor),
-      ports for the remaining 12 custom shaders (table cloth detail, scorecard, timer, guideline).
+      shader), cast shadows (`world_runner --shadows`) and UI boards. The cue is played through the
+      desktop player (`billiards_play.gd`), the table's shaders are ported (see the first section).
+      Open: the 12 scripts the package does not ship (reported by the doctor).
 - [x] Custom shaders: unidot's material conversion reads ShaderLab render state (blend, ZWrite, Cull,
       ZTest, queue, unlit), converts skybox shaders to sky materials, and uses hand-written Godot ports
       from `unidot/shader_ports` (`runtime/addons/udon_runtime/shader_ports/`, named after the Unity

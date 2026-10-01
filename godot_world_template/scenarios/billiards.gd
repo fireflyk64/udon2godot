@@ -28,6 +28,7 @@ func run(r):
 	# once the game is live the join menu moves from the lobby menu to its own spot on the table
 	await _ui_on_spots(r, bm, [["intl.menu/MenuAnchor/JoinMenu", ".JOINMENU"]])
 	_ui_drawn_where_placed(r)
+	_shaders(r)
 	r.shot("racked")
 	var ballsP: Array = bm.get("ballsP")
 	var p0: Vector3 = ballsP[0]
@@ -122,3 +123,49 @@ func _ui_drawn_where_placed(r) -> void:
 				worst_name = str(r._scene.get_path_to(n))
 		count += 1
 	r.check(count > 100 and worst < 0.003, "%d UI controls are drawn where they are placed (worst %.4f m at %s)" % [count, worst, worst_name])
+
+
+## The table's custom shaders are hand-written ports (udon_runtime/shader_ports), and what the
+## scripts set on the materials arrives at the ports' uniforms.
+func _shaders(r) -> void:
+	var by_port: Dictionary = {}   # port file name → [ShaderMaterial, ...]
+	for n in r._all(r._scene):
+		if not (n is MeshInstance3D) or (n as MeshInstance3D).mesh == null:
+			continue
+		for i in range((n as MeshInstance3D).mesh.get_surface_count()):
+			var m: Material = (n as MeshInstance3D).get_active_material(i)
+			if m is ShaderMaterial and m.shader != null:
+				var port: String = str(m.shader.resource_path).get_file().get_basename()
+				if not by_port.has(port):
+					by_port[port] = []
+				by_port[port].append(m)
+	for port in ["metaphira__TableSurface", "metaphira__Scorecard", "metaphira__Ball_Shadow", "harry_t__cliptable"]:
+		r.check(by_port.has(port), "a material of the scene uses the port %s" % port)
+	var gm: Node = r.behaviour("GraphicsManager")
+	var bm: Node = r.behaviour("BilliardsModule")
+	# the scorecard of the table model in use: game mode, scores and the lamp colours come from
+	# GraphicsManager (the other models' scorecards are not driven)
+	var scorecard = gm.get("scorecard") if gm != null else null
+	r.check(scorecard is ShaderMaterial and by_port.get("metaphira__Scorecard", []).has(scorecard), "GraphicsManager drives a scorecard material of the scene: " + str(scorecard))
+	if scorecard is ShaderMaterial:
+		var colors = (scorecard as ShaderMaterial).get_shader_parameter("_Colors")
+		r.check(colors is PackedColorArray and (colors as PackedColorArray).size() == 15, "the scorecard has the script's 15 lamp colours: " + str(colors).substr(0, 80))
+		r.check((scorecard as ShaderMaterial).get_shader_parameter("_GameMode") == int(bm.get("gameModeLocal")), "... and the game mode: %s" % str((scorecard as ShaderMaterial).get_shader_parameter("_GameMode")))
+		r.check((scorecard as ShaderMaterial).get_shader_parameter("_EightBallTex") is Texture2D, "... and its lamp texture")
+	# ball shadows are flattened onto the table surface at the height the script hands over
+	var floors: Array = []
+	for m in by_port.get("metaphira__Ball_Shadow", []):
+		floors.append(float((m as ShaderMaterial).get_shader_parameter("_Floor")))
+	r.check(not floors.is_empty() and floors.max() > 0.3, "the ball shadows got the table height (_Floor): " + str(floors.slice(0, 3)))
+	# the guide line is cut at the table's edge: half extents and the table's world-to-local matrix
+	for m in by_port.get("harry_t__cliptable", []):
+		var dims = (m as ShaderMaterial).get_shader_parameter("_Dims")
+		var base = (m as ShaderMaterial).get_shader_parameter("_BaseTransform")
+		r.check(dims is Vector4 and (dims as Vector4).x > 0.5 and (dims as Vector4).y > 0.2, "the guide line knows the table's half extents (_Dims): " + str(dims))
+		r.check(base is Transform3D or base is Projection, "... and the table's matrix (_BaseTransform): " + str(typeof(base)))
+	# the cloth: tint, detail texture and rim lights
+	for m in by_port.get("metaphira__TableSurface", []).slice(0, 1):
+		r.check((m as ShaderMaterial).get_shader_parameter("_MainTex") is Texture2D and (m as ShaderMaterial).get_shader_parameter("_EmissionMap") is Texture2D, "the cloth has its albedo and emission textures")
+		r.check(float((m as ShaderMaterial).get_shader_parameter("_UseDetailCloth")) > 0.5 and (m as ShaderMaterial).get_shader_parameter("_DetailCloth") is Texture2D, "... and its cloth detail (the DETAIL_CLOTH keyword)")
+	print("[scenario] shader ports in use: " + ", ".join(by_port.keys()))
+
