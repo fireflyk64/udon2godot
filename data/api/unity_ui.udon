@@ -103,17 +103,17 @@ type Scrollbar
 
 type Dropdown
   AddOptions(ListSystemString): void => U.dd_add_options($0, $1)
-  Hide(): void => $0.get_popup().hide()
-  Show(): void => $0.show_popup()
-  captionImage: Image => null
-  captionText: Text => $0
-  itemImage: Image => null
-  itemText: Text => null
+  Hide(): void => U.dd_hide($0)
+  Show(): void => U.dd_show($0)
+  captionImage: Image => U.dd_part($0, "caption_image")
+  captionText: Text => U.dd_part($0, "caption")
+  itemImage: Image => U.dd_part($0, "item_image")
+  itemText: Text => U.dd_part($0, "item_text")
   options: ListUnityEngineUIDropdownOptionData => U.dd_options($0)
-  set captionImage: Image => pass
-  set captionText: Text => pass
-  set itemImage: Image => pass
-  set itemText: Text => pass
+  set captionImage: Image => U.dd_set_part($0, "caption_image", $v)
+  set captionText: Text => U.dd_set_part($0, "caption", $v)
+  set itemImage: Image => U.dd_set_part($0, "item_image", $v)
+  set itemText: Text => U.dd_set_part($0, "item_text", $v)
   set options: ListUnityEngineUIDropdownOptionData => U.dd_set_options($0, $v)
 
 type InputField
@@ -496,12 +496,12 @@ type TextMeshProUGUI
   set isTextObjectScaleStatic: bool => !stored U.prop_set($0, "isTextObjectScaleStatic", $v)
 
 type TMP_Dropdown
-  ClearOptions(): void => $0.clear()
-  Hide(): void => $0.get_popup().hide()
+  ClearOptions(): void => U.dd_clear($0)
+  Hide(): void => U.dd_hide($0)
   RefreshShownValue(): void => U.dd_refresh($0)
   SetValueWithoutNotify(int): void => U.dd_set_value($0, $1, false)
-  Show(): void => $0.show_popup()
-  IsExpanded: bool => $0.get_popup().visible
+  Show(): void => U.dd_show($0)
+  IsExpanded: bool => U.dd_is_shown($0)
   value: int => $0.selected
   set value: int => U.dd_set_value($0, $v, true)
 

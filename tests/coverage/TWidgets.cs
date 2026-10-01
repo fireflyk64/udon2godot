@@ -11,8 +11,9 @@ namespace Coverage
     /// `fitted` (auto-sized between 8 and 60 in 200 x 30), `image` with a child `kid`, `bar` (a
     /// horizontally filled Image of 128 x 32), `button`
     /// (its own Image as target graphic, normal colour with alpha 0), `toggle` (off, check mark
-    /// `check`), `slider` (0..1 at 0.5, left to right, `fill` and `handle`) and `text3d`, a
-    /// TextMeshPro outside the canvas.
+    /// `check`), `slider` (0..1 at 0.5, left to right, `fill` and `handle`), `dropdown` (options
+    /// A, B, C; caption `caption`; a template of 150 with one item of 20 in a content of 28) and
+    /// `text3d`, a TextMeshPro outside the canvas.
     public class TWidgets : UdonSharpBehaviour
     {
         public string[] failures = new string[128];
@@ -33,6 +34,9 @@ namespace Coverage
         public RectTransform handle;
         public TextMeshPro text3d;
         public Image bar;
+        public Dropdown dropdown;
+        public TMP_Dropdown tmpDropdown;   // the same object (for IsExpanded, which only TMP has)
+        public Text caption;
 
         private void Check(bool ok, string what)
         {
@@ -114,6 +118,40 @@ namespace Coverage
             slider.direction = Slider.Direction.RightToLeft;
             Check(Near2(fill.anchorMin, 0.125f, 0f) && Near2(fill.anchorMax, 1f, 1f), "right to left: " + fill.anchorMin);
             Check(Near2(handle.anchorMin, 0.125f, 0f), "right to left handle: " + handle.anchorMin);
+
+            // Dropdown: Unity's caption and list objects
+            Check(dropdown.captionText == caption && caption.text == "A", "the caption shows the value as imported: " + caption.text);
+            dropdown.value = 2;
+            Check(caption.text == "C", "value moves the caption: " + caption.text);
+            dropdown.SetValueWithoutNotify(1);
+            Check(caption.text == "B", "SetValueWithoutNotify too: " + caption.text);
+            RectTransform template = dropdown.template;
+            Check(template != null && !template.gameObject.activeSelf && dropdown.itemText != null, "template / itemText");
+            Check(!tmpDropdown.IsExpanded, "IsExpanded before Show");
+            dropdown.Show();
+            Check(tmpDropdown.IsExpanded, "Show opens the list");
+            RectTransform shown = (RectTransform)dropdown.transform.parent.Find("Dropdown List");
+            Check(shown != null && shown.gameObject.activeInHierarchy, "the list is a copy of the template, on top of the canvas");
+            if (shown != null)
+            {
+                Check(Near(shown.rect.height, 68f) && Near(shown.rect.width, 120f), "the list is as high as its three items: " + shown.rect.size);
+                Transform items = shown.Find("Content");
+                Transform second = items.childCount == 4 ? items.GetChild(2) : null;   // (after the template's item)
+                Check(second != null && second.GetComponent<Toggle>().isOn && !items.GetChild(1).GetComponent<Toggle>().isOn, "one item per option, the current one on");
+                Check(second != null && Near(((RectTransform)second).anchoredPosition.y, 34f), "items from the top down");
+                Check(!template.gameObject.activeSelf, "the template stays inactive");
+            }
+            dropdown.Hide();
+            Check(!tmpDropdown.IsExpanded, "Hide closes it");
+            dropdown.ClearOptions();
+            Check(caption.text == "" && dropdown.options.Count == 0, "ClearOptions empties the caption: " + caption.text);
+            dropdown.AddOptions(new string[] { "x", "y" });
+            Check(caption.text == "x" && dropdown.value == 0, "AddOptions shows the first option: " + caption.text);
+            dropdown.captionText = null;
+            dropdown.value = 1;
+            Check(caption.text == "x" && dropdown.captionText == null, "without captionText nothing follows the value");
+            dropdown.captionText = caption;
+            Check(caption.text == "y", "a new captionText shows the value: " + caption.text);
 
             // 3D text
             Check(text3d.text == "ready", "3D text as imported: " + text3d.text);

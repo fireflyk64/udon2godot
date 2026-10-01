@@ -60,6 +60,7 @@ GUID = {
     "Mask": "31a19414c41e5ae4aae2af33fee712f6",
     "TextMeshProUGUI": "f4688fdb7df04437aeb418b961361dc5",
     "ScrollRect": "1aa08ab6e0800fa44ae55d278d1423e3",
+    "Dropdown": "0d1c2a8fe1a7b7a4d9edbdc6bf0d0d5b",
     "Scrollbar": "2a4db7a114972834c8e4117be1d82ba3",
     "RectMask2D": "3312d7739989d2b4e91e6319e9a96d76",
 }
@@ -410,10 +411,11 @@ def quoted(value):
 
 def image(color=(1, 1, 1, 1), kind=0, sprite=None, center=True, fill=(4, 1, 0), multiplier=1):
     """kind: Image.Type (0 simple, 1 sliced, 2 tiled, 3 filled); sprite: (file id, guid) or None;
-    fill: (method 0 horizontal / 1 vertical, amount, origin)."""
+    fill: (method 0 horizontal / 1 vertical / 2 radial 90 / 3 radial 180 / 4 radial 360, amount,
+    origin[, clockwise])."""
     ref = "{fileID: 0}" if sprite is None else "{fileID: %d, guid: %s, type: %d}" % (sprite[0], sprite[1], 0 if sprite[1] == BUILTIN else 3)
-    return ("Image", _GRAPHIC % vec(color, "rgba") + "  m_Sprite: %s\n  m_Type: %d\n  m_PreserveAspect: 0\n  m_FillCenter: %d\n  m_FillMethod: %d\n  m_FillAmount: %s\n  m_FillClockwise: 1\n  m_FillOrigin: %d\n  m_UseSpriteMesh: 0\n  m_PixelsPerUnitMultiplier: %s\n" % (
-        ref, kind, center, fill[0], num(fill[1]), fill[2], num(multiplier)))
+    return ("Image", _GRAPHIC % vec(color, "rgba") + "  m_Sprite: %s\n  m_Type: %d\n  m_PreserveAspect: 0\n  m_FillCenter: %d\n  m_FillMethod: %d\n  m_FillAmount: %s\n  m_FillClockwise: %d\n  m_FillOrigin: %d\n  m_UseSpriteMesh: 0\n  m_PixelsPerUnitMultiplier: %s\n" % (
+        ref, kind, center, fill[0], num(fill[1]), fill[3] if len(fill) > 3 else 1, fill[2], num(multiplier)))
 
 
 # ---- sprite textures ------------------------------------------------------------------------------
@@ -644,6 +646,13 @@ def scroll_rect(content, viewport=0, hbar=0, vbar=0, horizontal=True, vertical=T
 def scrollbar(handle=0, direction=0, value=0, size=0.2, **sel):
     """direction 0 left to right, 1 right to left, 2 bottom to top, 3 top to bottom."""
     return ("Scrollbar", selectable(**sel) + "  m_HandleRect: {fileID: %d}\n  m_Direction: %d\n  m_Value: %s\n  m_Size: %s\n  m_NumberOfSteps: 0\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (handle, direction, num(value), num(size)))
+
+
+def dropdown(options, value=0, template=0, caption=0, item_text=0, **sel):
+    """template: RectTransform file id; caption / item_text: Text component file ids."""
+    opts = "".join("    - m_Text: %s\n      m_Image: {fileID: 0}\n" % quoted(o) for o in options)
+    return ("Dropdown", selectable(**sel) + "  m_Template: {fileID: %d}\n  m_CaptionText: {fileID: %d}\n  m_CaptionImage: {fileID: 0}\n  m_ItemText: {fileID: %d}\n  m_ItemImage: {fileID: 0}\n  m_Value: %d\n  m_Options:\n    m_Options:\n%s  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n  m_AlphaFadeSpeed: 0.15\n" % (
+        template, caption, item_text, value, opts))
 
 
 def rect_mask():
@@ -1089,6 +1098,18 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     sprite("FillBottom", (20, -20), (64, 96), kind=3, sprite=FRAME, fill=(1, 0.5, 0))      # the lower half
     sprite("FillTop", (100, -20), (64, 96), kind=3, sprite=FRAME, fill=(1, 0.25, 1))       # the upper quarter
     sprite("FillFull", (180, -20), (64, 96), kind=3, sprite=FRAME, fill=(0, 1, 0))
+    # radial fills: the angle is swept in the rect's own proportions, from the origin
+    # (360: bottom, right, top, left; 180: bottom, left, top, right; 90: the corners from the
+    # bottom-left, clockwise), clockwise or not
+    for i, (method, amount, origin, clockwise) in enumerate([
+            (4, 0.25, 0, 1), (4, 0.6, 1, 1), (4, 0.4, 2, 0), (4, 0.875, 3, 0), (4, 0.1, 0, 0),
+            (3, 0.3, 0, 1), (3, 0.75, 1, 1), (3, 0.5, 2, 0), (3, 0.6, 3, 0),
+            (2, 0.5, 0, 1), (2, 0.3, 1, 1), (2, 0.7, 2, 0), (2, 0.4, 3, 1)]):
+        sprite("Radial%d_%d%s" % ({4: 360, 3: 180, 2: 90}[method], origin, "" if clockwise else "ccw"),
+               (-400 + 66 * i, -240), (56, 80 if i % 2 else 56), kind=3, sprite=FRAME, fill=(method, amount, origin, clockwise))
+    sprite("RadialNoSprite", (250, -150), (56, 40), kind=3, fill=(4, 0.3, 0, 1), color=(0.9, 0.6, 0.2, 1))   # no sprite: the whole rect
+    sprite("RadialFull", (320, -150), (56, 40), kind=3, sprite=FRAME, fill=(4, 1, 2, 0))
+    sprite("RadialEmpty", (390, -150), (56, 40), kind=3, sprite=FRAME, fill=(3, 0, 0, 1))                    # nothing
     sprite("SheetLeft", (280, -20), (64, 64), sprite=SHEET_LEFT)
     sprite("SheetRight", (360, -20), (64, 64), sprite=SHEET_RIGHT)
     # Unity's built-in sprites, 200 pixels per unit: a 10 pixel border is 5 units
@@ -1265,6 +1286,33 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("Text", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("first second third fourth fifth sixth", 14, (1, 1, 1, 1), align=4, overflow=(0, 1))])
     frame = b.img("UguiCut", c, {"pos": (330, -140), "size": (120, 20)}, color=(0.25, 0.25, 0.35, 1))
     f.node("Text", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), text("first second third fourth fifth sixth", 14, (1, 1, 1, 1), align=4)])
+
+    # Dropdowns as Unity's menu builds them: caption, arrow and the (inactive) template of the list
+    def make_dropdown(name, pos, options, value):
+        root = f.node(name, c, {"pos": pos, "size": (160, 30)}, [renderer(), image((1, 1, 1, 1), 1, UI_SPRITE)])
+        label = f.node("Label", root, {"amin": (0, 0), "amax": (1, 1), "pos": (-7.5, -0.5), "size": (-35, -13)}, [renderer(), text("caption", 14, (0.2, 0.2, 0.2, 1), align=3)])
+        f.node("Arrow", root, {"amin": (1, 0.5), "amax": (1, 0.5), "pos": (-15, 0), "size": (20, 20)}, [renderer(), image((1, 1, 1, 1), 0, (10915, BUILTIN))])
+        template = f.node("Template", root, {"amin": (0, 0), "amax": (1, 0), "pivot": (0.5, 1), "pos": (0, 2), "size": (0, 150)}, [renderer(), image((1, 1, 1, 1), 1, UI_SPRITE)], active=False)
+        view = f.node("Viewport", template, {"amin": (0, 0), "amax": (1, 1), "pivot": (0, 1), "size": (-18, 0)}, [rect_mask()])
+        content = b.box("Content", view, {"amin": (0, 1), "amax": (1, 1), "pivot": (0.5, 1), "size": (0, 28)})
+        item = b.box("Item", content, {"amin": (0, 0.5), "amax": (1, 0.5), "size": (0, 20)})
+        back = f.node("Item Background", item, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), image((0.96, 0.96, 0.96, 1))])
+        mark = f.node("Item Checkmark", item, {"amin": (0, 0.5), "amax": (0, 0.5), "pos": (10, 0), "size": (20, 20)}, [renderer(), image((1, 1, 1, 1), 0, CHECKMARK)])
+        item_label = f.node("Item Label", item, {"amin": (0, 0), "amax": (1, 1), "pos": (5, -0.5), "size": (-30, -3)}, [renderer(), text("Option A", 14, (0.2, 0.2, 0.2, 1), align=3)])
+        f.add(item, toggle(True, mark.components[1][0], target=back.components[1][0]))
+        bar, bar_comp = make_list_bar(template)
+        f.add(template, scroll_rect(content.t, view.t, 0, bar_comp, horizontal=False, movement=2, visibility=(0, 2), spacing=(0, -3)))
+        f.add(root, dropdown(options, value, template.t, label.components[1][0], item_label.components[1][0], target=root.components[1][0]))
+        return root
+
+    def make_list_bar(parent):
+        bar = f.node("Scrollbar", parent, {"amin": (1, 0), "amax": (1, 1), "pivot": (1, 1), "size": (20, 0)}, [renderer(), image((0.8, 0.8, 0.8, 1))])
+        area = b.box("Sliding Area", bar, {"amin": (0, 0), "amax": (1, 1), "size": (-20, -20)})
+        handle = b.img("Handle", area, {"amin": (0, 0), "amax": (1, 0.2), "size": (20, 20)}, color=(0.5, 0.5, 0.5, 1))
+        return bar, f.add(bar, scrollbar(handle.t, 2, 0, 0.2, target=handle.components[1][0]))
+    make_dropdown("Dropdown", (-300, -50), ["Option A", "Option B", "Option C"], 1)      # the list opens below: 3 items
+    make_dropdown("DropdownLong", (-120, -50), ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"], 0)   # more items than fit: scrolls
+    make_dropdown("DropdownLow", (20, -285), ["Up A", "Up B"], 0)                        # at the canvas's lower edge: the list flips above
 
     # an input field draws its text and placeholder objects itself
     field = f.node("Field", c, {"pos": (200, -265), "size": (200, 30)}, [renderer(), image((1, 1, 1, 1))])

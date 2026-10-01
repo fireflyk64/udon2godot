@@ -179,7 +179,7 @@ viewport pixels per metre, `unidot/ui/pixels_per_metre`) or, in a screen-space r
 CanvasLayer scaled like Unity's CanvasScaler. The code lives in the unidot fork and is independent
 of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_plane.gd`,
 `canvas_scaler.gd`, `layout_group.gd`, `ui_text.gd`, `ui_graphic.gd`, `ui_sprite.gd`,
-`selectable.gd`, `scroll_rect.gd` (run time).
+`selectable.gd`, `scroll_rect.gd`, `canvas_group.gd`, `dropdown.gd` (run time).
 
 * **Separate from Udon.** Nothing of this needs the scripting layer: `scripts/test_ui.sh`
   imports with unidot alone, and `tools/unidot_ui_branch.py` builds the branch `ui-canvas` of
@@ -215,10 +215,14 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   scrollbars that hide themselves, the Scrollbar objects get size, value and visibility and
   their handles follow; `content.anchoredPosition`, `verticalNormalizedPosition`,
   `scrollbar.value` and `onValueChanged` of a script mean what they mean in Unity.
+* **Dropdown** opens Unity's list, not a popup window (`dropdown.gd`, Dropdown.Show): a copy of
+  the Template object with one copy of its item per option, shortened to its content, flipped
+  to the other side of the button when it would leave the canvas, closed by a blocker over the
+  canvas; the caption Text shows the value. `test/ui_dropdown_test.gd` clicks through it.
 * **Sprites.** Border, pixels per unit and the rect of a sprite in a sheet come from the
   texture's import settings. A sliced Image is drawn as nine patches with borders of Unity's
-  size (they shrink in a rect smaller than them), tiled and filled Images likewise by a helper
-  child (`ui_sprite.gd`); Unity's built-in sprites (UISprite, Background, Knob, Checkmark ...),
+  size (they shrink in a rect smaller than them), tiled and filled Images (horizontal, vertical,
+  radial 90 / 180 / 360) likewise by a helper child (`ui_sprite.gd`); Unity's built-in sprites (UISprite, Background, Knob, Checkmark ...),
   which no project contains, have stand-ins in `runtime/sprites`.
 * **Checked against Unity's numbers without Unity.** `tools/unity_ui_reference.py` reads a
   scene or prefab (nested prefab instances and their overrides included) and computes where
@@ -435,7 +439,7 @@ another argument list: styled parsing, string comparisons and ranges, binary sea
 (the coordinate convention shared with unidot) and `TNulls` (null where the generated code
 has a value type, members that hide or override base members).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 1054 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 1070 checks pass.
 
 ### Debug switches
 

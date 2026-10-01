@@ -1761,8 +1761,8 @@ type Text
   OnRebuildRequested(): void => pass
 
 type Image
-  fillCenter: bool => true
-  set fillCenter: bool => pass
+  fillCenter: bool => bool(U.ui_sprite_get($0, "center", true))
+  set fillCenter: bool => U.ui_sprite_set($0, "center", $v)
   pixelsPerUnitMultiplier: float => 1.0
   set pixelsPerUnitMultiplier: float => pass
   useSpriteMesh: bool => false
@@ -1839,22 +1839,22 @@ type ScrollRect
 type Dropdown
   options: Array => U.dropdown_options($0)
   set options: Array => U.dropdown_set_options($0, $v)
-  captionText: Text => $0
-  set captionText: Text => pass
-  captionImage: Image => $0
-  set captionImage: Image => pass
-  itemText: Text => $0
-  set itemText: Text => pass
-  itemImage: Image => $0
-  set itemImage: Image => pass
-  template: RectTransform => $0
-  set template: RectTransform => pass
+  captionText: Text => U.dd_part($0, "caption")
+  set captionText: Text => U.dd_set_part($0, "caption", $v)
+  captionImage: Image => U.dd_part($0, "caption_image")
+  set captionImage: Image => U.dd_set_part($0, "caption_image", $v)
+  itemText: Text => U.dd_part($0, "item_text")
+  set itemText: Text => U.dd_set_part($0, "item_text", $v)
+  itemImage: Image => U.dd_part($0, "item_image")
+  set itemImage: Image => U.dd_set_part($0, "item_image", $v)
+  template: RectTransform => U.dd_part($0, "template")
+  set template: RectTransform => U.dd_set_part($0, "template", $v)
   alphaFadeSpeed: float => 0.15
   set alphaFadeSpeed: float => pass
   onValueChanged: UnityEvent => $0.item_selected
   AddOptions(Array): void => U.dropdown_add_options($0, $1)
-  Show(): void => $0.show_popup()
-  Hide(): void => $0.get_popup().hide()
+  Show(): void => U.dd_show($0)
+  Hide(): void => U.dd_hide($0)
   OnPointerClick(object): void => pass
   OnSubmit(object): void => pass
   OnCancel(object): void => pass

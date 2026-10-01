@@ -6976,21 +6976,13 @@ func path_orientation(p: Path3D, offset: float) -> Quaternion:
 	return look_rotation(path_tangent(p, offset), Vector3.UP)
 
 func dropdown_options(o: OptionButton) -> Array:
-	var out: Array = []
-	for i in range(o.item_count):
-		out.append({"text": o.get_item_text(i), "image": o.get_item_icon(i)})
-	return out
+	return dd_options(o)
 
 func dropdown_set_options(o: OptionButton, opts: Array) -> void:
-	o.clear()
-	dropdown_add_options(o, opts)
+	dd_set_options(o, opts)
 
 func dropdown_add_options(o: OptionButton, opts: Array) -> void:
-	for it in opts:
-		if it is Dictionary:
-			o.add_item(str(it.get("text", "")))
-		else:
-			o.add_item(str(it))
+	dd_add_options(o, opts)
 
 func anim_parameters(n: Node) -> Array:
 	var out: Array = []
@@ -7482,9 +7474,49 @@ func dd_set_value(n: Node, i: int, notify: bool) -> void:
 	if notify and changed:
 		o.item_selected.emit(clamped)
 
+## Unity's Dropdown (unidot's runtime/dropdown.gd, a helper child of the OptionButton): the
+## caption objects follow the value, Show / Hide open and close Unity's list.
+const _UiDropdown := preload("res://addons/unidot_importer/runtime/dropdown.gd")
+
 func dd_refresh(n: Node) -> void:
-	if n != null and n.has_method("refresh_caption"):
-		n.refresh_caption()
+	if n is OptionButton and n.has_meta(_UiDropdown.META):
+		_UiDropdown.refresh_caption(n)
+
+func dd_show(n: Node) -> void:
+	var helper: Node = n.get_node_or_null(_UiDropdown.HELPER) if n != null else null
+	if helper != null:
+		helper.show()
+	elif n is OptionButton:
+		n.show_popup()
+
+func dd_is_shown(n: Node) -> bool:
+	var helper: Node = n.get_node_or_null(_UiDropdown.HELPER) if n != null else null
+	if helper != null and helper.is_shown():
+		return true
+	return n is OptionButton and n.get_popup().visible
+
+func dd_hide(n: Node) -> void:
+	var helper: Node = n.get_node_or_null(_UiDropdown.HELPER) if n != null else null
+	if helper != null:
+		helper.hide()
+	if n is OptionButton:
+		n.get_popup().hide()
+
+## captionText, captionImage, template, itemText, itemImage of a Dropdown.
+func dd_part(n: Node, key: String):
+	return _UiDropdown.part(n, key)
+
+func dd_set_part(n: Node, key: String, value) -> void:
+	if not (n is OptionButton):
+		return
+	var cfg: Dictionary = (n.get_meta(_UiDropdown.META) as Dictionary).duplicate() if n.has_meta(_UiDropdown.META) else {}
+	var target: Node = _ui_draw_node(value)
+	if target != null:
+		cfg[key] = n.get_path_to(target)
+	else:
+		cfg.erase(key)
+	n.set_meta(_UiDropdown.META, cfg)
+	dd_refresh(n)
 
 func dd_options(n: Node) -> Array:
 	var out: Array = []
@@ -7498,6 +7530,13 @@ func dd_set_options(n: Node, options: Array) -> void:
 		return
 	n.clear()
 	dd_add_options(n, options)
+	dd_refresh(n)
+
+## Dropdown.ClearOptions: no options, and a caption that shows nothing.
+func dd_clear(n: Node) -> void:
+	if n is OptionButton:
+		n.clear()
+		dd_refresh(n)
 
 func dd_add_options(n: Node, options: Array) -> void:
 	if not (n is OptionButton):
@@ -7511,6 +7550,7 @@ func dd_add_options(n: Node, options: Array) -> void:
 			n.add_icon_item(o, "")
 		else:
 			n.add_item(str(o))
+	dd_refresh(n)   # (Dropdown.AddOptions ends with RefreshShownValue)
 
 func dd_option_text(n: Node, i: int) -> String:
 	if n is OptionButton and i >= 0 and i < n.item_count:

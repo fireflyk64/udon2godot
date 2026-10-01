@@ -616,7 +616,7 @@ type TMP_Dropdown : Graphic kind=component gd=OptionButton extern=TMProTMP_Dropd
   interactable: bool => not $0.disabled
   set interactable: bool => $0.disabled = not $v
   SetValueWithoutNotify(int): void => U.dd_set_value($0, $1, false)
-  ClearOptions(): void => $0.clear()
+  ClearOptions(): void => U.dd_clear($0)
   RefreshShownValue(): void => U.dd_refresh($0)
 
 type Image : Graphic kind=component gd=Control extern=UnityEngineUIImage
@@ -706,7 +706,7 @@ type Dropdown : Selectable kind=component gd=OptionButton extern=UnityEngineUIDr
   value: int => $0.selected
   set value: int => U.dd_set_value($0, $v, true)
   SetValueWithoutNotify(int): void => U.dd_set_value($0, $1, false)
-  ClearOptions(): void => $0.clear()
+  ClearOptions(): void => U.dd_clear($0)
   RefreshShownValue(): void => U.dd_refresh($0)
 
 type InputField : Selectable kind=component gd=LineEdit extern=UnityEngineUIInputField

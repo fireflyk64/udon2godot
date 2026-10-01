@@ -71,6 +71,11 @@ python3 tools/unity_ui_reference.py tests/unity_ui tests/unity_ui/UiCases/UiCase
 grep -c "MISMATCH" "$OUT/compare.log" | sed 's/^/mismatches: /'
 head -${UI_SHOW:-40} "$OUT/compare.log" | cut -c1-260
 tail -1 "$OUT/compare.log"
+# what a click does: Unity's Dropdown list, built from the template object
+echo "== dropdown lists"
+timeout 300 "$GODOT" --headless --path "$OUT" -s addons/unidot_importer/test/ui_dropdown_test.gd -- --scene "res://$SCENE" > "$OUT/dropdown.log" 2>&1 || CODE=1
+grep -E "FAIL |^\[ui_dropdown_test\]|DROPDOWN TESTS" "$OUT/dropdown.log"
+grep -q "DROPDOWN TESTS PASSED" "$OUT/dropdown.log" || CODE=1
 if [ -n "${DISPLAY:-}" ]; then
   # what is rendered against the transforms: every canvas to a PNG, and at the centre of every
   # solid graphic the pixel must show the control the transforms put on top there
@@ -83,6 +88,6 @@ else
   echo "== no display: the rendering of the canvases is not checked"
 fi
 godot_guard_report "$OUT"/*.log
-godot_script_errors "$OUT/unit.log" "$OUT/dump.log" || CODE=1
+godot_script_errors "$OUT/unit.log" "$OUT/dump.log" "$OUT/dropdown.log" || CODE=1
 [ $CODE -eq 0 ] && echo "UI TESTS PASSED" || echo "UI TESTS FAILED"
 exit $CODE

@@ -555,6 +555,28 @@ func _build_scene(name: String, target: Node3D, host: Node3D) -> void:
 			helper.call(slider, _U.UiSelectable.HELPER, _U.UiSelectable)
 			for c in [button, toggle, slider]:
 				_U.UiSelectable.refresh_static(c)   # the importer's last step
+			# a Dropdown with Unity's objects: caption, and a template with one item
+			var dd: OptionButton = mk.call("OptionButton", "Dropdown", croot, {"anchored_position": Vector2(120, 100), "size_delta": Vector2(120, 30)})
+			for o in ["A", "B", "C"]:
+				dd.add_item(o)
+			dd.select(0)
+			var text := func(nm: String, parent: Control, v: Dictionary) -> RichTextLabel:
+				var l: RichTextLabel = mk.call("RichTextLabel", nm, parent, v)
+				_U.UiText.set_fonts(l)
+				l.set_meta(_U.UiText.META, {"text": "", "tmp": false, "rich": false, "size": 14.0, "style": 0, "wrap": false, "overflow": 0})
+				_U.UiText.render(l)
+				_U.UiGraphic.update(l, {"color": Color.BLACK})
+				return l
+			var caption: RichTextLabel = text.call("Label", dd, {"anchor_min": Vector2.ZERO, "anchor_max": Vector2.ONE, "size_delta": Vector2.ZERO})
+			var template: Control = mk.call("TextureRect", "Template", dd, {"anchor_min": Vector2(0, 0), "anchor_max": Vector2(1, 0), "pivot": Vector2(0.5, 1), "anchored_position": Vector2(0, 2), "size_delta": Vector2(0, 150)})
+			var content: Control = mk.call("Control", "Content", template, {"anchor_min": Vector2(0, 1), "anchor_max": Vector2(1, 1), "pivot": Vector2(0.5, 1), "size_delta": Vector2(0, 28)})
+			var item: Button = mk.call("Button", "Item", content, {"anchor_min": Vector2(0, 0.5), "anchor_max": Vector2(1, 0.5), "size_delta": Vector2(0, 20)})
+			item.toggle_mode = true
+			var item_label: RichTextLabel = text.call("Item Label", item, {"anchor_min": Vector2.ZERO, "anchor_max": Vector2.ONE, "size_delta": Vector2.ZERO})
+			_U.set_active(template, false)   # hidden, and not processing: what the importer leaves for an inactive object
+			dd.set_meta(_U._UiDropdown.META, {"caption": dd.get_path_to(caption), "template": dd.get_path_to(template), "item_text": dd.get_path_to(item_label)})
+			helper.call(dd, _U._UiDropdown.HELPER, _U._UiDropdown)
+			_U._UiDropdown.refresh_caption(dd)
 			var t3 := Node3D.new()
 			t3.name = "Text3D"
 			host.add_child(t3)
@@ -727,6 +749,9 @@ func _wire(name: String, t: Node3D, host: Node3D, script) -> void:
 			t.set("handle", wroot.get_node("Slider/Fill Area/Handle"))
 			t.set("text3d", host.get_node("Text3D"))
 			t.set("bar", wroot.get_node("Bar"))
+			t.set("dropdown", wroot.get_node("Dropdown"))
+			t.set("tmpDropdown", wroot.get_node("Dropdown"))
+			t.set("caption", wroot.get_node("Dropdown/Label"))
 		"TVRC":
 			var other := host.get_node("Other")
 			other.set_script(script)

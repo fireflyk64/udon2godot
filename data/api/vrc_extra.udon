@@ -1186,7 +1186,7 @@ type VRCOpenMenu
 
 type VRCTMPDropdownExtension
   static AddOptions(TMP_Dropdown, string[]): void => U.dd_add_options($1, Array($2))
-  static AddOptions(TMP_Dropdown, Sprite[]): void => pass
+  static AddOptions(TMP_Dropdown, Sprite[]): void => U.dd_add_options($1, Array($2))
   static AddOptions(TMP_Dropdown, OptionData[]): void => U.dd_add_options($1, Array($2))
 
 type VRCConstraintSourceKeyableList

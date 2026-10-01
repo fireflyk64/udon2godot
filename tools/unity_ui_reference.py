@@ -1232,6 +1232,9 @@ def drawn_color(n, group_alpha):
     m = n.comp("Mask")
     if not enabled(d) or (enabled(m) and _num(m.get("m_ShowMaskGraphic", 1), 1) == 0):
         c[3] = 0.0
+    # Image.GenerateFilledSprite: a filled sprite with (nearly) no fill amount has no mesh
+    if name == "Image" and int(_num(d.get("m_Type", 0))) == 3 and _ref_id(d.get("m_Sprite")) and _num(d.get("m_FillAmount", 1), 1) < 0.001:
+        c[3] = 0.0
     return c
 
 

@@ -193,15 +193,31 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       "Overrides" canvas (26 expectations that failed before).
       Layout components keep their settings when disabled (`enabled: false` in the metadata), so
       `layoutGroup.enabled` of a script works and no longer hides the object.
+- [x] Dropdown lists (20 templates in the cloned repositories: Udonity 15, UdonUtils 3, the
+      model loader 2). A click opened Godot's popup window, which is not Unity's objects (no
+      template look, and on a world canvas it opened as a window of the screen).
+      `runtime/dropdown.gd` is now a helper child (`UnidotDropdown`, metadata `unidot_dropdown`
+      with the caption / template / item references) and ports Dropdown.Show: a copy of the
+      Template ("Dropdown List"), one copy of its item per option (text, image, Toggle on for
+      the value), the content sized to the items, the list shortened to its content, flipped
+      when it leaves the canvas (FlipLayoutOnAxis), a blocker over the canvas that closes it.
+      The OptionButton stays as the holder of options and value; its own popup opens only
+      without a template. `tests/unity_ui` has three dropdowns (3 options, 10 options that
+      scroll, one at the lower edge that flips); `test/ui_dropdown_test.gd` (run by
+      `scripts/test_ui.sh`) clicks through the viewport and checks Unity's numbers: 37 checks.
+      Scripts: `Show` / `Hide` / `IsExpanded`, `captionText` / `captionImage` / `template` /
+      `itemText` / `itemImage`, and option changes (`ClearOptions`, `AddOptions`, `options`)
+      refresh the caption (coverage TWidgets: 16 checks).
+      Differences left: the list is the last child of the canvas root (Unity leaves it under
+      the Dropdown and draws it on top with a sorting canvas; Godot picks by tree order), an
+      item is named `Item 1_ B` (a node name cannot hold Unity's colon), no fade in / out.
 - [ ] Left over, not positioning of the pool table:
       * TextMeshPro's Ellipsis mode truncates without drawing the ellipsis; Page and Linked
         modes truncate.
-      * Radial fills of an Image; sprite tags and font assets of TextMeshPro (a system font
-        family stands in for every font asset); sprites packed tightly or rotated in an atlas.
+      * Sprite tags and font assets of TextMeshPro (a system font family stands in for every
+        font asset); sprites packed tightly or rotated in an atlas.
       * Selectable transitions other than colour tint (sprite swap, animation; none of the cloned
         repositories uses them); tints are applied at once (no fade).
-      * Dropdown lists are Godot's popup, not Unity's template object (3 dropdowns each in
-        VUdon-Udonity and the model loader tablet).
       * A rect with a negative size (stretched with insets larger than the parent): a Control
         cannot be negative; children anchored to it are off (flagged, not compared).
       * An InputField smaller than one line of its font keeps Godot's minimum height.
@@ -260,8 +276,31 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       `Custom/StandardScrollingEmissive` (another table model), `metaphira/ScreenOverlay`
       (camera override module). No Unity pictures to compare with: the ports follow the
       shader sources line by line.
-- [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts,
-      Dropdown templates; Animator; constraints components; ...).
+- [ ] vrcbce (VRCBilliards Community Edition, `refs/vrcbce`): a second pool table, so far only
+      converted and compile-checked, never imported. An independent check of the canvas work:
+      three menu styles (M.O.O.N 140 rects, esnya 126, akalink 191; 10 canvases each, read by
+      the reference tool without changes), 20 plain Transform children under rects, 12 rects
+      under plain Transforms, 15 rects rotated about x / y, TextMeshPro font assets whose source
+      fonts are in the package (Calistoga 87 texts, TT Norms 8), one radial fill.
+      - [ ] Import the package through the world pipeline; what the importer reports.
+      - [ ] UI reference comparison of the three table prefabs (static), every difference
+            fixed at its source with a case in `tests/unity_ui`.
+      - [ ] Pixel check of the canvases on a display.
+      - [ ] TextMeshPro font assets: the source font file of the asset (`m_SourceFontFileGUID`)
+            instead of the stand-in family; the stand-in stays for assets without a source.
+      - [x] Radial fills of an Image (Radial 90 / 180 / 360; they were drawn whole).
+            `ui_sprite.gd` ports Image.GenerateFilledSprite / RadialCut; `radial_covers` is the
+            meaning of the fill (a swept angle in the rect's proportions, written without the
+            quads): the unit test holds one against the other at 61,839 points over every
+            method, origin and direction (26,517 differ when the direction is flipped), the
+            pixel check uses it (and leaves out three pixels around the edge). `tests/unity_ui`:
+            16 radial Images on the "Sprites" canvas. A filled sprite with no fill amount draws
+            nothing (the reference and the dump report it); `fillCenter` of a script is the
+            sprite's setting now.
+      - [ ] One table runs: a scenario that opens the menu and starts a game.
+      - [ ] In `scripts/test_world_community.sh` (and so in CI).
+- [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts;
+      Animator; constraints components; ...).
 
 - [x] Upstream fixed the 1MB direct-jump limit. Update the upstream godot-sandbox tooling to get the fixes.
       `refs/godot-sandbox` is at upstream main + the `MAX_LEVEL = 16` patch; the rebuilt library is in
@@ -288,8 +327,8 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       become SubViewport + quad (sized to the union of their content, nested canvases are containers),
       overlay canvases a CanvasLayer; `Button.onClick`/`Toggle`/`Slider`/`InputField` persistent calls
       connect to `SendCustomEvent` (26 wired in the billiards table). Layout groups, sprites
-      (9-slice), ScrollRect and text are done (see the first section). Open: TMP font assets,
-      Dropdown item templates.
+      (9-slice), ScrollRect, text and Dropdown lists are done (see the first section). Open: TMP
+      font assets.
 - [x] Test hooks: `U.ui_press(node, value)`, `U.ui_click_world(canvas, point)`, `Udon.simulate_key/axis/
       button/mouse_*`, `Udon.input_event("InputJump", ...)`; `world_runner.gd --scenario` drives a world
       (`godot_world_template/scenarios/billiards.gd` opens the lobby, joins, starts 8-ball and plays a
