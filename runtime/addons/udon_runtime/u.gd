@@ -3827,6 +3827,18 @@ func ui_set_text(n, s) -> void:
 	if t is Control:
 		_ui_layout_dirty(t)
 
+## CanvasGroup (unidot's runtime/canvas_group.gd): alpha, interactable, blocksRaycasts,
+## ignoreParentGroups.
+const _UiCanvasGroup := preload("res://addons/unidot_importer/runtime/canvas_group.gd")
+
+func canvas_group_get(n, key: String):
+	return _UiCanvasGroup.state(_ui_ctl(n))[key]
+
+func canvas_group_set(n, key: String, value) -> void:
+	var c: Control = _ui_ctl(n)
+	if c != null:
+		_UiCanvasGroup.update(c, {key: value})
+
 ## A setting of the text (`unidot_text`: style, rich, auto, min, max, wrap, overflow).
 func ui_text_get(n, key: String, default):
 	var t: Node = _ui_draw_node(n)

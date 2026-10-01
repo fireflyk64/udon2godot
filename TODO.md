@@ -174,6 +174,16 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       mismatches, and the comparison of what is drawn found an Image on a Slider's own object
       that was not drawn and a reference that did not know Dropdown.RefreshShownValue).
       Left: inertia and the elastic spring (the content snaps back), `Scrollbar.numberOfSteps`.
+- [x] Text that is cut at its rect (uGUI's vertical Truncate, TextMeshPro's Truncate / Ellipsis /
+      Masking): a truncated text shows the lines that fit entirely, placed by the vertical
+      alignment (it was clipped from the top, a line that fits only partly drawn partly); a
+      masked one is drawn whole and clipped at the rect. Same drawing child as the overflow.
+- [x] CanvasGroup (`runtime/canvas_group.gd`): a group that is not interactable or does not block
+      raycasts takes no pointer input, nor does anything below it (`mouse_behavior_recursive`;
+      the group's Control used to swallow clicks or let them through to its children), the
+      Selectables below a non-interactable group are in their disabled state
+      (Selectable.IsInteractable), `ignoreParentGroups` starts over; overrides on prefab
+      instances; `alpha` / `interactable` / `blocksRaycasts` of a script.
 - [x] UI component overrides on prefab instances: text, font size / style, colour (by member:
       `m_Color.r`), `m_Enabled` (it used to hide the object), sprite, Selectable colours /
       interactable, `m_IsOn`, Slider value / range / direction, layout group / element / fitter
@@ -184,14 +194,14 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       Layout components keep their settings when disabled (`enabled: false` in the metadata), so
       `layoutGroup.enabled` of a script works and no longer hides the object.
 - [ ] Left over, not positioning of the pool table:
-      * A text that is cut at its rect (uGUI's vertical Truncate, TextMeshPro's Truncate /
-        Ellipsis / Masking) is clipped at the rect's edge from the top: a line that fits only
-        partly is drawn partly, and the text is not centred when it is too high.
+      * TextMeshPro's Ellipsis mode truncates without drawing the ellipsis; Page and Linked
+        modes truncate.
       * Radial fills of an Image; sprite tags and font assets of TextMeshPro (a system font
         family stands in for every font asset); sprites packed tightly or rotated in an atlas.
-      * Selectable transitions other than colour tint (sprite swap, animation); tints are
-        applied at once (no fade); `CanvasGroup.interactable` does not disable the selectables
-        below it; CanvasGroup overrides on prefab instances.
+      * Selectable transitions other than colour tint (sprite swap, animation; none of the cloned
+        repositories uses them); tints are applied at once (no fade).
+      * Dropdown lists are Godot's popup, not Unity's template object (3 dropdowns each in
+        VUdon-Udonity and the model loader tablet).
       * A rect with a negative size (stretched with insets larger than the parent): a Control
         cannot be negative; children anchored to it are off (flagged, not compared).
       * An InputField smaller than one line of its font keeps Godot's minimum height.
@@ -229,6 +239,20 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
             `Frame.png`, `Bar.png`, `Sheet.png` written by the fixture generator and a "Sprites"
             canvas (27 Images); the pixel check maps 25 points of every such Image through the
             slices and checks that holes show what is behind; `TWidgets` drives a filled Image.
+- [ ] Pool table shader ports. 12 custom shaders are approximated with StandardMaterial3D
+      (`world_doctor.py` lists them): the cloth has no tint / detail / rim lights, the scorecard
+      lamps do not follow the score, the shot timer does not run, the guide line is not cut at
+      the table's edge, and the desktop key hint (`metaphira/GameUI`, a screen overlay) hangs in
+      the world as a quad.
+      - [ ] Script-set properties reach a port's uniforms (`SetFloat("_Floor")` was sent as
+            `Floor`, which no port has; colour arrays, matrices in Unity space).
+      - [ ] `metaphira/TableSurface` (tint map, cloth detail, Oklab hue shift, timer rim lights).
+      - [ ] `metaphira/Scorecard`, `metaphira/Timer`.
+      - [ ] `harry_t/cliptable` (guide line), `harry_t/text_alpha`, `harry_t/twoframe`.
+      - [ ] `metaphira/GameUI` (screen overlay).
+      - [ ] `metaphira/CueCenter`; `metaphira/Physics` / `PhysicsDummy` if they are visible.
+      - [ ] Checks: the materials are ShaderMaterials after import, the uniforms the scripts set
+            arrive (scenario), screenshots.
 - [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts,
       Dropdown templates; Animator; constraints components; ...).
 

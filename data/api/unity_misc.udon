@@ -513,14 +513,14 @@ type Canvas : Behaviour kind=component gd=CanvasLayer extern=UnityEngineCanvas
   scaleFactor: float => 1.0
 
 type CanvasGroup : Behaviour kind=component gd=Control extern=UnityEngineCanvasGroup
-  alpha: float => $0.modulate.a
-  set alpha: float => $0.modulate.a = $v
-  interactable: bool => ($0.mouse_filter != 2)
-  set interactable: bool => $0.mouse_filter = (0 if $v else 2)
-  blocksRaycasts: bool => ($0.mouse_filter != 2)
-  set blocksRaycasts: bool => $0.mouse_filter = (0 if $v else 2)
-  ignoreParentGroups: bool => false
-  set ignoreParentGroups: bool => pass
+  alpha: float => float(U.canvas_group_get($0, "alpha"))
+  set alpha: float => U.canvas_group_set($0, "alpha", $v)
+  interactable: bool => bool(U.canvas_group_get($0, "interactable"))
+  set interactable: bool => U.canvas_group_set($0, "interactable", $v)
+  blocksRaycasts: bool => bool(U.canvas_group_get($0, "blocksRaycasts"))
+  set blocksRaycasts: bool => U.canvas_group_set($0, "blocksRaycasts", $v)
+  ignoreParentGroups: bool => bool(U.canvas_group_get($0, "ignoreParentGroups"))
+  set ignoreParentGroups: bool => U.canvas_group_set($0, "ignoreParentGroups", $v)
 
 type Graphic : Behaviour kind=component gd=Control extern=UnityEngineUIGraphic
   color: Color => U.ui_get_color($0)

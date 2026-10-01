@@ -654,8 +654,8 @@ def mask(show=True):
     return ("Mask", "  m_ShowMaskGraphic: %d\n" % show)
 
 
-def canvas_group(alpha=1.0, interactable=True):
-    return ("CanvasGroup", "  m_Alpha: %s\n  m_Interactable: %d\n  m_BlocksRaycasts: 1\n  m_IgnoreParentGroups: 0\n" % (num(alpha), interactable))
+def canvas_group(alpha=1.0, interactable=True, blocks=True, ignore_parents=False):
+    return ("CanvasGroup", "  m_Alpha: %s\n  m_Interactable: %d\n  m_BlocksRaycasts: %d\n  m_IgnoreParentGroups: %d\n" % (num(alpha), interactable, blocks, ignore_parents))
 
 
 def _padding(p):
@@ -1234,6 +1234,17 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     inner = b.box("Inner", group, {"amin": (0.5, 0), "amax": (1, 1), "size": (0, 0)}, [canvas_group(0.5)])
     b.img("Quarter", inner, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(1, 1, 1, 0.8))
     f.node("TextOff", c, {"pos": (0, -40), "size": (100, 20)}, [renderer(), disable(text("not drawn", 12, (1, 1, 1, 1)))])
+    # a group that is not interactable: the buttons below are in their disabled state, except
+    # below a group that ignores its parents
+    locked = b.box("Locked", c, {"pos": (-60, -60), "size": (300, 34)}, [canvas_group(1, interactable=False)])
+    lb = f.node("LockedButton", locked, {"amin": (0, 0), "amax": (0.3, 1), "size": (-4, -4)}, [renderer(), image((1, 1, 1, 1))])
+    f.add(lb, button(target=lb.components[1][0], disabled=(0.4, 0.4, 0.4, 0.5)))
+    free = b.box("Free", locked, {"amin": (0.35, 0), "amax": (0.65, 1), "size": (0, 0)}, [canvas_group(1, ignore_parents=True)])
+    fb = f.node("FreeButton", free, {"amin": (0, 0), "amax": (1, 1), "size": (-4, -4)}, [renderer(), image((1, 1, 1, 1))])
+    f.add(fb, button(target=fb.components[1][0], disabled=(0.4, 0.4, 0.4, 0.5)))
+    ghost = b.box("Ghost", locked, {"amin": (0.7, 0), "amax": (1, 1), "size": (0, 0)}, [canvas_group(0.5, blocks=False, ignore_parents=True)])
+    gb = f.node("GhostButton", ghost, {"amin": (0, 0), "amax": (1, 1), "size": (-4, -4)}, [renderer(), image((1, 1, 1, 1))])
+    f.add(gb, button(target=gb.components[1][0]))
 
     # text
     f.node("TmpTags", c, {"pos": (-200, -100), "size": (380, 30)}, [renderer(), tmp("<b>Bold</b> <color=#FFD700>gold</color> <size=13>small</size> 1<<2 <unknown> <#00ff00>green</color> end", 20)])

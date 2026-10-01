@@ -1112,6 +1112,21 @@ def _color(d, default=(1.0, 1.0, 1.0, 1.0)):
     return [_num(d.get(k), default[i]) for i, k in enumerate("rgba")]
 
 
+def groups_allow_interaction(n):
+    """Selectable.IsInteractable: no CanvasGroup at or above it says no (a group that ignores
+    its parents ends the search)."""
+    cur = n
+    while cur is not None:
+        g = cur.comp("CanvasGroup")
+        if enabled(g):
+            if _num(g.get("m_Interactable", 1), 1) == 0:
+                return False
+            if _num(g.get("m_IgnoreParentGroups", 0)) != 0:
+                return True
+        cur = cur.parent
+    return True
+
+
 def apply_selectables(nodes):
     """What a Selectable writes to other objects when it is enabled (Selectable.OnEnable →
     DoStateTransition, Toggle.PlayEffect, Slider.UpdateVisuals), before any input."""
@@ -1127,7 +1142,7 @@ def apply_selectables(nodes):
             target = owner.get(_ref_id(d.get("m_TargetGraphic")))
             if target is not None and int(_num(d.get("m_Transition", 1), 1)) == 1:
                 block = d.get("m_Colors") or {}
-                interactable = _num(d.get("m_Interactable", 1), 1) != 0
+                interactable = _num(d.get("m_Interactable", 1), 1) != 0 and groups_allow_interaction(n)
                 tint = _color(block.get("m_NormalColor" if interactable else "m_DisabledColor"))
                 mul = _num(block.get("m_ColorMultiplier", 1), 1)
                 target.renderer_color = [min(max(x * mul, 0.0), 1.0) for x in tint]
