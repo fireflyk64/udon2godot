@@ -35,16 +35,45 @@ func run(r):
 		r.check(pm != null and pm.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_RING and is_equal_approx(pm.spread, 20.0) and is_equal_approx(pm.emission_ring_radius, 0.25), "cone shape → ring emission")
 		r.check(pm != null and pm.color_ramp != null and pm.turbulence_enabled, "colour ramp and turbulence")
 		r.check(gp.material_override is BaseMaterial3D and gp.material_override.billboard_mode == BaseMaterial3D.BILLBOARD_PARTICLES, "billboard particle material")
+	# the roots of the scene in Unity's order (the file's SceneRoots list)
+	var roots: Array = []
+	for c in probe.get_parent().get_children() if probe != null else []:
+		if not (c is WorldEnvironment) and c.owner != null and not String(c.name).begins_with("Udon"):
+			roots.append(String(c.name))
+	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid"]
+	r.check(roots.slice(0, want.size()) == want, "scene roots in Unity's order: " + str(roots))
+	await _constraint_checks(r)
 	await _ui_checks(r, fx)
+	return true
+
+
+## Unity's Animations constraints authored in the scene are solved by the run time: Ball is at
+## Unity (5, 1, -3), turned 90 degrees about y; Target at (-2, 0.5, 4).
+func _constraint_checks(r) -> void:
+	var u = r.u()
+	var near := func(n: Node, want: Vector3) -> bool:
+		return n is Node3D and (u.get_position(n) as Vector3).distance_to(want) < 0.001
+	var shadow: Node = r.find("Shadow")
+	r.check(near.call(shadow, Vector3(5, 0.8, -3)), "PositionConstraint: Shadow is 0.2 below Ball: " + (str(u.get_position(shadow)) if shadow != null else "missing"))
+	var twin: Node = r.find("Twin")
+	r.check(near.call(twin, Vector3(6, 1, -3)), "two constraints on one object: the position ... " + (str(u.get_position(twin)) if twin != null else "missing"))
+	var ball: Node = r.find("Ball")
+	r.check(twin is Node3D and ball is Node3D and (twin as Node3D).global_transform.basis.is_equal_approx((ball as Node3D).global_transform.basis) and not (ball as Node3D).global_transform.basis.is_equal_approx(Basis.IDENTITY), "... and the rotation of Ball")
+	var idle: Node = r.find("Idle")
+	r.check(near.call(idle, Vector3(9, 9, 9)), "a constraint that is not active moves nothing: " + (str(u.get_position(idle)) if idle != null else "missing"))
+	var mid: Node = r.find("Mid")
+	r.check(near.call(mid, Vector3(-0.25, 7, 2.25)), "two weighted sources, x and z only: " + (str(u.get_position(mid)) if mid != null else "missing"))
+	# the source moves, the constrained objects follow
+	if ball is Node3D and shadow is Node3D:
+		u.set_position(ball, Vector3(4, 2, -1))
+		await r.wait(3)
+		r.check(near.call(shadow, Vector3(4, 1.8, -1)) and near.call(twin, Vector3(5, 2, -1)), "the constrained objects follow their source: " + str(u.get_position(shadow)))
 
 
 ## UiCanvas: 1000 × 600 px at scale 0.001 (1 × 0.6 m) centred at Unity (0, 1.5, 3); buttons TL/TR/
 ## BL/BR (120 × 60, centres 60 px in from the corners), Center (200 × 80), ScaledBtn (80 × 30 inside a
 ## 2× container at (0, 200)), a nested canvas with a text. Checks the plane fit, the world ↔ canvas
 ## mapping and clicks through it; with a display, samples the rendered colours at the projected
-	return true
-
-
 ## button centres (texture orientation) and clicks through the window.
 func _ui_checks(r, fx: Node) -> void:
 	var cv: Node = r.find("UiCanvas")

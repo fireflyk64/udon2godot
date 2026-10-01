@@ -108,6 +108,13 @@ namespace Coverage
             int mask = LayerMask.GetMask("Player", "Default");
             Check((mask & (1 << 9)) != 0 && (mask & 1) != 0, "LayerMask.GetMask");
             Check(GameObject.Find("Other") == other, "GameObject.Find");
+            GameObject found = GameObject.Find("Child/GrandChild");
+            Check(found != null && found.transform.parent == child, "GameObject.Find with a path below the name");
+            Check(GameObject.Find("NoSuchObject") == null, "GameObject.Find of a name that is not there");
+            child.gameObject.SetActive(false);
+            Check(GameObject.Find("Child") == null && GameObject.Find("GrandChild") == null, "GameObject.Find sees active objects only");
+            child.gameObject.SetActive(true);
+            Check(GameObject.Find("GrandChild") == found, "... and finds them again once active");
             Check(GameObject.FindGameObjectWithTag("Player") == go, "FindGameObjectWithTag");
 
             // components

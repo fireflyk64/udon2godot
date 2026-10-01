@@ -203,9 +203,10 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   `unidot_text` (`ui_text.gd`): the Unity string and its settings; rich text becomes BBCode by
   a tokenizer that knows TextMeshPro's and uGUI's tags (anything else in angle brackets stays
   text), font styles, small caps, auto-sizing, text higher than its rect drawn around the
-  alignment point as TextMeshPro's overflow mode does; the font is a system font with the
-  metrics of Liberation Sans (TextMeshPro's default, metric-compatible with uGUI's Arial),
-  since TMP font assets are not converted. `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
+  alignment point as TextMeshPro's overflow mode does. A TextMeshPro font asset made from a
+  font file of the project is drawn with that font (bold and italic synthesized, as
+  TextMeshPro does); other texts get a system font with the metrics of Liberation Sans
+  (TextMeshPro's default, metric-compatible with uGUI's Arial). `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
   enabled — `image.enabled = false` hides the graphic, not the object and its children.
   `unidot_selectable` (`selectable.gd`): the colour tint of the target graphic by selection
   state (a button whose normal colour has alpha 0 is invisible until hovered), the Toggle's
@@ -400,7 +401,8 @@ Physics callbacks are dispatched by the runtime: `OnTriggerEnter/Exit/Stay`,
 behaviour defines a collision handler; both sides of an event are served, so scripts on static
 geometry hear about bodies landing on them. Unity and VRChat constraints (position, rotation,
 scale, parent, aim, look-at) are solved every frame after `Update` from the sources a script
-configures. Shape casts refine Godot's `cast_motion` (which resolves to about 1/256 of the
+configures; Unity's constraint components authored in a scene arrive through the importer
+(`udon_constraint` metadata) and join the same store. Shape casts refine Godot's `cast_motion` (which resolves to about 1/256 of the
 sweep) so long sweeps report exact distances and thin obstacles are not skipped.
 
 Component lookups take the Godot class name or the converted class's `udon_class()`; Unity
@@ -439,7 +441,7 @@ another argument list: styled parsing, string comparisons and ranges, binary sea
 (the coordinate convention shared with unidot) and `TNulls` (null where the generated code
 has a value type, members that hide or override base members).
 `godot_project/coverage_runner.gd` builds the scene each fixture expects, runs it, verifies the
-engine-side state the script cannot see, and reports every failed check; all 1070 checks pass.
+engine-side state the script cannot see, and reports every failed check; all 1074 checks pass.
 
 ### Debug switches
 

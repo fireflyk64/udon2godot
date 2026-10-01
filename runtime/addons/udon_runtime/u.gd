@@ -1371,17 +1371,32 @@ func find_transform(n: Node, path: String) -> Node:
 		cur = RT.identity(next)
 	return cur
 
+## GameObject.Find: the first active GameObject of that name, in the order of the hierarchy; a
+## name with slashes is a path from it, a leading slash starts at the roots of the scene. Only
+## GameObjects are looked at: not the nodes their components became, nor the viewport and root
+## control of a canvas (every canvas has a root control named "Canvas").
 func find_object(name_: String) -> Node:
 	var scene: Node = get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	var np: String = node_path_from_unity(name_)
-	if name_.begins_with("/"):
-		return scene.get_node_or_null(np.substr(1))
-	if np.contains("/"):
-		var first: Node = scene.find_child(np.get_slice("/", 0), true, false)
-		return first.get_node_or_null(np.substr(np.find("/") + 1)) if first != null else null
-	return scene.find_child(np, true, false)
+	var np: String = node_path_from_unity(name_).trim_prefix("/")
+	var first: String = np.get_slice("/", 0)
+	if first == "":
+		return null
+	var rest: String = np.substr(first.length() + 1) if np.contains("/") else ""
+	return _find_object_below(scene, first, rest, not name_.begins_with("/"))
+
+func _find_object_below(n: Node, first: String, rest: String, deep: bool) -> Node:
+	for c in go_children(n):
+		if String(c.name) == first and is_active_in_hierarchy(c):
+			var hit: Node = c if rest == "" else find_transform(c, rest)
+			if hit != null and is_active_in_hierarchy(hit):
+				return hit
+		if deep:
+			var below: Node = _find_object_below(c, first, rest, true)
+			if below != null:
+				return below
+	return null
 
 func find_with_tag(tag: String) -> Node:
 	var all: Array = find_all_with_tag(tag)
@@ -5619,8 +5634,60 @@ var _constraints: Dictionary = {}
 func _constraint(n: Node) -> Dictionary:
 	var id: int = n.get_instance_id()
 	if not _constraints.has(id):
+		_adopt_constraints_of(n)
+	if not _constraints.has(id):
 		_constraints[id] = {"active": false, "weight": 1.0, "locked": false, "sources": []}
 	return _constraints[id]
+
+## Constraints authored in the scene: the importer leaves their settings in the node's
+## `udon_constraint` metadata ({list: [{kind, active, weight, weights, ...}], "src_<c>_<s>":
+## NodePath of each source, "up_<c>": NodePath}) and the node in the group of that name. They
+## join the store: the first one of a node as the node's own constraint (what a script's
+## GetComponent finds), further ones (a position and a rotation constraint on one object)
+## under keys of their own.
+var _constraints_adopted: Dictionary = {}
+var _constraints_scan: bool = true
+var _constraints_watching: bool = false
+
+func _adopt_constraints_of(n: Node) -> void:
+	var id: int = n.get_instance_id()
+	if _constraints_adopted.has(id) or not n.has_meta("udon_constraint"):
+		return
+	_constraints_adopted[id] = true
+	var cfg: Dictionary = n.get_meta("udon_constraint")
+	var list: Array = cfg.get("list", [])
+	for ci in range(list.size()):
+		var c: Dictionary = (list[ci] as Dictionary).duplicate(true)
+		var sources: Array = []
+		var weights: Array = c.get("weights", [])
+		for si in range(weights.size()):
+			var np = cfg.get("src_%d_%d" % [ci, si])
+			sources.append({"sourceTransform": n.get_node_or_null(np) if np is NodePath else null, "weight": float(weights[si])})
+		c["sources"] = sources
+		c.erase("weights")
+		var up = cfg.get("up_%d" % ci)
+		if up is NodePath:
+			c["worldUpObject"] = n.get_node_or_null(up)
+		c["target"] = n
+		if ci == 0 and not _constraints.has(id):
+			_constraints[id] = c
+		else:
+			_constraints["%d:%d" % [id, ci]] = c
+
+func _adopt_constraints() -> void:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	if not _constraints_watching:
+		_constraints_watching = true
+		tree.node_added.connect(func(n: Node) -> void:
+			if n.is_in_group(&"udon_constraint"):
+				_constraints_scan = true)
+	if not _constraints_scan:
+		return
+	_constraints_scan = false
+	for n in tree.get_nodes_in_group(&"udon_constraint"):
+		_adopt_constraints_of(n)
 
 func constraint_get(n: Node, key: String, default):
 	if n == null:
@@ -9077,15 +9144,24 @@ func _avg_rotation(rots: Array, weights: Array) -> Quaternion:
 	return acc
 
 func solve_constraints() -> void:
+	_adopt_constraints()
 	for id in _constraints.keys():
 		var c: Dictionary = _constraints[id]
 		if not c.get("active", false):
 			continue
-		var n = instance_from_id(id)
+		var held = c.get("target")
+		if held != null and not is_instance_valid(held):
+			held = null
+		# the object the constraint is on: the node of the key, or of a further authored one
+		var n = instance_from_id(id) if id is int else held
 		if not (n is Node3D) or not n.is_inside_tree():
+			if id is String:
+				_constraints.erase(id)   # an authored constraint whose node is gone
 			continue
-		var target: Node3D = c.get("target") if c.get("target") is Node3D else n
-		_solve_one(target, c)
+		# (an authored constraint on an inactive object does nothing)
+		if n.has_meta("udon_constraint") and not is_active_in_hierarchy(n):
+			continue
+		_solve_one(held if held is Node3D else n, c)
 
 func _solve_one(n: Node3D, c: Dictionary) -> void:
 	var kind: String = str(c.get("kind", ""))

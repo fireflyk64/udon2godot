@@ -14,6 +14,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-/tmp/udon2godot_worlds/ui}
 UNIDOT=${UNIDOT:-refs/unidot_importer}
+# (an import without the importer does not end by itself)
+[ -f "$UNIDOT/ui_integration.gd" ] || { echo "no unidot checkout with the UI work at $UNIDOT"; exit 1; }
 . scripts/_godot_env.sh   # GODOT → scripts/godot.sh (memory and lifetime caps)
 SCENE=unity_ui/UiCases/UiCases.tscn
 CODE=0

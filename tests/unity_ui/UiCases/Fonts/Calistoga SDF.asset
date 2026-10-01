@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71c1514a6bd24e1e882cebbe1904ce04, type: 3}
+  m_Name: Calistoga SDF
+  m_EditorClassIdentifier: 
+  hashCode: 841032664
+  material: {fileID: 0}
+  materialHashCode: 0
+  m_Version: 1.1.0
+  m_SourceFontFileGUID: f0a7c1d2e3b44f5a8697a1b2c3d4e5f6
+  m_SourceFontFile_EditorRef: {fileID: 12800000, guid: f0a7c1d2e3b44f5a8697a1b2c3d4e5f6,
+    type: 3}
+  m_SourceFontFile: {fileID: 0}
+  m_AtlasPopulationMode: 0
+  m_FaceInfo:
+    m_FaceIndex: 0
+    m_FamilyName: Calistoga
+    m_StyleName: Regular
+    m_PointSize: 81
+    m_Scale: 1
+    m_LineHeight: 105.299995
+    m_AscentLine: 81
+    m_CapLine: 57
+    m_MeanLine: 43
+    m_Baseline: 0
+    m_DescentLine: -24.3
+    m_SuperscriptOffset: 81
+    m_SuperscriptSize: 0.5
+    m_SubscriptOffset: -24.3
+    m_SubscriptSize: 0.5
+    m_UnderlineOffset: -7.29
+    m_UnderlineThickness: 8.262
+    m_StrikethroughOffset: 17.2
+    m_StrikethroughThickness: 8.262
+    m_TabWidth: 15
+  m_GlyphTable: []
+  m_CharacterTable: []
+  m_AtlasTextures: []
+  m_AtlasTextureIndex: 0
+  m_AtlasWidth: 1024
+  m_AtlasHeight: 1024
+  m_AtlasPadding: 9
+  m_AtlasRenderMode: 4165
+  m_FallbackFontAssetTable: []
+  m_CreationSettings:
+    sourceFontFileName: 
+    sourceFontFileGUID: f0a7c1d2e3b44f5a8697a1b2c3d4e5f6
+    pointSizeSamplingMode: 1
+    pointSize: 81
+    padding: 9
+  fontWeights: []
+  normalStyle: 0
+  normalSpacingOffset: 0
+  boldStyle: 0.75
+  boldSpacing: 7
+  italicStyle: 35
+  tabSize: 10

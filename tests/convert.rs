@@ -292,3 +292,23 @@ fn null_in_value_slots_and_members_along_a_class_chain() {
     // untouched arrays keep the plain type
     assert!(derived.contains("@export var failures: Array = U.new_array(64, null)"));
 }
+
+#[test]
+fn a_partial_class_is_known_by_the_file_named_after_it() {
+    // (vrcbce's PoolStateManager: eight parts, components carry the GUID of PoolStateManager.cs)
+    let parts = [
+        ("Scripts/Table.Base.cs", "using UdonSharp; public partial class Table : UdonSharpBehaviour { public int a; }"),
+        ("Scripts/Table.Rules.cs", "public partial class Table { public int b; }"),
+        ("Scripts/Table.cs", "public partial class Table { public int c; }"),
+        ("Scripts/Helpers.cs", "using UdonSharp; public class Other : UdonSharpBehaviour { }"),
+    ];
+    let units: Vec<_> = parts.iter().map(|(path, src)| parse_source(src, path).unwrap()).collect();
+    let mut diags = Diagnostics::new();
+    let prog = Program::build(&units, Catalog::load_embedded().unwrap(), ExternTable::load_embedded(), &mut diags);
+    let table = prog.classes.iter().find(|c| c.name == "Table").unwrap();
+    assert_eq!(table.source_files.len(), 3);
+    assert_eq!(table.script_file(), Some("Scripts/Table.cs"));
+    // no file of that name: the first part
+    let other = prog.classes.iter().find(|c| c.name == "Other").unwrap();
+    assert_eq!(other.script_file(), Some("Scripts/Helpers.cs"));
+}

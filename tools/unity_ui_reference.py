@@ -483,7 +483,7 @@ class Node:
         parts = []
         n = self
         while n is not None and n is not stop:
-            parts.append(n.name)
+            parts.append(str(n.name).replace("/", "_"))   # (a name may hold the separator: "github.com/VRCBilliards/vrcbce")
             n = n.parent
         return "/".join(reversed(parts))
 
@@ -1287,6 +1287,45 @@ def shown_text(n):
     return "".join(out)
 
 
+class Fonts:
+    """The font a TextMeshPro text is drawn with, where the files say so: the family of its font
+    asset, when the font file the asset was made from is in the project (the importer can then
+    use that file; without it any stand-in is as good as another)."""
+
+    def __init__(self, assets):
+        self.assets = assets
+        self._family = {}
+
+    def family(self, ref):
+        if not isinstance(ref, dict) or not _ref_id(ref):
+            return None
+        guid = ref.get("guid", "")
+        if guid not in self._family:
+            out = None
+            path = self.assets.guid_to_path.get(guid)
+            if path and os.path.isfile(path):
+                try:
+                    text = open(path, errors="replace").read()
+                except OSError:
+                    text = ""
+                source = re.search(r"^\s*m_SourceFontFileGUID:\s*([0-9a-f]{32})", text, re.M) or re.search(r"^\s*sourceFontFileGUID:\s*([0-9a-f]{32})", text, re.M)
+                family = re.search(r"^\s*m_FamilyName:\s*(.+?)\s*$", text, re.M)
+                if source and family and self.assets.guid_to_path.get(source.group(1)):
+                    out = family.group(1).strip("'\"")
+            self._family[guid] = out
+        return self._family[guid]
+
+
+_fonts = None   # set by reference()
+
+
+def font_family(n):
+    name, d = graphic_of(n)
+    if name == "TextMeshProUGUI" and _fonts is not None:
+        return _fonts.family(d.get("m_fontAsset"))
+    return None
+
+
 def font_size(n):
     """The font size of a text that is not auto-sized."""
     name, d = graphic_of(n)
@@ -1516,6 +1555,8 @@ def describe_canvas(canvas, layout, screen):
                 e["text"] = text
                 if font_size(c) is not None:
                     e["font_size"] = font_size(c)
+                if font_family(c) is not None:
+                    e["font"] = font_family(c)
             if c.field_text:
                 e["field_text"] = True   # drawn by the input field itself
             entry["nodes"].append(e)
@@ -1525,7 +1566,9 @@ def describe_canvas(canvas, layout, screen):
 
 
 def reference(assets_dir, target, screen=(1152.0, 648.0)):
+    global _fonts
     assets = Assets(assets_dir)
+    _fonts = Fonts(assets)
     model = assets.flatten(target)
     nodes, roots = build_graph(model, assets)
     layout = Layout(Sprites(assets).preferred, nodes)
@@ -1555,6 +1598,7 @@ def _tree(nodes):
 
 
 def _same_name(want, got):
+    got = got.strip()   # (a name may end in a blank: "Zoom: ")
     return got == want or re.fullmatch(re.escape(want) + r"_?\d+", got) is not None or re.fullmatch("@?" + re.escape(want) + r"@\d+", got) is not None
 
 
@@ -1607,7 +1651,9 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                 d = dch["entry"]
                 diag = math.dist(e["corners"][0], e["corners"][2])
                 limit = tol + diag * rel
-                worst = max(math.dist(a, b) if all(math.isfinite(x) for x in b) else float("inf") for a, b in zip(e["corners"], d["corners"]))
+                # (an overlay canvas is drawn without perspective: z places nothing on the screen)
+                dims = 3 if rc["mode"] == "world" else 2
+                worst = max(math.dist(a[:dims], b[:dims]) if all(math.isfinite(x) for x in b) else float("inf") for a, b in zip(e["corners"], d["corners"]))
                 if worst > limit and not e.get("negative_size"):
                     note = "  [text-sized: needs the font]" if e.get("text_sized") else ""
                     if not e.get("text_sized") or worst > limit * 20:
@@ -1637,6 +1683,8 @@ def _drawn_problems(e, d):
         want_t, got_t = " ".join(e["text"].split()), " ".join(str(d["text"]).split())
         if want_t != got_t:
             out.append("text %r, Unity shows %r" % (got_t[:80], want_t[:80]))
+    if "font" in e and "text" in d and str(d.get("font", "")).lower() != e["font"].lower():
+        out.append("font %r, Unity's font asset is made from %r (in the project)" % (d.get("font", ""), e["font"]))
     if "font_size" in e and "font_size" in d and abs(e["font_size"] - d["font_size"]) > 0.51:
         out.append("font size %s, Unity %s" % (d["font_size"], e["font_size"]))
     return out

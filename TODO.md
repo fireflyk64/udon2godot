@@ -214,8 +214,9 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
 - [ ] Left over, not positioning of the pool table:
       * TextMeshPro's Ellipsis mode truncates without drawing the ellipsis; Page and Linked
         modes truncate.
-      * Sprite tags and font assets of TextMeshPro (a system font family stands in for every
-        font asset); sprites packed tightly or rotated in an atlas.
+      * Sprite tags of TextMeshPro; a font asset's material (outline, underlay) and its
+        fallback fonts; a font asset whose font file is not in the project gets a stand-in;
+        sprites packed tightly or rotated in an atlas.
       * Selectable transitions other than colour tint (sprite swap, animation; none of the cloned
         repositories uses them); tints are applied at once (no fade).
       * A rect with a negative size (stretched with insets larger than the parent): a Control
@@ -282,12 +283,59 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       the reference tool without changes), 20 plain Transform children under rects, 12 rects
       under plain Transforms, 15 rects rotated about x / y, TextMeshPro font assets whose source
       fonts are in the package (Calistoga 87 texts, TT Norms 8), one radial fill.
-      - [ ] Import the package through the world pipeline; what the importer reports.
-      - [ ] UI reference comparison of the three table prefabs (static), every difference
-            fixed at its source with a case in `tests/unity_ui`.
-      - [ ] Pixel check of the canvases on a display.
-      - [ ] TextMeshPro font assets: the source font file of the asset (`m_SourceFontFileGUID`)
-            instead of the stand-in family; the stand-in stays for assets without a source.
+      - [x] Import the package through the world pipeline (`scripts/import_world.sh
+            refs/vrcbce/Packages/com.vrcbilliards.vrcbce`): 21 classes convert with 0 warnings,
+            18 table prefabs and the sample scene import; 280 scripts attached, 325 UI nodes,
+            36 events wired. Found: see the next items.
+      - [x] UI reference comparison of the three table prefabs (static): M.O.O.N 117 of 117
+            nodes, esnya 103 of 103, akalink 166 of 166, 0 problems. The canvases needed no
+            importer change; the comparison did: names that end in a blank (`Zoom: `) or hold
+            the path separator (`github.com/VRCBilliards/vrcbce`), and z on overlay canvases
+            (it places nothing on the screen).
+      - [x] Pixel check of the canvases on a display: 0 misdrawn (28 / 121 / 637 points; most
+            graphics of the M.O.O.N menu are translucent or textured).
+      - [x] A partial class is known by the file named after it. `PoolStateManager` has eight
+            parts; the manifest carried the GUID of `PoolStateManager.Base.cs`, the components
+            carry that of `PoolStateManager.cs`: 19 table behaviours had no script and 73
+            references to them were unresolved. `ClassInfo::script_file` (test in
+            `tests/convert.rs`).
+      - [x] The sandbox allows 256 properties per program; `PoolStateManager` has 245 fields
+            plus its base class ("Maximum number of properties reached", later fields had no
+            property). `MAX_PROPERTIES` is 1024 in the patched godot-sandbox (`refs/godot-sandbox`,
+            one more local commit); the Linux library is rebuilt
+            (`godot_project/addons/godot_sandbox/bin`, `tools/sandbox_build`). The libraries of
+            the other platforms are the upstream release and keep the limit of 256.
+      - [x] Unity's constraint components (PositionConstraint ...: 16 per table, the ball
+            shadows) were dropped at import ("Failed to instantiate object of type
+            PositionConstraint", 301 lines). unidot has adapter classes for the six Animations
+            constraints now and hands them to plugins (`handle_constraint`); the Udon plugin
+            writes the settings to the node's `udon_constraint` metadata under the names of
+            the script API (sources as NodePaths, resolved when the scene is complete), and the
+            run time adopts them into the store `U.solve_constraints` solves: the first of an
+            object as the constraint a script's `GetComponent` finds, further ones (position
+            and rotation on one object) beside it. `tests/unity_fixture`: Ball / Shadow / Twin /
+            Idle / Mid (4 script checks, 6 scenario checks: one source with an offset, two
+            constraints on one object, an inactive one, two weighted sources on two axes, the
+            followers track a source that moves).
+      - [x] The order of a scene's roots. The fixture's new root objects changed which "Canvas"
+            `GameObject.Find` returned and which prefab instance came first: the importer
+            sorted the roots by `m_RootOrder`, which Unity 2022.2 and later no longer write
+            (the pool table scene has none), with a sort that is not stable. `convert_scene.gd`
+            reads the `SceneRoots` object (Transform or PrefabInstance file ids), falls back to
+            `m_RootOrder` (also of prefab instances) and breaks ties by file id. The fixture
+            has a SceneRoots list and a check of the imported order.
+      - [x] `GameObject.Find` looked at every Godot node: the root control of each canvas is
+            named "Canvas", component nodes have names too, inactive objects were found. It
+            walks GameObjects only now (the logical tree `transform.Find` uses), in hierarchy
+            order, active objects only, with Unity's path forms (coverage TTransform).
+      - [x] TextMeshPro font assets: the source font file of the asset (`m_SourceFontFileGUID`)
+            instead of the stand-in family. `ui_integration.handle_scripted_object` turns the
+            font asset into a FontVariation of its font file (bold and italic synthesized as
+            TextMeshPro does, slant from `italicStyle`); without the file a system font of the
+            asset's family, then the stand-in. `tests/unity_ui`: canvas "Fonts" with
+            `Fonts/Calistoga.ttf` (OFL, licence next to it), an asset made from it and one
+            whose font file is gone; the reference reads the family from the asset, the dump
+            from the font in use (4 expectations that failed before).
       - [x] Radial fills of an Image (Radial 90 / 180 / 360; they were drawn whole).
             `ui_sprite.gd` ports Image.GenerateFilledSprite / RadialCut; `radial_covers` is the
             meaning of the fill (a swept angle in the rect's proportions, written without the
@@ -299,8 +347,7 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
             sprite's setting now.
       - [ ] One table runs: a scenario that opens the menu and starts a game.
       - [ ] In `scripts/test_world_community.sh` (and so in CI).
-- [ ] Then continue with the open items below ("Canvas scene conversion" leftovers: TMP fonts;
-      Animator; constraints components; ...).
+- [ ] Then continue with the open items below (Animator; VRChat constraint components; ...).
 
 - [x] Upstream fixed the 1MB direct-jump limit. Update the upstream godot-sandbox tooling to get the fixes.
       `refs/godot-sandbox` is at upstream main + the `MAX_LEVEL = 16` patch; the rebuilt library is in
@@ -327,8 +374,8 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       become SubViewport + quad (sized to the union of their content, nested canvases are containers),
       overlay canvases a CanvasLayer; `Button.onClick`/`Toggle`/`Slider`/`InputField` persistent calls
       connect to `SendCustomEvent` (26 wired in the billiards table). Layout groups, sprites
-      (9-slice), ScrollRect, text and Dropdown lists are done (see the first section). Open: TMP
-      font assets.
+      (9-slice), ScrollRect, text, Dropdown lists and TextMeshPro font assets (their source
+      fonts) are done (see the first section).
 - [x] Test hooks: `U.ui_press(node, value)`, `U.ui_click_world(canvas, point)`, `Udon.simulate_key/axis/
       button/mouse_*`, `Udon.input_event("InputJump", ...)`; `world_runner.gd --scenario` drives a world
       (`godot_world_template/scenarios/billiards.gd` opens the lobby, joins, starts 8-ball and plays a
@@ -483,8 +530,9 @@ reflection, platform). Re-run `tools/gen_catalog.py` after each item so the gene
       parents, required bones; HumanDescription / HumanLimit / SkeletonBone / AvatarMask
       dictionaries), Cinemachine damping maths and attachments, VRC camera dolly settings stored,
       System.Type reflection answers for plain classes. Coverage TAnim 26 checks with engine-side
-      verification. Not done: the unidot fork does not convert Unity/VRC constraint *components*
-      yet (scripts that configure constraints work; authored ones are dropped at import).
+      verification. Unity's constraint *components* authored in a scene are imported (see the
+      vrcbce item in the first section); VRChat's own constraint components (VRCPositionConstraint
+      ...) authored in a scene are not yet.
 - [x] VRC SDK and last leftovers (≈300): PhysBone curves/limits/grab state stored, contact
       receivers/senders with distance-based CalculateProximity, per-object NetworkStats through the
       provider (`network_stat_for`), PlayerData typed TryGet* / GetKeys / IsType, MIDI data blocks

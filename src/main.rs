@@ -429,7 +429,7 @@ fn manifest_json(prog: &Program, res_prefix: &str, report: &BTreeMap<String, Rep
             s.push_str(",\n");
         }
         first = false;
-        let source = class.source_files.first().cloned().unwrap_or_default();
+        let source = class.script_file().unwrap_or_default().to_string();
         let guid = script_guid(&source).map(|g| json_str(&g)).unwrap_or_else(|| "null".into());
         let mut chain: Vec<String> = vec![];
         let mut cur = class.base.clone();

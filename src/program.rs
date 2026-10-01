@@ -147,6 +147,17 @@ impl ClassInfo {
             || short.ends_with("Drawer")
     }
 
+    /// The file Unity knows the class by: a MonoScript is the file named after its class, so of
+    /// the parts of a partial class (`PoolStateManager.Base.cs`, `PoolStateManager.cs` ...) it
+    /// is that one whose GUID scene components carry. The first part when no file has the name.
+    pub fn script_file(&self) -> Option<&str> {
+        self.source_files
+            .iter()
+            .find(|f| std::path::Path::new(f.as_str()).file_stem().map_or(false, |stem| stem.to_string_lossy() == self.name.as_str()))
+            .or_else(|| self.source_files.first())
+            .map(|f| f.as_str())
+    }
+
     pub fn field(&self, name: &str) -> Option<&FieldInfo> {
         self.fields.iter().find(|f| f.name == name)
     }

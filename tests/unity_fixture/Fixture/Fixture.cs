@@ -29,6 +29,9 @@ public class Fixture : UdonSharpBehaviour
     // type and board like this): the values written in the scene must arrive.
     [HideInInspector] public int hiddenNumber;
     [HideInInspector] public Transform hiddenTarget;
+    // a PositionConstraint authored in the scene (Shadow follows Ball, 0.2 below it)
+    public Transform ball;
+    public UnityEngine.Animations.PositionConstraint shadow;
     public BoxCollider floorCollider;
     public GameObject[] targets;
     public string[] names;
@@ -103,6 +106,13 @@ public class Fixture : UdonSharpBehaviour
         Check(target != null, "target reference bound");
         Check(hiddenNumber == 42 && hiddenTarget == target, "[HideInInspector] public fields keep their serialized values: " + hiddenNumber);
         Check(link != null && link.Get() == "https://example.com/page" && links != null && links.Length == 2 && links[1].Get() == "https://example.com/two", "VRCUrl and VRCUrl[] fields keep their urls: " + (link == null ? "null" : link.Get()));
+        Check(shadow != null && shadow.constraintActive && shadow.locked && Near(shadow.weight, 1f) && shadow.sourceCount == 1, "authored PositionConstraint: active, locked, one source");
+        if (shadow != null && shadow.sourceCount == 1)
+        {
+            Check(shadow.GetSource(0).sourceTransform == ball && Near(shadow.GetSource(0).weight, 1f), "... its source is Ball");
+            Check(NearV(shadow.translationOffset, new Vector3(0f, -0.2f, 0f)) && NearV(shadow.translationAtRest, new Vector3(5f, 0.8f, -3f)), "... its offset and rest position: " + shadow.translationOffset);
+            Check(shadow.gameObject.name == "Shadow", "... on its GameObject: " + shadow.gameObject.name);
+        }
         GameObject first = pool != null ? pool.TryToSpawn() : null;
         GameObject second = pool != null ? pool.TryToSpawn() : null;
         GameObject third = pool != null ? pool.TryToSpawn() : null;

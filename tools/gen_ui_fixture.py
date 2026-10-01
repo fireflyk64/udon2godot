@@ -591,17 +591,118 @@ def write_textures(out):
     write("Sheet.png", png(64, 32, lambda x, y: (MAGENTA if (x < 32) == (y < 16) else CYAN)), TEXTURE_META % {"guid": SHEET_GUID, "names": names, "mode": 2, "ppu": 100, "border": "{x: 0, y: 0, z: 0, w: 0}", "sprites": sprites})
 
 
+FONT_ASSET_YAML = """%%YAML 1.1
+%%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71c1514a6bd24e1e882cebbe1904ce04, type: 3}
+  m_Name: %(name)s
+  m_EditorClassIdentifier: 
+  hashCode: 841032664
+  material: {fileID: 0}
+  materialHashCode: 0
+  m_Version: 1.1.0
+  m_SourceFontFileGUID: %(source)s
+  m_SourceFontFile_EditorRef: {fileID: 12800000, guid: %(source)s,
+    type: 3}
+  m_SourceFontFile: {fileID: 0}
+  m_AtlasPopulationMode: 0
+  m_FaceInfo:
+    m_FaceIndex: 0
+    m_FamilyName: %(family)s
+    m_StyleName: Regular
+    m_PointSize: 81
+    m_Scale: 1
+    m_LineHeight: 105.299995
+    m_AscentLine: 81
+    m_CapLine: 57
+    m_MeanLine: 43
+    m_Baseline: 0
+    m_DescentLine: -24.3
+    m_SuperscriptOffset: 81
+    m_SuperscriptSize: 0.5
+    m_SubscriptOffset: -24.3
+    m_SubscriptSize: 0.5
+    m_UnderlineOffset: -7.29
+    m_UnderlineThickness: 8.262
+    m_StrikethroughOffset: 17.2
+    m_StrikethroughThickness: 8.262
+    m_TabWidth: 15
+  m_GlyphTable: []
+  m_CharacterTable: []
+  m_AtlasTextures: []
+  m_AtlasTextureIndex: 0
+  m_AtlasWidth: 1024
+  m_AtlasHeight: 1024
+  m_AtlasPadding: 9
+  m_AtlasRenderMode: 4165
+  m_FallbackFontAssetTable: []
+  m_CreationSettings:
+    sourceFontFileName: 
+    sourceFontFileGUID: %(source)s
+    pointSizeSamplingMode: 1
+    pointSize: 81
+    padding: 9
+  fontWeights: []
+  normalStyle: 0
+  normalSpacingOffset: 0
+  boldStyle: 0.75
+  boldSpacing: 7
+  italicStyle: 35
+  tabSize: 10
+"""
+FONT_ASSET_META = "fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 11400000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n"
+FONT_FILE_META = ("fileFormatVersion: 2\nguid: %s\nTrueTypeFontImporter:\n  externalObjects: {}\n  serializedVersion: 4\n  fontSize: 16\n  forceTextureCase: -2\n  characterSpacing: 0\n"
+                  "  characterPadding: 1\n  includeFontData: 1\n  fontName: Calistoga\n  fontNames:\n  - Calistoga\n  fallbackFontReferences: []\n  customCharacters: \n  fontRenderingMode: 0\n"
+                  "  ascentCalculationMode: 1\n  useLegacyBoundsCalculation: 0\n  shouldRoundAdvanceValue: 1\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
+
+
+def write_fonts(out):
+    """Fonts/: Calistoga.ttf (checked in, with its licence) gets its import settings, and two
+    TextMeshPro font assets are written: one made from it, one whose source font is gone."""
+    fonts = os.path.join(out, "Fonts")
+    os.makedirs(fonts, exist_ok=True)
+    if not os.path.exists(os.path.join(fonts, "Calistoga.ttf")):
+        print("note: %s/Calistoga.ttf is missing; the font cases will fall back to the stand-in font" % fonts)
+
+    def write(name, data):
+        with open(os.path.join(fonts, name), "w") as fh:
+            fh.write(data)
+    with open(os.path.join(out, "Fonts.meta"), "w") as fh:
+        fh.write("fileFormatVersion: 2\nguid: f3a7c1d2e3b44f5a8697a1b2c3d4e5f6\nfolderAsset: yes\nDefaultImporter:\n  externalObjects: {}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
+    write("Calistoga.ttf.meta", FONT_FILE_META % FONT_FILE)
+    write("OFL.txt.meta", "fileFormatVersion: 2\nguid: f4a7c1d2e3b44f5a8697a1b2c3d4e5f6\nTextScriptImporter:\n  externalObjects: {}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
+    write("Calistoga SDF.asset", FONT_ASSET_YAML % {"name": "Calistoga SDF", "source": FONT_FILE, "family": "Calistoga"})
+    write("Calistoga SDF.asset.meta", FONT_ASSET_META % FONT_ASSET)
+    write("Lost SDF.asset", FONT_ASSET_YAML % {"name": "Lost SDF", "source": "f5a7c1d2e3b44f5a8697a1b2c3d4e5f6", "family": "Lost Family"})
+    write("Lost SDF.asset.meta", FONT_ASSET_META % FONT_ASSET_LOST)
+
+
 def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
     return ("Text", _GRAPHIC % vec(color, "rgba") + "  m_FontData:\n    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n    m_FontSize: %d\n    m_FontStyle: %d\n    m_BestFit: %d\n    m_MinSize: %d\n    m_MaxSize: %d\n    m_Alignment: %d\n    m_AlignByGeometry: 0\n    m_RichText: %d\n    m_HorizontalOverflow: %d\n    m_VerticalOverflow: %d\n    m_LineSpacing: 1\n  m_Text: %s\n" % (
         size, style, best_fit, sizes[0], sizes[1], align, rich, overflow[0], overflow[1], quoted(value)))
 
 
-def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72), wrap=True, overflow=0, halign=1, valign=256, rich=True):
+TMP_DEFAULT_FONT = "8f586378b4e144a9851e7b34d9b748ee"   # LiberationSans SDF of TextMeshPro's essentials: not in the project
+FONT_FILE = "f0a7c1d2e3b44f5a8697a1b2c3d4e5f6"          # Fonts/Calistoga.ttf (SIL Open Font License, Fonts/OFL.txt)
+FONT_ASSET = "f1a7c1d2e3b44f5a8697a1b2c3d4e5f6"         # Fonts/Calistoga SDF.asset: a font asset made from it
+FONT_ASSET_LOST = "f2a7c1d2e3b44f5a8697a1b2c3d4e5f6"    # Fonts/Lost SDF.asset: its source font is not in the project
+
+
+def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72), wrap=True, overflow=0, halign=1, valign=256, rich=True, font=TMP_DEFAULT_FONT):
     """TextMeshProUGUI. style: 1 bold, 2 italic, 4 underline, 8 lower, 16 upper, 32 small caps;
-    halign 1 left, 2 centre, 4 right; valign 256 top, 512 middle, 1024 bottom."""
+    halign 1 left, 2 centre, 4 right; valign 256 top, 512 middle, 1024 bottom; font: guid of
+    the font asset."""
     return ("TextMeshProUGUI", _GRAPHIC % vec((1, 1, 1, 1), "rgba") + (
-        "  m_text: %s\n  m_isRightToLeft: 0\n  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}\n"
-        "  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}\n  m_fontColor32:\n    serializedVersion: 2\n    rgba: 4294967295\n"
+        "  m_text: %s\n  m_isRightToLeft: 0\n  m_fontAsset: {fileID: 11400000, guid: " + font + ", type: 2}\n"
+        "  m_sharedMaterial: {fileID: 2180264, guid: " + font + ", type: 2}\n  m_fontColor32:\n    serializedVersion: 2\n    rgba: 4294967295\n"
         "  m_fontColor: %s\n  m_enableVertexGradient: 0\n  m_fontSize: %s\n  m_fontSizeBase: %s\n  m_fontWeight: 400\n  m_enableAutoSizing: %d\n  m_fontSizeMin: %s\n  m_fontSizeMax: %s\n"
         "  m_fontStyle: %d\n  m_HorizontalAlignment: %d\n  m_VerticalAlignment: %d\n  m_textAlignment: 65535\n  m_characterSpacing: 0\n  m_lineSpacing: 0\n"
         "  m_enableWordWrapping: %d\n  m_overflowMode: %d\n  m_isRichText: %d\n  m_margin: {x: 0, y: 0, z: 0, w: 0}\n") % (
@@ -1126,6 +1227,18 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("SheetHalf", row, {"size": (10, 10)}, [renderer(), image(sprite=SHEET_LEFT)])         # 32 x 32
     f.node("NoSprite", row, {"size": (10, 10)}, [renderer(), image()])                           # 0 x 0
 
+    # ---- Fonts: TextMeshPro font assets --------------------------------------------------------
+    # a font asset is an atlas made from a font file; where that file is in the project the
+    # texts are drawn with it, otherwise with the stand-in family
+    c = b.world_canvas("Fonts", (9.2, 3.0, 2), (700, 400))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.1, 0.16, 1))
+    f.node("FontRegular", c, {"pos": (0, 150), "size": (660, 50)}, [renderer(), tmp("Calistoga: 8-Ball Break", 36, font=FONT_ASSET)])
+    f.node("FontBold", c, {"pos": (0, 90), "size": (660, 50)}, [renderer(), tmp("Bold from the same file", 36, style=1, font=FONT_ASSET)])
+    f.node("FontItalic", c, {"pos": (0, 30), "size": (660, 50)}, [renderer(), tmp("Italic <b>and bold</b> by tags", 36, style=2, font=FONT_ASSET)])
+    f.node("FontAuto", c, {"pos": (0, -30), "size": (660, 50)}, [renderer(), tmp("Auto sized in the font of the asset, as wide as its rect allows it to be", 60, auto=True, sizes=(8, 60), halign=2, valign=512, font=FONT_ASSET)])
+    f.node("FontLost", c, {"pos": (0, -90), "size": (660, 50)}, [renderer(), tmp("A font asset without its font file", 36, font=FONT_ASSET_LOST)])
+    f.node("FontDefault", c, {"pos": (0, -150), "size": (660, 50)}, [renderer(), tmp("The default font asset", 36)])
+
     # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
     c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1000, 640))
     b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.13, 0.12, 0.15, 1))
@@ -1347,6 +1460,7 @@ def main(argv):
     board, board_ids = board_prefab()
     panel, panel_ids = panel_prefab()
     write_textures(out)
+    write_fonts(out)
     scene = build_scene(card, card_ids, board, board_ids, panel, panel_ids)
     for name, f, is_scene in (("Card.prefab", card, False), ("Board.prefab", board, False), ("Panel.prefab", panel, False), ("UiCases.unity", scene, True)):
         with open(os.path.join(out, name), "w") as fh:
