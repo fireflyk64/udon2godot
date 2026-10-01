@@ -489,8 +489,11 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       `UdonPrefabs` (sandbox exports are Node-typed); `Udon.instantiate` duplicates them and also accepts
       PackedScene.
 - [~] Animator: `Animator.Set*/Get*` write unidot's `runtime/anim_tree.gd` metadata parameters
-      (`metadata/<param>`), triggers map to `parameters/<name>/request` or conditions. Not yet exercised by
-      an imported controller.
+      (`metadata/<param>`), triggers map to `parameters/<name>/request` or conditions. Exercised by an
+      imported controller since 2026-10-01: vrcbce's slide toggles (two states switched by a bool that
+      `UIAnimationManager` sets; the clips animate a RectTransform, see the first section). Not yet
+      exercised: triggers, blend trees, layers, clips on 3D objects in an imported world
+      (SaccFlightAndVehicles has 337 clips and is not imported as a world).
 - [~] Official pool table (MS-VRCSA-Billiards): converts (30 classes, 0 errors), imports, runs; the
       scenario plays a break and screenshots render the table with its skybox, ball shadows (ported
       shader), cast shadows (`world_runner --shadows`) and UI boards. The cue is played through the
