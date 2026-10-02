@@ -131,6 +131,14 @@ public class Fixture : UdonSharpBehaviour
             Check(NearV(guide.GetPosition(1), new Vector3(2f, 0f, 0f)) && guide.gameObject.name == "Guide", "... its second point: " + guide.GetPosition(1));
             guide.SetPosition(1, new Vector3(0f, 0f, 3f));
             Check(NearV(guide.GetPosition(1), new Vector3(0f, 0f, 3f)) && guide == GameObject.Find("Guide").GetComponent<LineRenderer>(), "... moved by the script");
+            // the width is the multiplier times the curve (1 at the start, 0.25 at the end), the
+            // colours are the ends of the gradient (white, opaque → red, alpha 0.25)
+            Check(Near(guide.widthMultiplier, 0.2f) && Near(guide.startWidth, 0.2f) && Near(guide.endWidth, 0.05f), "... its width at both ends: " + guide.startWidth + " " + guide.endWidth);
+            Color lineStart = guide.startColor;
+            Color lineEnd = guide.endColor;
+            Check(Near(lineStart.g, 1f) && Near(lineStart.a, 1f) && Near(lineEnd.r, 1f) && Near(lineEnd.g, 0f) && Near(lineEnd.a, 0.25f), "... its colours at both ends: " + lineStart + " " + lineEnd);
+            guide.endWidth = 0.1f;
+            Check(Near(guide.endWidth, 0.1f) && Near(guide.startWidth, 0.2f) && Near(guide.widthMultiplier, 0.2f), "... the end made wider by the script: " + guide.endWidth);
         }
         Check(sleeper != null && !sleeper.activeSelf && !sleeper.activeInHierarchy, "an inactive GameObject is inactive for the script");
         GameObject first = pool != null ? pool.TryToSpawn() : null;

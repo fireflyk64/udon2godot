@@ -60,15 +60,27 @@ func run(r):
 	r.check(int(fx.get("interacted")) == interacted + 1, "onClick → UdonBehaviour.Interact: %d → %d" % [interacted, int(fx.get("interacted"))])
 	await _animated_active_checks(r)
 	await _pointer_through_checks(r)
-	# a LineRenderer is a mesh the importer drew; the script moved its second point, so the
-	# run time draws it now: from Unity (-6, 1, 2) to 3 further along z
+	# a LineRenderer is a ribbon the importer drew from its metadata; the script moved its
+	# second point and widened its end, so the run time has drawn it again, on the same node:
+	# in the object's space from the origin to 3 along z, with a station where the gradient
+	# has its middle key
 	var line: Node = r.find("Guide").get_node_or_null("LineRenderer") if r.find("Guide") != null else null
-	r.check(line is MeshInstance3D and line.has_meta("unidot_line") and (line.get_meta("unidot_line") as Dictionary).get("positions", []).size() == 2, "the LineRenderer is a MeshInstance3D with its points: " + str(line))
-	var drawn: MeshInstance3D = line.get_node_or_null("_udon_line") as MeshInstance3D if line != null else null
-	r.check(drawn != null and drawn.mesh != null and drawn.mesh.get_surface_count() == 1 and (line as MeshInstance3D).mesh == null, "... redrawn by the run time after the script moved a point")
-	if drawn != null and drawn.mesh != null and drawn.mesh.get_surface_count() == 1:
-		var points: PackedVector3Array = drawn.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		r.check(points.size() == 2 and points[0].distance_to(Vector3(6, 1, 2)) < 0.001 and points[1].distance_to(Vector3(6, 1, 5)) < 0.001, "... between the points in the object's space: " + str(points))
+	var line_info: Dictionary = line.get_meta("unidot_line") if line != null and line.has_meta("unidot_line") else {}
+	r.check(line is MeshInstance3D and line_info.get("positions", []).size() == 2, "the LineRenderer is a MeshInstance3D with its points: " + str(line))
+	r.check(is_equal_approx(float(line_info.get("width", 0.0)), 0.2) and line_info.get("width_curve") is Curve and line_info.get("gradient") is Gradient and (line_info["gradient"] as Gradient).get_point_count() == 3,
+		"... its width multiplier, width curve and the three keys of its gradient: %s %s %s" % [str(line_info.get("width")), str(line_info.get("width_curve")), str(line_info.get("gradient"))])
+	await r.wait(2)
+	var ribbon: Mesh = (line as MeshInstance3D).mesh if line is MeshInstance3D else null
+	r.check(ribbon != null and ribbon.get_surface_count() == 1 and line.get_node_or_null("_udon_line") == null and not (line as MeshInstance3D).top_level, "... drawn again by the run time on the same node, in the object's space")
+	if ribbon != null and ribbon.get_surface_count() == 1:
+		var arrays: Array = ribbon.surface_get_arrays(0)
+		var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var sides: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+		var tints: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		r.check(points.size() == 6 and points[0].length() < 0.001 and points[2].distance_to(Vector3(0, 0, 1.5)) < 0.001 and points[5].distance_to(Vector3(0, 0, 3)) < 0.001, "... a ribbon through its points and the gradient's middle key: " + str(points))
+		r.check(sides.size() == 6 and absf(sides[0].x + 0.1) < 0.001 and absf(sides[1].x - 0.1) < 0.001 and absf(sides[5].x - 0.05) < 0.001, "... 0.2 wide at the start, 0.1 (set by the script) at the end: " + str(sides))
+		r.check(tints.size() == 6 and tints[0].is_equal_approx(Color.WHITE) and absf(tints[2].g - 0.5) < 0.01 and absf(tints[2].a - 0.625) < 0.01 and absf(tints[5].g) < 0.01 and absf(tints[5].a - 0.25) < 0.01, "... coloured by the gradient: " + str(tints))
+		r.check((line as Node3D).global_position.distance_to(Vector3(6, 1, 2)) < 0.001, "... where the object is: " + str((line as Node3D).global_position))
 	# what lives in space on a UI object is where the object is: the sound of the BR button
 	var beep: Node = r.find("BR").get_node_or_null("Unidot3D/AudioSource") if r.find("BR") != null else null
 	r.check(beep is AudioStreamPlayer3D and (beep as Node3D).global_position.distance_to(Vector3(-0.44, 1.23, 3)) < 0.005, "an AudioSource on a button sounds from the button: " + (str((beep as Node3D).global_position) if beep is Node3D else str(beep)))
@@ -446,6 +458,31 @@ func _ui_checks(r, fx: Node) -> void:
 		await r.click(rect.get_center())
 		await r.wait(3)
 		r.check(int(fx.get("overlayPressed")) == 1, "overlay button clicked through the window: %d" % int(fx.get("overlayPressed")))
+	await _line_pixels(r)
+
+
+## The LineRenderer `Guide` as it is drawn: a ribbon as wide as the line says, facing the
+## camera (from Godot (6, 1, 2) to (6, 1, 5); 0.2 wide at its start, 0.1 at its end).
+func _line_pixels(r) -> void:
+	var from := Vector3(6, 1, 2)
+	var to := Vector3(6, 1, 5)
+	var eye := Vector3(4.2, 2.2, 3.5)
+	r._place_camera(eye, from.lerp(to, 0.5))
+	r.camera().fov = 60
+	await r.wait(3)
+	await r.shot("line")
+	for t in [0.15, 0.85]:
+		var centre: Vector3 = from.lerp(to, t)
+		var half: float = lerpf(0.2, 0.1, t) * 0.5
+		var side: Vector3 = (to - from).cross(centre - eye).normalized()
+		var on: Color = await r.pixel(r.project(centre))
+		var inside: Color = await r.pixel(r.project(centre + side * half * 0.7))
+		var outside: Color = await r.pixel(r.project(centre + side * half * 1.6))
+		var far: Color = await r.pixel(r.project(centre + side * half * 4.0))
+		var seen: float = Vector3(on.r - far.r, on.g - far.g, on.b - far.b).length()
+		var across: float = Vector3(on.r - inside.r, on.g - inside.g, on.b - inside.b).length()
+		var beyond: float = Vector3(outside.r - far.r, outside.g - far.g, outside.b - far.b).length()
+		r.check(seen > 0.08 and across < seen * 0.5 and beyond < seen * 0.5, "the line at %.2f of its length is drawn %.3f wide: centre %s, inside %s, outside %s, far %s" % [t, half * 2.0, str(on), str(inside), str(outside), str(far)])
 
 
 func _rect_is(c: Node, x: float, y: float, w: float, h: float) -> bool:

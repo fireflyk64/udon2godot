@@ -2,6 +2,69 @@
 
 Status legend: [x] done and verified, [~] implemented but needs more coverage, [ ] open.
 
+## What round 2 left (2026-10-01) — current work
+
+The "not done" notes of the round below, taken up one by one; each gets its case first.
+
+- [x] LineRenderer: its width (multiplier x curve), every key of its gradient, a ribbon that
+      faces the camera; one module for the importer and for scripts (vrcbce's guide line is
+      2 cm wide, tapers to nothing and fades out: it was a one pixel line strip).
+      `runtime/line_renderer.gd` (unidot) draws the `unidot_line` metadata ({positions, width,
+      width_curve: Curve, gradient: Gradient, loop, world_space, alignment}) as a ribbon: two
+      vertices per point, opened across the line and the view in the vertex shader
+      (`line_renderer.gdshader`; alignment Transform Z: across the object's z), with a
+      station where the width curve or the gradient has a key. The importer writes the
+      metadata and draws once; the run time's line store starts from it and draws through
+      the same function, once a frame (a script sets points one by one). Scripts:
+      `startWidth` / `endWidth` are the ends of the curve times `widthMultiplier`,
+      `startColor` / `endColor` the ends of the gradient, `widthCurve`, `colorGradient` and
+      `alignment` are kept whole (were two-key approximations / stubs). Udon fixture: the
+      `Guide` line tapers over three gradient keys, the script widens its end, a display run
+      looks at pixels inside and beside the ribbon (133 / 171 checks). Not drawn: the
+      line's material and texture, rounded corners and caps.
+- [x] TextMeshPro's text margins and the line spacing of both kinds of text (found in vrcbce's
+      desktop overlay: "SHOT POWER" and "CUE TILT" are columns of letters beside their bars,
+      made by a right margin of 169 of 200 units and a line spacing of -25.4; they were
+      drawn as overlapping words). 25 texts of the reference projects have margins, 49 a
+      line spacing.
+      - [x] `m_margin` → `margin` of the text settings: the text is laid out in the rect
+            without the margins (a negative one gives room beyond the rect) by the child
+            that already drew texts higher than their rect, now as wide as that area and
+            placed in it by the alignment; truncation, pages, the ellipsis and auto-sizing
+            work on the area; the preferred size includes the margins
+      - [x] `m_lineSpacing` (TextMeshPro: hundredths of the font size) and
+            `m_FontData.m_LineSpacing` (uGUI: a factor of the line height) → the label's
+            line separation, in whole units
+      - [x] scripts: `TMP_Text.margin`, `lineSpacing` of both (were a stub and a wrong theme
+            constant); `maxVisibleCharacters` / `maxVisibleLines` are text settings now (they
+            wrote to the node, which does not draw when its child does)
+      - [x] the reference computes the text area and the line spacing from the Unity files,
+            the dump reports where the text is laid out, the compare checks the edge the
+            alignment holds (checked with a tampered dump: 5 of 5 found). Fixture canvas
+            "TextBoxes" (9 texts); unit tests 503 → 522; vrcbce scenario: both labels are
+            columns of 10 / 8 lines in 31.3 units (28 checks)
+- [x] Text smaller than one unit (canvases whose units are metres). SaccFlightAndVehicles
+      has 225 TextMeshPro texts of sizes 0.015 to 0.5; a font has whole sizes from 1. Such a
+      text (size below 4) is laid out at 32 by the drawing child in a rect that many times
+      larger, and the child is scaled down to Unity's size (`ui_text.raster`): wrapping,
+      alignment, margins, line spacing, outline, size tags and sprites are all in the
+      child's units. Auto-sizing finds any size below 4 (a whole one above). The node of
+      such a text does not wrap (a label that wraps is at least 1 wide and could not have
+      its rect; the importer creates text nodes that way). Fixture: three texts on the
+      canvas "Metres" (0.05; fitted between 0.01 and 0.2: 0.032; 0.03 wrapped and centred),
+      compared in the rect's units; unit tests 522 → 544; UI fixture 32 canvases, 972 of 972
+      nodes, pixel check 3049 points and 67 of 75 texts; coverage 1104 checks.
+- [ ] Inline sprites of a text sit on the baseline by their bearing (Godot centres them)
+- [ ] A graphic on a rect of negative size is drawn mirrored
+- [ ] Sibling order between the UI and the 3D children of one object (GetChild,
+      GetSiblingIndex)
+- [ ] The pixel check looks at widgets Godot draws itself (LineEdit, OptionButton)
+- [ ] The engine's "Parameter "material" is null" at exit (billiards, vrcbce)
+
+Not planned (the engine's text drawing has no such thing; a font shader of our own would be
+needed): the softness of an underlay, the face dilate and the inner half of an outline. Fur
+shells are cut by alpha on purpose (blended shells do not sort).
+
 ## UI leftovers, round 2 (2026-10-02) — done
 
 Asked for: every leftover of the section below, the animation curves and the ScrollRect's
@@ -412,7 +475,8 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       Differences left: the list is the last child of the canvas root (Unity leaves it under
       the Dropdown and draws it on top with a sorting canvas; Godot picks by tree order), an
       item is named `Item 1_ B` (a node name cannot hold Unity's colon), no fade in / out.
-- [ ] Left over, not positioning of the pool table:
+- [x] Left over, not positioning of the pool table (all taken up in "UI leftovers, round 2"
+      above; what is still open is named there):
       * TextMeshPro's Page and Linked overflow modes truncate.
       * Sprite tags of TextMeshPro; a font asset's material (outline, underlay) and its
         fallback fonts; a font asset whose font file is not in the project gets a stand-in;
@@ -479,7 +543,7 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
       `Custom/StandardScrollingEmissive` (another table model), `metaphira/ScreenOverlay`
       (camera override module). No Unity pictures to compare with: the ports follow the
       shader sources line by line.
-- [ ] vrcbce (VRCBilliards Community Edition, `refs/vrcbce`): a second pool table, so far only
+- [x] vrcbce (VRCBilliards Community Edition, `refs/vrcbce`): a second pool table, so far only
       converted and compile-checked, never imported. An independent check of the canvas work:
       three menu styles (M.O.O.N 140 rects, esnya 126, akalink 191; 10 canvases each, read by
       the reference tool without changes), 20 plain Transform children under rects, 12 rects
@@ -633,10 +697,11 @@ The pool table's canvases showed positioning errors. What was found (2026-09-30)
             switches the guideline (4 checks).
             Left: rotation curves of a RectTransform (`m_EulerCurves` have no class id and
             become 3D rotation tracks), curves of UI components (colours, `m_Enabled`).
-      - [ ] Not done for vrcbce: `Silent/Filamented` (a Standard replacement, 17 materials)
-            and the two fur shaders are approximated; the guideline's shader is not in the
-            package; the cue is not played through the desktop player as on the MS-VRCSA
-            table; the sample scene with all 18 tables is imported but not run.
+      - [x] Not done for vrcbce: `Silent/Filamented` (a Standard replacement, 17 materials)
+            and the two fur shaders are approximated; the cue is not played through the
+            desktop player as on the MS-VRCSA table; the sample scene is imported but not
+            run. All done in round 2 above (the sample scene holds three tables, not 18).
+            Still so: the guideline's shader is not in the package.
 - [ ] Then continue with the open items below (Animator; VRChat constraint components; ...).
 
 - [x] Upstream fixed the 1MB direct-jump limit. Update the upstream godot-sandbox tooling to get the fixes.

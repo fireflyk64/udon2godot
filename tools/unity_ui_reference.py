@@ -1465,6 +1465,32 @@ def font_family(n):
     return None
 
 
+def text_box(n):
+    """Where a text is laid out and the room between its lines, read from the component:
+    {"area": [left, top, width, height] in the rect (y down; TextMeshPro's m_margin taken off:
+    x left, y top, z right, w bottom), "valign": 0 top / 1 middle / 2 bottom, "line": extra
+    units between lines per unit of font size (TextMeshPro's m_lineSpacing / 100), "scale":
+    uGUI's m_LineSpacing (a factor of the line height), "cut": the text does not show all its
+    lines when they do not fit}."""
+    name, d = graphic_of(n)
+    w, h = abs(n.size[0]), abs(n.size[1])
+    if name == "TextMeshProUGUI":
+        m = d.get("m_margin") or {}
+        left, top, right, bottom = (_num(m.get(k, 0)) for k in "xyzw")
+        va = int(_num(d.get("m_VerticalAlignment", 256), 256))
+        combined = int(_num(d.get("m_textAlignment", 65535), 65535))
+        if combined != 65535:
+            va = combined & 0xFF00
+        return {"area": [left, top, max(w - left - right, 0.0), max(h - top - bottom, 0.0)], "valign": {256: 0, 1024: 2}.get(va, 1),
+                "line": _num(d.get("m_lineSpacing", 0)) / 100.0, "scale": 1.0, "cut": int(_num(d.get("m_overflowMode", 0))) != 0,
+                "margins": any(abs(v) > 1e-6 for v in (left, top, right, bottom))}
+    if name == "Text":
+        fd = d.get("m_FontData") or {}
+        return {"area": [0.0, 0.0, w, h], "valign": min(int(_num(fd.get("m_Alignment", 0))) // 3, 2), "line": 0.0, "scale": _num(fd.get("m_LineSpacing", 1), 1),
+                "cut": int(_num(fd.get("m_VerticalOverflow", 0))) == 0, "margins": False}
+    return None
+
+
 def font_size(n):
     """The font size of a text that is not auto-sized."""
     name, d = graphic_of(n)
@@ -1727,6 +1753,9 @@ def describe_canvas(canvas, layout, screen):
                     e["font_size"] = font_size(c)
                 if font_family(c) is not None:
                     e["font"] = font_family(c)
+                box = text_box(c)
+                if box is not None:
+                    e["text_box"] = box
                 tmp = c.comp("TextMeshProUGUI")
                 if tmp is not None and _styles is not None:
                     effects = _styles.effects(tmp)
@@ -1888,28 +1917,57 @@ def _drawn_problems(e, d):
         got, want = str(d.get("font", "")).lower(), e["font"].lower()
         if got != want and not got.startswith(want + " "):
             out.append("font %r, Unity's font asset is made from %r (in the project)" % (d.get("font", ""), e["font"]))
-    if "font_size" in e and "font_size" in d and abs(e["font_size"] - d["font_size"]) > 0.51:
+    # (a text is drawn at a whole font size, or `raster` times larger and scaled down: what a
+    # whole size is off by is that much smaller then)
+    whole = 1.0 / max(d.get("raster", 1.0), 1.0)
+    if "font_size" in e and "font_size" in d and abs(e["font_size"] - d["font_size"]) > 0.51 * whole:
         out.append("font size %s, Unity %s" % (d["font_size"], e["font_size"]))
     if "text_effects" in e and "text" in d:
         # the outline and the underlay of the text's material, in whole units (pixels of the
         # canvas); one that is thinner than a unit is one unit or none
         want, got = e["text_effects"]["outline"], d.get("outline")
-        if want is None or want[0] < 0.25:
+        if want is None or want[0] < 0.25 * whole:
             if got is not None and got[0] > 0 and (want is None or want[0] <= 0):
                 out.append("outline of %s, Unity's material has none" % got[0])
-        elif got is None or abs(got[0] - want[0]) > 0.75 or max(abs(a - b) for a, b in zip(got[1:5], want[1])) > 0.02:
+        elif got is None or abs(got[0] - want[0]) > 0.75 * whole or max(abs(a - b) for a, b in zip(got[1:5], want[1])) > 0.02:
             out.append("outline %s, Unity's material draws %.3g in %s" % (got, want[0], _fmt(want[1])))
         want, got = e["text_effects"]["shadow"], d.get("shadow")
         if want is None:
             if got is not None:
                 out.append("shadow %s, Unity's material has no underlay" % got)
-        elif got is None or abs(got[0] - want[0]) > 0.75 or abs(got[1] - want[1]) > 0.75 or max(abs(a - b) for a, b in zip(got[2:6], want[2])) > 0.02:
+        elif got is None or abs(got[0] - want[0]) > 0.75 * whole or abs(got[1] - want[1]) > 0.75 * whole or max(abs(a - b) for a, b in zip(got[2:6], want[2])) > 0.02:
             out.append("shadow %s, Unity's underlay is offset by (%.3g, %.3g) in %s" % (got, want[0], want[1], _fmt(want[2])))
     if e.get("fallbacks") and "text" in d:
         got = [str(x).lower() for x in d.get("fallbacks", [])]
         missing = [x for x in e["fallbacks"] if x.lower() not in got]
         if missing:
             out.append("font fallbacks %s, Unity's font asset falls back to %s" % (d.get("fallbacks", []), e["fallbacks"]))
+    if "text_box" in e and "text" in d and "line_height" in d:
+        # the room between lines, in whole units
+        want = e["text_box"]["line"] * d.get("font_size", 0) + (e["text_box"]["scale"] - 1.0) * d["line_height"]
+        if abs(d.get("line_spacing", 0) - want) > 0.51 * whole:
+            out.append("line spacing %s, Unity adds %.3g between lines" % (d.get("line_spacing", 0), want))
+        # a text with margins is laid out in the rect without them; where it stands in that
+        # area depends on its height, which is what the font makes of it: the edge (or the
+        # middle) the alignment holds is compared
+        area, got = e["text_box"]["area"], d.get("text_box")
+        tol = 1e-4 * max(area[2], area[3], 1.0)
+        if d.get("raster", 1.0) != 1.0 and area[2] > 0 and (got is None or abs(got[0] - area[0]) > tol or abs(got[2] - area[2]) > tol):
+            out.append("a text of size %s is laid out in %s, Unity's rect is %s" % (d.get("font_size"), got, [round(v, 5) for v in area]))
+        if e["text_box"]["margins"] and area[2] > 0:
+            if got is None:
+                out.append("text laid out in the whole rect, Unity's margins leave %s" % [round(v, 3) for v in area])
+            else:
+                if abs(got[0] - area[0]) > tol or abs(got[2] - area[2]) > tol:
+                    out.append("text laid out from %.4g, %.4g wide; Unity's margins: from %.4g, %.4g wide" % (got[0], got[2], area[0], area[2]))
+                valign = e["text_box"]["valign"]
+                if valign == 0 and abs(got[1] - area[1]) > tol:
+                    out.append("text starts at %.4g, Unity's top margin is %.4g" % (got[1], area[1]))
+                elif not e["text_box"]["cut"]:
+                    if valign == 1 and abs(got[1] + got[3] * 0.5 - (area[1] + area[3] * 0.5)) > tol:
+                        out.append("text centred on %.4g, the middle between Unity's margins is %.4g" % (got[1] + got[3] * 0.5, area[1] + area[3] * 0.5))
+                    if valign == 2 and abs(got[1] + got[3] - (area[1] + area[3])) > tol:
+                        out.append("text ends at %.4g, Unity's bottom margin is at %.4g" % (got[1] + got[3], area[1] + area[3]))
     if "sprites" in e and "text" in d:
         got = d.get("sprites", [])
         if len(got) != len(e["sprites"]) or any(max(abs(a - b) for a, b in zip(g, w)) > 0.51 for g, w in zip(got, e["sprites"])):

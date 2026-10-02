@@ -551,8 +551,8 @@ type Text : Graphic kind=component gd=Control extern=UnityEngineUIText
   set supportRichText: bool => U.ui_text_set($0, "rich", $v)
   resizeTextForBestFit: bool => bool(U.ui_text_get($0, "auto", false))
   set resizeTextForBestFit: bool => U.ui_text_set($0, "auto", $v)
-  lineSpacing: float => 1.0
-  set lineSpacing: float => pass
+  lineSpacing: float => float(U.ui_text_get($0, "line_scale", 1.0))
+  set lineSpacing: float => U.ui_text_set($0, "line_scale", $v)
   preferredWidth: float => U.ui_text_preferred($0, 0)
   preferredHeight: float => U.ui_text_preferred($0, 1)
 

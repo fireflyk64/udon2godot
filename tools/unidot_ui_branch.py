@@ -67,7 +67,7 @@ NOT_UI = ("shaderlab", "shader_info", "shader_ref", "ParticleSystem", "mat_slots
 def oa_edit(h):
     lines = h.split("\n")
     # mixed hunks: the preloads and the type table
-    lines = [l for l in lines if not (l.startswith("+") and ("shaderlab" in l or "UnidotParticleSystem" in l))]
+    lines = [l for l in lines if not (l.startswith("+") and ("shaderlab" in l or "UnidotParticleSystem" in l or "line_renderer" in l))]
     lines = [(" " + l[1:]) if (l.startswith("-") and "ParticleSystem" in l) else l for l in lines]
     return "\n".join(lines)
 def oa_keep(h):
@@ -146,7 +146,8 @@ rep('''func get_enabled_plugins() -> Array[RefCounted]:
 open(p, "w").write(s)
 
 # the UI files: the plugin, and everything the fork added or changed under runtime/ and test/
-UI_FILES = ["ui_integration.gd"] + [f for f in git("diff", "--name-only", "origin/main..HEAD", "--", "runtime", "test").split() if f]
+# (the LineRenderer's module is not UI)
+UI_FILES = ["ui_integration.gd"] + [f for f in git("diff", "--name-only", "origin/main..HEAD", "--", "runtime", "test").split() if f and "line_renderer" not in f]
 for f in UI_FILES:
     src, dst = os.path.join(fork, f), os.path.join(tree, f)
     os.makedirs(os.path.dirname(dst), exist_ok=True)

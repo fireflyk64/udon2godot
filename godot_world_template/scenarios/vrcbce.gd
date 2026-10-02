@@ -44,6 +44,19 @@ func run(r):
 		r.check(unlock_object.get("behaviour") == menu, "the unlock object's target is the menu: " + str(unlock_object.get("behaviour")))
 		unlock_object.Interact()
 	await r.wait(10)
+	# the labels beside the power and tilt bars of the desktop overlay are columns of letters:
+	# a right margin of TextMeshPro leaves 31 of the rect's 200 units, the lines are closer
+	# than the font's (line spacing -25.4)
+	for label_name in ["SHOT<br><br>POWER", "CUE<br><br>TILT"]:
+		var label: Node = null
+		for n in r._all(r.find(".")):
+			if n is RichTextLabel and n.has_meta("unidot_text") and str((n.get_meta("unidot_text") as Dictionary).get("text", "")) == label_name:
+				label = n
+				break
+		var column: RichTextLabel = label.get_node_or_null("UnidotTextOverflow") as RichTextLabel if label != null else null
+		var letters: int = label_name.replace("<br><br>", "").length() + 1
+		r.check(column != null and column.get_line_count() == letters and absf(column.size.x - 31.319) < 0.01 and column.get_theme_constant("line_separation") == -9,
+			"%s is a column of letters: %s lines in %s units, line spacing %s" % [label_name, str(column.get_line_count()) if column != null else "?", str(column.size.x) if column != null else "?", str(column.get_theme_constant("line_separation")) if column != null else "?"])
 	# the guideline switch: a slide toggle whose knob ("Selector") is moved by an Animator
 	# (clips Left / Right on its RectTransform, switched by UIAnimationManager with SetBool)
 	var guide: BaseButton = _button_sending(r, "_SwitchGuideMode")

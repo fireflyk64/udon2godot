@@ -3817,22 +3817,27 @@ func debug_draw_line(_a: Vector3, _b: Vector3, _c: Color, _dur: float) -> void:
 	pass
 
 # ---------------------------------------------------------------------------
-# LineRenderer / TrailRenderer emulation (positions stored; drawn with an ImmediateMesh)
+# LineRenderer / TrailRenderer: the line is drawn by unidot's runtime/line_renderer.gd, the
+# module the importer draws an authored LineRenderer with. Here its description is kept per
+# component (seeded from the imported metadata) and drawn again, once a frame, when a script
+# changes it.
 # ---------------------------------------------------------------------------
+const UiLine := preload("res://addons/unidot_importer/runtime/line_renderer.gd")
+var _line_dirty: Dictionary = {}    # node id → true: lines to draw again at the end of the frame
 
+## {positions (Unity's; a point not set yet is null), info (what line_renderer.gd draws,
+## without the positions), props (what has no place there: a trail's time ...)}
 func _line(n: Node) -> Dictionary:
 	if n == null:
-		return {"positions": [], "props": {}}   # (a LineRenderer the scene does not have)
+		return {"positions": [], "info": UiLine.defaults(), "props": {}}   # (a LineRenderer the scene does not have)
 	var id: int = n.get_instance_id()
 	if not _line_data.has(id):
-		var d: Dictionary = {"positions": [], "props": {}}
-		if n.has_meta("unidot_line"):
-			# an imported LineRenderer: its points and colours as authored (unidot drew them
-			# as a mesh of its own, which the redraw here replaces)
-			var info: Dictionary = n.get_meta("unidot_line")
-			d["positions"] = (info.get("positions", []) as Array).duplicate()
-			d["props"] = {"useWorldSpace": bool(info.get("world_space", true)), "loop": bool(info.get("loop", false)), "startColor": info.get("start_color", Color.WHITE),
-				"endColor": info.get("end_color", Color.WHITE), "startWidth": float(info.get("width", 1.0)), "endWidth": float(info.get("width", 1.0)), "widthMultiplier": float(info.get("width", 1.0))}
+		# an imported LineRenderer starts as authored
+		var info: Dictionary = UiLine.info_of(n)
+		var d: Dictionary = {"positions": (info["positions"] as Array).duplicate(), "info": info, "props": {}}
+		for key in ["width_curve", "gradient"]:
+			if info[key] is Resource:
+				info[key] = (info[key] as Resource).duplicate()   # (the scene's own is shared by its instances)
 		_line_data[id] = d
 	return _line_data[id]
 
@@ -3865,56 +3870,117 @@ func line_get_positions(n: Node, into: Array) -> int:
 		into[i] = d["positions"][i]
 	return c
 
-func line_get_prop(n: Node, key: String, default):
-	return _line(n)["props"].get(key, default)
+const _LINE_INFO_KEYS: Dictionary = {"useWorldSpace": "world_space", "loop": "loop", "widthMultiplier": "width", "alignment": "alignment"}
 
+## Unity's width curve of a line (without the multiplier): a constant 1 when it has none.
+func _line_width_curve(info: Dictionary) -> Curve:
+	if not (info.get("width_curve") is Curve) or (info["width_curve"] as Curve).point_count == 0:
+		info["width_curve"] = curve_linear(0.0, 1.0, 1.0, 1.0)
+	return info["width_curve"]
+
+func _line_gradient(info: Dictionary) -> Gradient:
+	if not (info.get("gradient") is Gradient) or (info["gradient"] as Gradient).get_point_count() == 0:
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 1.0])
+		g.colors = PackedColorArray([Color.WHITE, Color.WHITE])
+		info["gradient"] = g
+	return info["gradient"]
+
+func line_get_prop(n: Node, key: String, default):
+	var d := _line(n)
+	var info: Dictionary = d["info"]
+	match key:
+		"startWidth":
+			return UiLine.width_at(info, 0.0)
+		"endWidth":
+			return UiLine.width_at(info, 1.0)
+		"startColor":
+			return UiLine.color_at(info, 0.0)
+		"endColor":
+			return UiLine.color_at(info, 1.0)
+	if _LINE_INFO_KEYS.has(key):
+		return info[_LINE_INFO_KEYS[key]]
+	return d["props"].get(key, default)
+
+## startWidth / endWidth are the ends of the width curve times the multiplier, startColor /
+## endColor the ends of the gradient: setting one moves that end and leaves the rest.
 func line_set_prop(n: Node, key: String, value) -> void:
-	_line(n)["props"][key] = value
+	var d := _line(n)
+	var info: Dictionary = d["info"]
+	match key:
+		"startWidth", "endWidth":
+			var curve: Curve = _line_width_curve(info)
+			if is_zero_approx(float(info["width"])):
+				info["width"] = 1.0
+			if curve.point_count < 2:
+				curve_set_keys(curve, [{"time": 0.0, "value": curve.get_point_position(0).y}, {"time": 1.0, "value": curve.get_point_position(0).y}])
+			var at: int = 0 if key == "startWidth" else curve.point_count - 1
+			var keys: Array = curve_keys(curve)
+			keys[at]["value"] = float(value) / float(info["width"])
+			if keys.size() == 2:   # (two keys: a straight taper, as SetWidth draws it)
+				var slope: float = (float(keys[1]["value"]) - float(keys[0]["value"])) / maxf(float(keys[1]["time"]) - float(keys[0]["time"]), 1e-6)
+				for k in keys:
+					k["inTangent"] = slope
+					k["outTangent"] = slope
+			curve_set_keys(curve, keys)
+		"startColor", "endColor":
+			var gradient: Gradient = _line_gradient(info)
+			if gradient.get_point_count() < 2:
+				gradient.add_point(1.0, gradient.get_color(0))
+			gradient.set_color(0 if key == "startColor" else gradient.get_point_count() - 1, value)
+		_:
+			if _LINE_INFO_KEYS.has(key):
+				info[_LINE_INFO_KEYS[key]] = value
+			else:
+				d["props"][key] = value
+	_line_redraw(n)
+
+func line_width_curve(n: Node) -> Curve:
+	return _line_width_curve(_line(n)["info"]).duplicate()
+
+func line_set_width_curve(n: Node, curve: Curve) -> void:
+	_line(n)["info"]["width_curve"] = curve.duplicate() if curve != null else null
+	_line_redraw(n)
+
+func line_gradient(n: Node) -> Gradient:
+	return _line_gradient(_line(n)["info"]).duplicate()
+
+func line_set_gradient(n: Node, gradient: Gradient) -> void:
+	_line(n)["info"]["gradient"] = gradient.duplicate() if gradient != null else null
 	_line_redraw(n)
 
 func line_clear(n: Node) -> void:
 	_line(n)["positions"].clear()
 	_line_redraw(n)
 
+## The line is drawn again at the end of the frame (a script sets its points one by one).
 func _line_redraw(n: Node) -> void:
 	if not (n is Node3D):
 		return
-	var d := _line(n)
-	var mi: MeshInstance3D = n.get_node_or_null("_udon_line")
-	if mi == null:
-		if n is MeshInstance3D and n.has_meta("unidot_line"):
-			n.mesh = null   # (the line as imported: drawn here from now on)
-		mi = MeshInstance3D.new()
-		mi.name = "_udon_line"
-		mi.mesh = ImmediateMesh.new()
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.vertex_color_use_as_albedo = true
-		mi.material_override = mat
-		n.add_child(mi)
-		mi.top_level = true
-		mi.global_transform = Transform3D()
-	var im: ImmediateMesh = mi.mesh
-	im.clear_surfaces()
-	var pts: Array = d["positions"]
-	var set_pts: int = 0
-	for p0 in pts:
-		if p0 != null:
-			set_pts += 1
-	if set_pts < 2:
-		return
-	var world: bool = d["props"].get("useWorldSpace", true)
-	var c0: Color = d["props"].get("startColor", Color.WHITE)
-	var c1: Color = d["props"].get("endColor", c0)
-	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-	for i in range(pts.size()):
-		var p = pts[i]
-		if p == null:
+	if _line_dirty.is_empty():
+		_line_flush.call_deferred()
+	_line_dirty[n.get_instance_id()] = true
+
+func _line_flush() -> void:
+	var ids: Array = _line_dirty.keys()
+	_line_dirty.clear()
+	for id in ids:
+		var n: Node = instance_from_id(id) as Node
+		if n == null or not is_instance_valid(n):
+			_line_data.erase(id)
 			continue
-		p = to_gd_v(p) if world else unity_transform(n) * to_gd_v(p)
-		im.surface_set_color(c0.lerp(c1, float(i) / maxf(pts.size() - 1, 1.0)))
-		im.surface_add_vertex(p)
-	im.surface_end()
+		var d: Dictionary = _line_data[id]
+		# an imported LineRenderer is the MeshInstance3D itself; one a script made (or a
+		# trail) gets a child to draw on
+		var mi: MeshInstance3D = n as MeshInstance3D if n is MeshInstance3D and n.has_meta(UiLine.META) else n.get_node_or_null("_udon_line") as MeshInstance3D
+		if mi == null:
+			mi = MeshInstance3D.new()
+			mi.name = "_udon_line"
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			n.add_child(mi)
+		var info: Dictionary = d["info"]
+		info["positions"] = d["positions"]
+		UiLine.draw(mi, info)
 
 # ---------------------------------------------------------------------------
 # UI helpers (Control-based)
@@ -4066,13 +4132,20 @@ func ui_set_font_size(n, s: float) -> void:
 	if t is Control:
 		_ui_layout_dirty(t)
 
+## TextMeshPro's maxVisibleCharacters (99999: all of them): a setting of the text, which may be
+## drawn by a child of its node (runtime/ui_text.gd).
 func ui_set_visible_characters(n: Node, c: int) -> void:
 	var t: Node = _ui_draw_node(n)
-	if t != null and t.get("visible_characters") != null:
+	if t != null and t.has_meta(UiText.META):
+		ui_text_set(n, "visible", c if c < 99999 else -1)
+	elif t != null and t.get("visible_characters") != null:
 		t.set("visible_characters", c if c < 99999 else -1)
 
 func ui_get_visible_characters(n: Node) -> int:
 	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		var most: int = int(UiText.settings(t).get("visible", -1))
+		return most if most >= 0 else 99999
 	if t != null and t.get("visible_characters") != null and int(t.get("visible_characters")) >= 0:
 		return int(t.get("visible_characters"))
 	return 99999
@@ -4080,7 +4153,9 @@ func ui_get_visible_characters(n: Node) -> int:
 func ui_text_info(n: Node) -> Dictionary:
 	var t: Node = _ui_draw_node(n)
 	if t is RichTextLabel:
-		return {"characterCount": t.get_total_character_count(), "lineCount": t.get_line_count()}
+		# (a text with margins or of a small size is laid out by its drawing child)
+		var laid: RichTextLabel = t.get_node_or_null(UiText.DRAWER) as RichTextLabel
+		return {"characterCount": t.get_total_character_count(), "lineCount": (laid if laid != null else t).get_line_count()}
 	var s: String = ui_get_text(n)
 	return {"characterCount": s.length(), "lineCount": s.split("\n").size()}
 
@@ -7226,12 +7301,6 @@ func line_add_positions(n: Node, pts: Array) -> void:
 	_line(n)["positions"].append_array(pts)
 	_line_redraw(n)
 
-func line_gradient(n: Node) -> Gradient:
-	var g := Gradient.new()
-	g.set_color(0, line_get_prop(n, "startColor", Color.WHITE))
-	g.set_color(1, line_get_prop(n, "endColor", Color.WHITE))
-	return g
-
 func gpu_readback(tex, _mip: int, receiver) -> Dictionary:
 	var img: Image = tex.get_image() if tex is Texture2D else null
 	var d := {"done": true, "hasError": img == null, "width": img.get_width() if img != null else 0, "height": img.get_height() if img != null else 0, "data": img.get_data() if img != null else PackedByteArray(), "image": img}
@@ -7898,11 +7967,19 @@ func ui_overflow_set(n: Node, v: int) -> void:
 		n.clip_contents = v != 0
 
 func ui_max_lines_get(n: Node) -> int:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		var most: int = int(UiText.settings(t).get("lines", -1))
+		return most if most >= 0 else 99999
 	if n is Label:
 		return n.max_lines_visible
 	return int(prop_get(n, "maxVisibleLines", 99999))
 
 func ui_max_lines_set(n: Node, v: int) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t != null and t.has_meta(UiText.META):
+		ui_text_set(n, "lines", v if v < 99999 else -1)
+		return
 	prop_set(n, "maxVisibleLines", v)
 	if n is Label:
 		n.max_lines_visible = v if v < 99999 else -1
@@ -7935,14 +8012,14 @@ func ui_wrap_set(n: Node, v: bool) -> void:
 	if n is Label or n is RichTextLabel:
 		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if v else TextServer.AUTOWRAP_OFF
 
-func ui_line_spacing_get(n: Node) -> float:
-	if n is Control:
-		return float(n.get_theme_constant("line_spacing"))
-	return 0.0
+## TextMeshPro's margin (x: left, y: top, z: right, w: bottom): the text is laid out in the
+## rect without them.
+func ui_text_margin(n) -> Vector4:
+	var m = ui_text_get(n, "margin", null)
+	return Vector4(float(m[0]), float(m[1]), float(m[2]), float(m[3])) if m is Array and m.size() >= 4 else Vector4.ZERO
 
-func ui_line_spacing_set(n: Node, v: float) -> void:
-	if n is Control:
-		n.add_theme_constant_override("line_spacing", int(round(v)))
+func ui_text_set_margin(n, v: Vector4) -> void:
+	ui_text_set(n, "margin", [v.x, v.y, v.z, v.w])
 
 func ui_alpha_get(n: Node) -> float:
 	return n.modulate.a if n is CanvasItem else 1.0

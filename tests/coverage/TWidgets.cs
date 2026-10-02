@@ -86,6 +86,19 @@ namespace Coverage
             label.firstVisibleCharacter = 3;
             Check(label.firstVisibleCharacter == 3, "firstVisibleCharacter reads back");
             label.firstVisibleCharacter = 0;
+            // margins and line spacing: where the text is laid out
+            Check(label.margin == Vector4.zero && Near(label.lineSpacing, 0f), "no margins, no line spacing as imported: " + label.margin);
+            label.margin = new Vector4(4f, 2f, 10f, 0f);
+            label.lineSpacing = 12.5f;
+            Check(Near(label.margin.x, 4f) && Near(label.margin.z, 10f) && Near(label.lineSpacing, 12.5f), "margin / lineSpacing read back: " + label.margin + " " + label.lineSpacing);
+            label.margin = Vector4.zero;
+            label.lineSpacing = 0f;
+            label.maxVisibleCharacters = 3;
+            label.maxVisibleLines = 1;
+            Check(label.maxVisibleCharacters == 3 && label.maxVisibleLines == 1, "maxVisibleCharacters / maxVisibleLines read back: " + label.maxVisibleCharacters);
+            label.maxVisibleCharacters = 99999;
+            label.maxVisibleLines = 99999;
+            Check(label.maxVisibleCharacters == 99999, "... and all of them again: " + label.maxVisibleCharacters);
 
             // graphics: enabled is not the object's activity
             Check(Near(image.color.g, 0.5f), "image colour as imported: " + image.color);
@@ -161,6 +174,10 @@ namespace Coverage
             Check(dropdown.captionText == caption && caption.text == "A", "the caption shows the value as imported: " + caption.text);
             dropdown.value = 2;
             Check(caption.text == "C", "value moves the caption: " + caption.text);
+            Check(Near(caption.lineSpacing, 1f), "uGUI line spacing as imported: " + caption.lineSpacing);
+            caption.lineSpacing = 1.5f;
+            Check(Near(caption.lineSpacing, 1.5f), "... reads back: " + caption.lineSpacing);
+            caption.lineSpacing = 1f;
             dropdown.SetValueWithoutNotify(1);
             Check(caption.text == "B", "SetValueWithoutNotify too: " + caption.text);
             RectTransform template = dropdown.template;

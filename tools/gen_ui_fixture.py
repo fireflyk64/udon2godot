@@ -1045,9 +1045,9 @@ def write_animations(out):
     write("Press.controller", press, PRESS_CONTROLLER, main=9100000)
 
 
-def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
-    return ("Text", _GRAPHIC % vec(color, "rgba") + "  m_FontData:\n    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n    m_FontSize: %d\n    m_FontStyle: %d\n    m_BestFit: %d\n    m_MinSize: %d\n    m_MaxSize: %d\n    m_Alignment: %d\n    m_AlignByGeometry: 0\n    m_RichText: %d\n    m_HorizontalOverflow: %d\n    m_VerticalOverflow: %d\n    m_LineSpacing: 1\n  m_Text: %s\n" % (
-        size, style, best_fit, sizes[0], sizes[1], align, rich, overflow[0], overflow[1], quoted(value)))
+def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0), line=1):
+    return ("Text", _GRAPHIC % vec(color, "rgba") + "  m_FontData:\n    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n    m_FontSize: %d\n    m_FontStyle: %d\n    m_BestFit: %d\n    m_MinSize: %d\n    m_MaxSize: %d\n    m_Alignment: %d\n    m_AlignByGeometry: 0\n    m_RichText: %d\n    m_HorizontalOverflow: %d\n    m_VerticalOverflow: %d\n    m_LineSpacing: %s\n  m_Text: %s\n" % (
+        size, style, best_fit, sizes[0], sizes[1], align, rich, overflow[0], overflow[1], num(line), quoted(value)))
 
 
 TMP_DEFAULT_FONT = "8f586378b4e144a9851e7b34d9b748ee"   # LiberationSans SDF of TextMeshPro's essentials: not in the project
@@ -1061,21 +1061,22 @@ TMP_SETTINGS_ASSET = "f9a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/TMP Settings.ass
 
 
 def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72), wrap=True, overflow=0, halign=1, valign=256, rich=True, font=TMP_DEFAULT_FONT,
-        material=None, page=1, linked=0, first=0, sprites=None):
+        material=None, page=1, linked=0, first=0, sprites=None, margin=(0, 0, 0, 0), line=0):
     """TextMeshProUGUI. style: 1 bold, 2 italic, 4 underline, 8 lower, 16 upper, 32 small caps;
     halign 1 left, 2 centre, 4 right; valign 256 top, 512 middle, 1024 bottom; font: guid of
     the font asset; material: (file id, guid) of a material preset (the font asset's own
     otherwise); page: the page shown in overflow mode 5; linked: file id of the text component
-    that goes on in mode 6; sprites: guid of a sprite asset."""
+    that goes on in mode 6; sprites: guid of a sprite asset; margin: left, top, right, bottom;
+    line: the line spacing (hundredths of the font size)."""
     shared = "{fileID: %d, guid: %s, type: 2}" % (material if material else (2180264, font))
     sprite_asset = "{fileID: 11400000, guid: %s, type: 2}" % sprites if sprites else "{fileID: 0}"
     return ("TextMeshProUGUI", _GRAPHIC % vec((1, 1, 1, 1), "rgba") + (
         "  m_text: %s\n  m_isRightToLeft: 0\n  m_fontAsset: {fileID: 11400000, guid: " + font + ", type: 2}\n"
         "  m_sharedMaterial: " + shared + "\n  m_fontColor32:\n    serializedVersion: 2\n    rgba: 4294967295\n"
         "  m_fontColor: %s\n  m_enableVertexGradient: 0\n  m_spriteAsset: " + sprite_asset + "\n  m_fontSize: %s\n  m_fontSizeBase: %s\n  m_fontWeight: 400\n  m_enableAutoSizing: %d\n  m_fontSizeMin: %s\n  m_fontSizeMax: %s\n"
-        "  m_fontStyle: %d\n  m_HorizontalAlignment: %d\n  m_VerticalAlignment: %d\n  m_textAlignment: 65535\n  m_characterSpacing: 0\n  m_lineSpacing: 0\n"
-        "  m_enableWordWrapping: %d\n  m_overflowMode: %d\n  m_linkedTextComponent: {fileID: %d}\n  m_firstVisibleCharacter: %d\n  m_pageToDisplay: %d\n  m_isRichText: %d\n  m_margin: {x: 0, y: 0, z: 0, w: 0}\n") % (
-        quoted(value), vec(color, "rgba"), num(size), num(size), auto, num(sizes[0]), num(sizes[1]), style, halign, valign, wrap, overflow, linked, first, page, rich))
+        "  m_fontStyle: %d\n  m_HorizontalAlignment: %d\n  m_VerticalAlignment: %d\n  m_textAlignment: 65535\n  m_characterSpacing: 0\n  m_lineSpacing: %s\n"
+        "  m_enableWordWrapping: %d\n  m_overflowMode: %d\n  m_linkedTextComponent: {fileID: %d}\n  m_firstVisibleCharacter: %d\n  m_pageToDisplay: %d\n  m_isRichText: %d\n  m_margin: %s\n") % (
+        quoted(value), vec(color, "rgba"), num(size), num(size), auto, num(sizes[0]), num(sizes[1]), style, halign, valign, num(line), wrap, overflow, linked, first, page, rich, vec(margin, "xyzw")))
 
 
 def selectable(target=0, transition=1, normal=(1, 1, 1, 1), highlighted=(0.96, 0.96, 0.96, 1), pressed=(0.78, 0.78, 0.78, 1), selected=(0.96, 0.96, 0.96, 1), disabled=(0.78, 0.78, 0.78, 0.5), multiplier=1, interactable=True, sprites=None, fade=0.1):
@@ -1332,6 +1333,11 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     b.img("PanelFill", panel, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.12, 0.1, 1))
     f.node("Press", panel, {"pos": (-80, 20), "size": (60, 24)}, [renderer(), image(COLORS[0]), button()])
     f.node("Tiny", panel, {"pos": (-80, -10), "size": (6, 4)}, [renderer(), image(COLORS[1]), button()])
+    # texts in the canvas's own units: font sizes a font cannot have (0.05), one of them
+    # auto-sized between such sizes, one wrapped and centred
+    f.node("SmallText", c, {"pos": (-0.3, 0.26), "size": (0.5, 0.08)}, [renderer(), tmp("Metres at 0.05", 0.05)])
+    f.node("SmallFit", c, {"pos": (0.3, 0.26), "size": (0.4, 0.06)}, [renderer(), tmp("Fitted between 0.01 and 0.2", 0.2, auto=True, sizes=(0.01, 0.2), wrap=False)])
+    f.node("SmallWrapped", c, {"pos": (0, -0.28), "size": (0.25, 0.12)}, [renderer(), tmp("one two three four five six seven", 0.03, halign=2, valign=512)])
     f.node("Check", panel, {"pos": (-30, 20), "size": (20, 20)}, [renderer(), image(COLORS[2]), toggle(True)])
     f.node("Field", panel, {"pos": (40, 20), "size": (100, 20)}, [renderer(), image(COLORS[3]), input_field("abc")])
     f.node("Slide", panel, {"pos": (40, -15), "size": (100, 10)}, [slider(0.25)])
@@ -1732,6 +1738,31 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     # a linked text goes on where the first one ends
     link_b = f.node("LinkB", c, {"pos": (120, -150), "size": (210, 80)}, [renderer(), tmp("", 30)])
     f.node("LinkA", c, {"pos": (-120, -150), "size": (210, 80)}, [renderer(), tmp("alpha beta gamma delta epsilon zeta eta theta", 30, overflow=6, linked=link_b.components[1][0])])
+
+    # ---- TextBoxes: where a text is laid out: TextMeshPro's margins, line spacing -------------------
+    c = b.world_canvas("TextBoxes", (14.4, 3.0, 2), (700, 420))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.12, 0.14, 0.16, 1))
+    words = "one two three four five six seven"
+    for i, (name, kw) in enumerate([
+            ("Margins", {"margin": (20, 6, 60, 4)}),                                    # the text area is 120 x 90
+            ("MarginsMiddle", {"margin": (20, 6, 60, 4), "halign": 2, "valign": 512}),
+            ("MarginsBottom", {"margin": (60, 30, 0, 10), "halign": 4, "valign": 1024})]):
+        frame = b.img(name + "Frame", c, {"pos": (-230 + 230 * i, 140), "size": (200, 100)}, color=(0.25, 0.22, 0.3, 1))
+        f.node(name, frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp(words, 20, **kw)])
+    # a negative margin gives the line room beyond the rect
+    frame = b.img("MarginsOutFrame", c, {"pos": (-230, 40), "size": (100, 30)}, color=(0.25, 0.22, 0.3, 1))
+    f.node("MarginsOut", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp("A line longer than its rect", 20, margin=(0, 0, -300, 0))])
+    # a column narrower than two letters: one letter per line, lines closer than the font's
+    # (vrcbce's labels beside its power and tilt bars), centred on the rect by its lines
+    frame = b.img("ColumnFrame", c, {"pos": (200, -20), "size": (200, 50)}, color=(0.25, 0.22, 0.3, 1))
+    f.node("Column", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp("SHOT<br><br>POWER", 20, margin=(0, 0, 180, 0), halign=2, valign=4096, line=-25.4)])
+    # an auto-sized text fits the rect without its margins
+    frame = b.img("MarginsFitFrame", c, {"pos": (-230, -40), "size": (200, 80)}, color=(0.25, 0.22, 0.3, 1))
+    f.node("MarginsFit", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp("Fit me", 60, auto=True, sizes=(6, 60), wrap=False, margin=(0, 0, 140, 0))])
+    # line spacing: TextMeshPro's in hundredths of the font size, uGUI's a factor of the line
+    f.node("Spaced", c, {"pos": (-230, -150), "size": (200, 100)}, [renderer(), tmp("one<br>two<br>three", 20, line=50)])
+    f.node("SpacedTight", c, {"pos": (0, -150), "size": (110, 100)}, [renderer(), text("one two three four five", 20, color=(1, 1, 1, 1), align=0, line=0.8)])
+    f.node("SpacedWide", c, {"pos": (230, -150), "size": (110, 100)}, [renderer(), text("one two three four five", 20, color=(1, 1, 1, 1), align=0, line=1.5)])
 
     # ---- Transitions: what a Selectable does over time --------------------------------------------
     c = b.world_canvas("Transitions", (12.3, 3.0, 2), (400, 200))

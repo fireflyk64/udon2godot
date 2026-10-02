@@ -238,6 +238,10 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   outline and shadow, the fallbacks of a font asset and of the project's "TMP Settings"
   become font fallbacks, `<sprite>` tags draw the sprites of a sprite asset, Page overflow
   shows one page and Linked overflow hands the rest of the text to the linked component.
+  TextMeshPro's margins take from the rect the text is laid out in (or add to it), the line
+  spacing of both kinds of text moves the lines, and a text smaller than a font can be (a
+  canvas in metres has font sizes like 0.022) is laid out at a size a font has and scaled
+  down.
   `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
   enabled — `image.enabled = false` hides the graphic, not the object and its children;
   `Graphic.CrossFadeColor` / `CrossFadeAlpha` fade the CanvasRenderer colour over time.
@@ -435,7 +439,10 @@ nodes and `udon_class()`, `GameObject.Find`, tags, layers), 3D and 2D physics
 (`SetColor`, property blocks), lights and cameras, line renderers, UI (`Text`, `TMP`, sliders,
 toggles, dropdowns, `RectTransform`), `string.Format`/`ToString("F2")` with .NET rounding,
 `StringBuilder`, arrays, `DataList`/`DataDictionary`/`VRCJson`, `DateTime`, curves,
-constraints, navigation and character controllers.
+constraints, navigation and character controllers. A LineRenderer is a camera-facing ribbon drawn from the
+`unidot_line` metadata the importer writes (positions, width multiplier and curve, gradient,
+loop, world space, alignment) by unidot's `runtime/line_renderer.gd`; a script's `SetPosition`,
+`startWidth`, `colorGradient` ... change that description and it is drawn again once a frame.
 
 Physics callbacks are dispatched by the runtime: `OnTriggerEnter/Exit/Stay`,
 `OnCollisionEnter/Exit/Stay` (with contact points), their 2D variants, `OnPlayerTrigger*` /
