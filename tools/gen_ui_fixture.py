@@ -454,6 +454,7 @@ BAR = (21300000, "0c11ca5e0000000000000000000000a2")     # 64 x 16, two halves
 SHEET_GUID = "0c11ca5e0000000000000000000000a3"          # 64 x 32, two sprites
 SHEET_LEFT = (7482667652216324301, SHEET_GUID)
 SHEET_RIGHT = (-3219062469524436042, SHEET_GUID)
+PACKED = (21300000, "0c11ca5e0000000000000000000000a4")    # Packed.asset: a Sprite asset, a part of the sheet
 
 RED, GREEN, BLUE, YELLOW = (230, 60, 60, 255), (60, 200, 80, 255), (60, 90, 230, 255), (240, 220, 60, 255)
 ORANGE, PURPLE, MAGENTA, CYAN = (240, 150, 40, 255), (150, 70, 200, 255), (220, 60, 200, 255), (60, 210, 220, 255)
@@ -616,6 +617,18 @@ def write_textures(out):
     sprites = "".join(SHEET_SPRITE % {"name": nm, "x": x, "y": 0, "w": 32, "h": 32, "b": 0, "id": "%032x" % (i + 1), "internal": sp[0]}
                       for i, (sp, nm, x) in enumerate(((SHEET_LEFT, "Sheet_0", 0), (SHEET_RIGHT, "Sheet_1", 32))))
     write("Sheet.png", png(64, 32, lambda x, y: (MAGENTA if (x < 32) == (y < 16) else CYAN)), TEXTURE_META % {"guid": SHEET_GUID, "names": names, "mode": 2, "ppu": 100, "border": "{x: 0, y: 0, z: 0, w: 0}", "sprites": sprites})
+    # A sprite that is an asset of its own (what an atlas tool or an extracted project leaves):
+    # 32 x 32 at 50 pixels per unit, packed into the right half of Sheet.png, with borders.
+    with open(os.path.join(out, "Packed.asset"), "w") as fh:
+        fh.write("%%YAML 1.1\n%%TAG !u! tag:unity3d.com,2011:\n--- !u!213 &21300000\nSprite:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Packed\n"
+                 "  m_Rect:\n    serializedVersion: 2\n    x: 0\n    y: 0\n    width: 32\n    height: 32\n  m_Offset: {x: 0, y: 0}\n  m_Border: {x: 4, y: 6, z: 8, w: 10}\n  m_PixelsToUnits: 50\n  m_Pivot: {x: 0.5, y: 0.5}\n  m_Extrude: 1\n  m_IsPolygon: 0\n"
+                 "  m_AtlasName: \n  m_PackingTag: \n  m_RenderDataKey:\n    first: 00000000000000000000000000000000\n    second: 21300000\n  m_AtlasTags: []\n  m_SpriteAtlas: {fileID: 0}\n"
+                 "  m_RD:\n    serializedVersion: 3\n    texture: {fileID: 2800000, guid: %s, type: 3}\n    alphaTexture: {fileID: 0}\n    secondaryTextures: []\n    m_SubMeshes: []\n    m_IndexBuffer: \n"
+                 "    m_VertexData:\n      serializedVersion: 3\n      m_VertexCount: 0\n      m_Channels: []\n      m_DataSize: 0\n      _typelessdata: \n    m_Bindpose: []\n"
+                 "    textureRect:\n      serializedVersion: 2\n      x: 32\n      y: 0\n      width: 32\n      height: 32\n    textureRectOffset: {x: 0, y: 0}\n    atlasRectOffset: {x: 32, y: 0}\n    settingsRaw: 3\n"
+                 "    uvTransform: {x: 50, y: 48, z: 50, w: 16}\n    downscaleMultiplier: 1\n  m_PhysicsShape: []\n  m_Bones: []\n  m_SpriteID: \n" % SHEET_GUID)
+    with open(os.path.join(out, "Packed.asset.meta"), "w") as fh:
+        fh.write("fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 21300000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n" % PACKED[1])
 
 
 FONT_ASSET_YAML = """%%YAML 1.1
@@ -1593,6 +1606,8 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("Knob", row, {"size": (10, 10)}, [renderer(), image(sprite=KNOB)])                    # 20 x 20
     f.node("SheetHalf", row, {"size": (10, 10)}, [renderer(), image(sprite=SHEET_LEFT)])         # 32 x 32
     f.node("NoSprite", row, {"size": (10, 10)}, [renderer(), image()])                           # 0 x 0
+    f.node("PackedAsset", row, {"size": (10, 10)}, [renderer(), image(sprite=PACKED)])           # 64 x 64 (32 pixels at 50 per unit)
+    f.node("PackedBorders", row, {"size": (10, 10)}, [renderer(), image(kind=1, sprite=PACKED)]) # 24 x 32 (borders 4 + 8 and 6 + 10)
 
     # ---- Fonts: TextMeshPro font assets --------------------------------------------------------
     # a font asset is an atlas made from a font file; where that file is in the project the
@@ -1648,6 +1663,9 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     # components that are no UI on UI objects: a sound on a button, a collider on a panel
     f.node("Beeper", c, {"pos": (60, 60), "size": (80, 30)}, [renderer(), image((0.8, 0.8, 0.3, 1)), button(), ("AudioSource", "")])
     f.add(panel3d, ("BoxCollider", "  m_Size: {x: 120, y: 80, z: 1}\n  m_Center: {x: 60, y: 40, z: 0}\n"))
+    # a Sprite that is an asset of its own: the part of the texture it was packed into
+    f.node("Packed", c, {"pos": (-150, -70), "size": (64, 64)}, [renderer(), image(sprite=PACKED)])
+    f.node("PackedSliced", c, {"pos": (-60, -70), "size": (80, 40)}, [renderer(), image(kind=1, sprite=PACKED)])
     # a plain Transform whose only UI is an instance of a prefab: it holds UI all the same
     inst_holder = f.node("InstHolder", c, pos=(60, -50, 0))
     f.instance(card, inst_holder, "HeldCard", [(card_ids["root"].t, "m_AnchoredPosition.x", 0), (card_ids["root"].t, "m_AnchoredPosition.y", 0),

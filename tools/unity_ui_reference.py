@@ -1518,6 +1518,12 @@ class Sprites:
         out = None
         path = self.assets.guid_to_path.get(guid)
         size = _image_size(path) if path else None
+        if size is None and path and path.endswith(".asset") and os.path.isfile(path):
+            # a Sprite that is an asset of its own: its rect, border and pixels per unit
+            obj = self.assets.file(path).get(fid)
+            if obj is not None and obj.kind == "Sprite":
+                rect, border = obj.data.get("m_Rect") or {}, obj.data.get("m_Border") or {}
+                out = (_num(rect.get("width", 0)), _num(rect.get("height", 0)), [_num(border.get(k, 0)) for k in "xyzw"], _num(obj.data.get("m_PixelsToUnits", 100), 100))
         if size is not None:
             try:
                 meta = open(path + ".meta", errors="replace").read()

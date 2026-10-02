@@ -125,7 +125,15 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
       otherwise the ray goes on, to a canvas behind or to a pickup. Unit tests 494 → 503;
       Udon fixture: canvas `Glass` in front of `UiCanvas` (the window clicks of the display
       scenario go through it; 122 / 158 checks).
-- [ ] Sprites packed tightly or rotated in an atlas
+- [x] Sprites packed tightly or rotated in an atlas. In a project's own files a sprite is a
+      rect of its texture's import settings (a SpriteAtlas only packs at build time): those
+      were covered. What was missing is a Sprite that is an asset of its own (class 213 with
+      `m_RD`: what an atlas tool or an extracted project leaves): `UnidotSprite` makes it the
+      part of the texture it was packed into (`m_RD.textureRect`) with its border and pixels
+      per unit (`unidot_sprite` metadata), and Images, layout sizes and sliced borders use
+      it. A UI Image draws that rect whatever the packing: Unity's UI does not use the
+      sprite's mesh either, which is why its manual tells to switch rotation and tight
+      packing off for UI sprites. Fixture: `Packed.asset` (four nodes), reference included.
 - [ ] The pixel check: translucent graphics, text
 - [ ] vrcbce: `Silent/Filamented` and the fur shaders; the cue through the desktop player; the
       sample scene with all tables
