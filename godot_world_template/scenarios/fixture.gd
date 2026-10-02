@@ -40,7 +40,7 @@ func run(r):
 	for c in probe.get_parent().get_children() if probe != null else []:
 		if not (c is WorldEnvironment) and c.owner != null and not String(c.name).begins_with("Udon"):
 			roots.append(String(c.name))
-	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper", "Blinker", "Glass"]
+	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper", "Blinker", "Glass", "Follower", "Rider", "Guide"]
 	r.check(roots.slice(0, want.size()) == want, "scene roots in Unity's order: " + str(roots))
 	# an inactive GameObject is hidden, whatever its components say; SetActive shows it
 	var sleeper: Node = r.find("Sleeper")
@@ -60,6 +60,15 @@ func run(r):
 	r.check(int(fx.get("interacted")) == interacted + 1, "onClick → UdonBehaviour.Interact: %d → %d" % [interacted, int(fx.get("interacted"))])
 	await _animated_active_checks(r)
 	await _pointer_through_checks(r)
+	# a LineRenderer is a mesh the importer drew; the script moved its second point, so the
+	# run time draws it now: from Unity (-6, 1, 2) to 3 further along z
+	var line: Node = r.find("Guide").get_node_or_null("LineRenderer") if r.find("Guide") != null else null
+	r.check(line is MeshInstance3D and line.has_meta("unidot_line") and (line.get_meta("unidot_line") as Dictionary).get("positions", []).size() == 2, "the LineRenderer is a MeshInstance3D with its points: " + str(line))
+	var drawn: MeshInstance3D = line.get_node_or_null("_udon_line") as MeshInstance3D if line != null else null
+	r.check(drawn != null and drawn.mesh != null and drawn.mesh.get_surface_count() == 1 and (line as MeshInstance3D).mesh == null, "... redrawn by the run time after the script moved a point")
+	if drawn != null and drawn.mesh != null and drawn.mesh.get_surface_count() == 1:
+		var points: PackedVector3Array = drawn.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		r.check(points.size() == 2 and points[0].distance_to(Vector3(6, 1, 2)) < 0.001 and points[1].distance_to(Vector3(6, 1, 5)) < 0.001, "... between the points in the object's space: " + str(points))
 	# what lives in space on a UI object is where the object is: the sound of the BR button
 	var beep: Node = r.find("BR").get_node_or_null("Unidot3D/AudioSource") if r.find("BR") != null else null
 	r.check(beep is AudioStreamPlayer3D and (beep as Node3D).global_position.distance_to(Vector3(-0.44, 1.23, 3)) < 0.005, "an AudioSource on a button sounds from the button: " + (str((beep as Node3D).global_position) if beep is Node3D else str(beep)))
@@ -133,11 +142,19 @@ func _constraint_checks(r) -> void:
 	r.check(near.call(under, Vector3(5, 0.9, -3)), "the offset is in the space of the parent (scaled 0.5: 0.2 is 0.1): " + (str(u.get_position(under)) if under != null else "missing"))
 	var mid: Node = r.find("Mid")
 	r.check(near.call(mid, Vector3(-0.25, 7, 2.25)), "two weighted sources, x and z only: " + (str(u.get_position(mid)) if mid != null else "missing"))
+	# VRChat's own constraint components (told by their fields): Follower is half a unit above
+	# Ball, Rider one unit in front of it in Ball's turned space (Ball's +z is the world's +x)
+	var follower: Node = r.find("Follower")
+	r.check(near.call(follower, Vector3(5, 1.5, -3)), "VRCPositionConstraint: Follower is 0.5 above Ball: " + (str(u.get_position(follower)) if follower != null else "missing"))
+	var rider: Node = r.find("Rider")
+	r.check(near.call(rider, Vector3(6, 1, -3)), "VRCParentConstraint: Rider sits at its offset in Ball's space: " + (str(u.get_position(rider)) if rider != null else "missing"))
+	r.check(rider is Node3D and ball is Node3D and (rider as Node3D).global_transform.basis.is_equal_approx((ball as Node3D).global_transform.basis), "... turned as Ball is")
 	# the source moves, the constrained objects follow
 	if ball is Node3D and shadow is Node3D:
 		u.set_position(ball, Vector3(4, 2, -1))
 		await r.wait(3)
 		r.check(near.call(shadow, Vector3(4, 1.8, -1)) and near.call(twin, Vector3(5, 2, -1)) and near.call(under, Vector3(4, 1.9, -1)), "the constrained objects follow their source: " + str(u.get_position(shadow)))
+		r.check(near.call(follower, Vector3(4, 2.5, -1)) and near.call(rider, Vector3(5, 2, -1)), "... VRChat's constraints too: " + (str(u.get_position(follower)) if follower != null else "missing"))
 
 
 ## UiCanvas: 1000 × 600 px at scale 0.001 (1 × 0.6 m) centred at Unity (0, 1.5, 3); buttons TL/TR/

@@ -143,9 +143,42 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
       that is not drawn, or drawn elsewhere, is reported. Glyph shapes are not compared.
       UI fixture: 3014 points on 541 of 594 graphics (44 blends), 55 of 63 texts, 0 problems.
       Still not compared: widgets Godot draws itself (LineEdit, OptionButton).
-- [ ] vrcbce: `Silent/Filamented` and the fur shaders; the cue through the desktop player; the
+- [x] vrcbce: `Silent/Filamented` and the fur shaders; the cue through the desktop player; the
       sample scene with all tables
-- [ ] VRChat's own constraint components authored in a scene
+      - [x] `Silent/Filamented` is a replacement of the Standard shader (same properties,
+            another lighting model): `shaderlab.is_standard_replacement` tells it by the
+            property list, the material converts as Standard and the "no Godot port" warning
+            is gone for it
+      - [x] the fur shaders are ported (`shader_ports/CF_Pool__Fur*`,
+            `VRCBCE__Surface_Color_Mask__Fur_*`). A port may now have further passes:
+            `<name>.passN.gdshader` beside it become the material's `next_pass` chain, and a
+            pass with `// unidot_repeat: <uniform> = v1, v2 ...` is drawn once per value
+            (the twelve shells of the fox balls' fur; the other one is a back-face hull)
+      - [x] the cue through the desktop player (`scenarios/vrcbce_play.gd`, a display run with
+            window input only, 16 checks): the unlock object is used through the pointer, the
+            menu's canvas signs up and starts, the cue's handle is picked up, the top-down
+            view is entered and left (Use / E), holding the left button builds the shot and
+            the release plays it. What it needed: trigger colliders of something usable
+            count for the pointer (before, the label canvas behind took the ray);
+            `udon_has_interact` reads the script (a behaviour without Interact is not
+            usable: the player sensor was); a prefab has no ground: `--floor <y>`
+      - [x] the sample scene (`Samples~/Demo Scene/VRCBilliardsCE_All_Tables`: it holds three
+            tables, each another prefab with its own menu style) through
+            `scenarios/vrcbce_all.gd`, 32 checks headless and on a display: every table is
+            unlocked, joined, started and played without touching the others. What it
+            needed: LineRenderer components are imported (`UnidotLineRenderer`, the
+            `unidot_line` metadata the run time's line store starts from; 2172 script errors
+            of the guide line before), GetComponent prefers the child named after the type
+      Not done: the width curve of a LineRenderer (drawn as a line strip); fur shells are cut
+      by alpha instead of blended.
+- [x] VRChat's own constraint components authored in a scene (VRCPositionConstraint,
+      VRCRotationConstraint, VRCScaleConstraint, VRCParentConstraint, VRCAimConstraint,
+      VRCLookAtConstraint). Their scripts live in an SDK library (no source, no class name in
+      the scene): the Udon plugin tells them by their fields (`Sources`, `GlobalWeight`,
+      `Locked` and what only one kind has) and writes the same `udon_constraint` metadata as
+      for Unity's constraints, so the run time's one store solves them. Udon fixture:
+      `Follower` (position, offset 0.5 up) and `Rider` (parent, offset in the source's turned
+      space), `Guide` (LineRenderer): 129 / 165 checks.
 
 ## RectTransform and canvas positioning (pool table UI)
 

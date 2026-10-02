@@ -154,7 +154,11 @@ The pipeline:
    6-sided and lat-long cubemaps → PanoramaSkyMaterial); and a hand-written Godot shader in
    `runtime/addons/udon_runtime/shader_ports/<Unity shader name>.gdshader` replaces the
    approximation entirely (project setting `unidot/shader_ports`), receiving the material's
-   properties as uniforms. The pool table ships two ports (its ball-shadow projector and the
+   properties as uniforms; further passes of the Unity shader are `<name>.pass1.gdshader` ...
+   beside it (drawn after it as the material's `next_pass`; a pass that says
+   `// unidot_repeat: <uniform> = <values>` is drawn once per value: the shells of a fur
+   shader). A custom shader with the Standard shader's properties (a replacement of it with
+   another lighting model, like Filamented) converts as Standard. The pool table ships two ports (its ball-shadow projector and the
    additive "Transparent Orb"); `world_doctor.py` lists every custom shader that was approximated
    and the port file name that would fix it.
 5. `udon_import_report.json`, `unidot_import.log` and `udon2godot_report.txt` feed
@@ -202,9 +206,22 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   its rotation, scale and distance from the plane down, and each rect below it shows the
   composed transform (a holder turned out of the plane whose rects are turned back is whole
   again; what stays out of the plane gets a canvas of its own).
-* **Animated rects.** A clip that animates a RectTransform (`m_AnchoredPosition.x`,
-  `m_SizeDelta`, `m_LocalScale` ...) drives a helper child of the Control (`rect_anim.gd`)
-  whose properties are Unity's, so animation is one more caller of `rect_transform.gd`.
+* **Animated UI.** A clip that animates a RectTransform (`m_AnchoredPosition.x`,
+  `m_SizeDelta`, `m_LocalScale`, and the rotation / scale / position curve lists) drives a
+  helper child of the Control (`rect_anim.gd`) whose properties are Unity's, so animation is
+  one more caller of `rect_transform.gd`. Fields of UI components (a Graphic's colour and
+  `m_Enabled`, fill amount, font size, CanvasGroup alpha, Slider value, Toggle `m_IsOn`,
+  `m_Interactable`) and the sprite of an Image go through a second helper (`ui_anim.gd`)
+  whose setters are the ones scripts use. An object whose `m_IsActive` a clip drives is
+  activated for scripts too (OnEnable / OnDisable, `activeSelf`).
+* **What is not UI among the UI.** A RectTransform is a Transform: a sound on a button, a
+  collider or a mesh under a panel, plain objects without any UI below them hang in the 3D
+  frame of that UI object, a helper Node3D that stays where Unity has the rect in the world
+  (`ui_frame.gd`). `transform.parent`, `Find` and `GetComponent` see through it.
+* **Sizes Godot does not have.** A rect stretched with insets larger than its parent has a
+  negative size in Unity, and its children are laid out against it; the Control has no size
+  and what is below is placed by the size the rect should have. An input field lower than a
+  line of its font gets a font variation with lower lines.
 * **Layout groups** run Unity's rebuild algorithm (HorizontalLayoutGroup, VerticalLayoutGroup,
   GridLayoutGroup, ContentSizeFitter, AspectRatioFitter, LayoutElement) and place children the
   way Unity does, by writing their anchors, anchored position and size delta.
@@ -216,16 +233,29 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   alignment point as TextMeshPro's overflow mode does. A TextMeshPro font asset made from a
   font file of the project is drawn with that font (bold and italic synthesized, as
   TextMeshPro does); other texts get a system font with the metrics of Liberation Sans
-  (TextMeshPro's default, metric-compatible with uGUI's Arial). `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
-  enabled — `image.enabled = false` hides the graphic, not the object and its children.
+  (TextMeshPro's default, metric-compatible with uGUI's Arial). The outline and the underlay
+  of a TextMeshPro material (the font asset's own or a material preset) become the label's
+  outline and shadow, the fallbacks of a font asset and of the project's "TMP Settings"
+  become font fallbacks, `<sprite>` tags draw the sprites of a sprite asset, Page overflow
+  shows one page and Linked overflow hands the rest of the text to the linked component.
+  `unidot_graphic` (`ui_graphic.gd`): colour × CanvasRenderer colour ×
+  enabled — `image.enabled = false` hides the graphic, not the object and its children;
+  `Graphic.CrossFadeColor` / `CrossFadeAlpha` fade the CanvasRenderer colour over time.
   `unidot_selectable` (`selectable.gd`): the colour tint of the target graphic by selection
-  state (a button whose normal colour has alpha 0 is invisible until hovered), the Toggle's
+  state (a button whose normal colour has alpha 0 is invisible until hovered), fading over the
+  block's `fadeDuration`; the sprite swap and animation (trigger) transitions; the Toggle's
   check mark, the Slider's fill and handle rects (Slider.UpdateVisuals).
 * **ScrollRect** is Unity's scroller on the objects as they are (`scroll_rect.gd`): the content
   moves inside the viewport object by its anchored position, the viewport makes room for
   scrollbars that hide themselves, the Scrollbar objects get size, value and visibility and
   their handles follow; `content.anchoredPosition`, `verticalNormalizedPosition`,
-  `scrollbar.value` and `onValueChanged` of a script mean what they mean in Unity.
+  `scrollbar.value` and `onValueChanged` of a script mean what they mean in Unity. Movement
+  is ScrollRect.LateUpdate's: a drag leaves a velocity that decays by `decelerationRate`,
+  content pulled beyond its view stretches like a rubber band and springs back (`elasticity`),
+  a Scrollbar with `numberOfSteps` puts the content on its steps.
+* **The pointer** takes the nearest graphic, not the nearest canvas (Unity raycasts graphics):
+  `Graphic.raycastTarget` is imported, and a canvas with nothing that takes raycasts under
+  the pointer lets it through to the canvas or the pickup behind.
 * **Dropdown** opens Unity's list, not a popup window (`dropdown.gd`, Dropdown.Show): a copy of
   the Template object with one copy of its item per option, shortened to its content, flipped
   to the other side of the button when it would leave the canvas, closed by a blocker over the
@@ -234,7 +264,9 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   texture's import settings. A sliced Image is drawn as nine patches with borders of Unity's
   size (they shrink in a rect smaller than them), tiled and filled Images (horizontal, vertical,
   radial 90 / 180 / 360) likewise by a helper child (`ui_sprite.gd`); Unity's built-in sprites (UISprite, Background, Knob, Checkmark ...),
-  which no project contains, have stand-ins in `runtime/sprites`.
+  which no project contains, have stand-ins in `runtime/sprites`. A Sprite that is an asset of
+  its own (what an atlas tool or an extracted project leaves) is the part of its texture it
+  was packed into.
 * **Checked against Unity's numbers without Unity.** `tools/unity_ui_reference.py` reads a
   scene or prefab (nested prefab instances and their overrides included) and computes where
   Unity puts every rect, the colour each graphic is drawn with (or that it is not drawn) and
@@ -252,8 +284,9 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   space ("snap controls to pixels"), which on a canvas in metres moved the pool table's START
   button by half its width while every transform was right. Canvas viewports turn that off, and
   on a display `scripts/test_ui.sh` and `scripts/test_world_billiards.sh` render every canvas
-  (`test/ui_shots.gd --check`, PNGs in `<out>/shots`) and compare pixels of every solid graphic
-  and sprite with what the transforms put there (sliced sprites through Unity's slice geometry).
+  (`test/ui_shots.gd --check`, PNGs in `<out>/shots`) and compare pixels of every graphic
+  and sprite with what the transforms put there (sliced sprites through Unity's slice geometry,
+  translucent ones blended over what lies below), and look for every text's colour in its rect.
 * **Prefab instances** may override any of this per component (text, colour, `m_Enabled`,
   Toggle / Slider values, Selectable colours, layout settings): the override changes the same
   metadata. `m_Enabled: 0` on a graphic or a layout component disables that component, not the
@@ -411,8 +444,9 @@ Physics callbacks are dispatched by the runtime: `OnTriggerEnter/Exit/Stay`,
 behaviour defines a collision handler; both sides of an event are served, so scripts on static
 geometry hear about bodies landing on them. Unity and VRChat constraints (position, rotation,
 scale, parent, aim, look-at) are solved every frame after `Update` from the sources a script
-configures; Unity's constraint components authored in a scene arrive through the importer
-(`udon_constraint` metadata) and join the same store. Shape casts refine Godot's `cast_motion` (which resolves to about 1/256 of the
+configures; Unity's constraint components and VRChat's own (told by their fields: they live
+in an SDK library) authored in a scene arrive through the importer (`udon_constraint`
+metadata) and join the same store. Shape casts refine Godot's `cast_motion` (which resolves to about 1/256 of the
 sweep) so long sweeps report exact distances and thin obstacles are not skipped.
 
 Component lookups take the Godot class name or the converted class's `udon_class()`; Unity

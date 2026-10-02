@@ -134,6 +134,13 @@ func _update_hit() -> void:
 			if ray_dir.dot(cv.global_transform.basis.z) > 0.0 and _graphic_at(cv, a["position"]):
 				ui = a
 				break
+		else:
+			# a trigger collider of something that can be used (Unity's raycasts hit triggers
+			# too: a button object with a label canvas inside its trigger box is used, not read)
+			var reach: float = ray_origin.distance_to(a["position"])
+			if reach < body_d and _reactive_ancestor(area, reach) != null:
+				body = a
+				body_d = reach
 		skipped.append(a["rid"])
 	var new_hit: Dictionary = {}
 	if not ui.is_empty():

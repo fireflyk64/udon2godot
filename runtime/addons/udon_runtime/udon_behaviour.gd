@@ -295,10 +295,12 @@ var _udon_interact_cache: int = -1
 func udon_has_interact() -> bool:
 	if _udon_interact_cache < 0:
 		_udon_interact_cache = 0
+		# (a script's method list holds what it inherits too, and this base class carries the
+		# empty default: the sources of the converted script and of its bases say it)
 		var scr: Script = get_script()
-		if scr != null:
-			for m in scr.get_script_method_list():
-				if str(m.get("name", "")) == "Interact":
-					_udon_interact_cache = 1
-					break
+		while scr != null and not scr.resource_path.ends_with("/udon_behaviour.gd"):
+			if scr.has_source_code() and scr.source_code.contains("func Interact("):
+				_udon_interact_cache = 1
+				break
+			scr = scr.get_base_script()
 	return _udon_interact_cache == 1

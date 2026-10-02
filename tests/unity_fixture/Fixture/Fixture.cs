@@ -32,6 +32,10 @@ public class Fixture : UdonSharpBehaviour
     // a PositionConstraint authored in the scene (Shadow follows Ball, 0.2 below it)
     public Transform ball;
     public UnityEngine.Animations.PositionConstraint shadow;
+    // one of VRChat's own constraints (a component of the SDK), following Ball half a unit above
+    public VRC.SDK3.Dynamics.Constraint.Components.VRCPositionConstraint follower;
+    // a LineRenderer with two points of its own space
+    public LineRenderer guide;
     // an inactive GameObject with an enabled component (its collider)
     public GameObject sleeper;
     public BoxCollider floorCollider;
@@ -114,6 +118,19 @@ public class Fixture : UdonSharpBehaviour
             Check(shadow.GetSource(0).sourceTransform == ball && Near(shadow.GetSource(0).weight, 1f), "... its source is Ball");
             Check(NearV(shadow.translationOffset, new Vector3(0f, -0.2f, 0f)) && NearV(shadow.translationAtRest, new Vector3(5f, 0.8f, -3f)), "... its offset and rest position: " + shadow.translationOffset);
             Check(shadow.gameObject.name == "Shadow", "... on its GameObject: " + shadow.gameObject.name);
+        }
+        Check(follower != null && follower.IsActive && follower.Locked && Near(follower.GlobalWeight, 1f), "authored VRCPositionConstraint: active, locked");
+        if (follower != null)
+        {
+            Check(NearV(follower.PositionOffset, new Vector3(0f, 0.5f, 0f)) && follower.AffectsPositionY, "... its offset: " + follower.PositionOffset);
+            Check(follower.gameObject.name == "Follower", "... on its GameObject: " + follower.gameObject.name);
+        }
+        Check(guide != null && guide.positionCount == 2 && !guide.useWorldSpace, "authored LineRenderer: two points in its own space: " + (guide == null ? -1 : guide.positionCount));
+        if (guide != null && guide.positionCount == 2)
+        {
+            Check(NearV(guide.GetPosition(1), new Vector3(2f, 0f, 0f)) && guide.gameObject.name == "Guide", "... its second point: " + guide.GetPosition(1));
+            guide.SetPosition(1, new Vector3(0f, 0f, 3f));
+            Check(NearV(guide.GetPosition(1), new Vector3(0f, 0f, 3f)) && guide == GameObject.Find("Guide").GetComponent<LineRenderer>(), "... moved by the script");
         }
         Check(sleeper != null && !sleeper.activeSelf && !sleeper.activeInHierarchy, "an inactive GameObject is inactive for the script");
         GameObject first = pool != null ? pool.TryToSpawn() : null;

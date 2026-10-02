@@ -16,6 +16,7 @@
 ##                     player with simulated controllers, for scenarios)
 ##             --scenario res://scenarios/x.gd  (drive the world; see godot_world_template/scenarios)
 ##             --static  (do not run the converted behaviours: the scene as imported)
+##             --floor <y>  (a ground at that height: a prefab run as a scene has none to stand on)
 ##             --player-data <file>  (keep the local player's PlayerData between runs; --play
 ##                     uses user://udon_player_data.dat unless told otherwise, "" turns it off)
 extends SceneTree
@@ -76,6 +77,8 @@ func _init() -> void:
 		_frame_node(str(_args["frame"]))
 	elif _args.has("face"):
 		_face_canvas(str(_args["face"]))
+	if _args.has("floor"):
+		_add_floor(float(str(_args["floor"])))
 	if _args.has("spawn"):
 		_spawn_player()
 	if _args.has("play"):
@@ -402,6 +405,19 @@ func _spawn_player() -> void:
 	if p != null:
 		p.node = body
 	print("[world_runner] player body at " + str(body.global_position))
+
+
+## A ground to stand on (100 m across, its top at `height`), for scenes that have none.
+func _add_floor(height: float) -> void:
+	var body := StaticBody3D.new()
+	body.name = "RunnerFloor"
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(100.0, 0.2, 100.0)
+	shape.shape = box
+	body.add_child(shape)
+	body.position = Vector3(0.0, height - 0.1, 0.0)
+	root.add_child(body)
 
 
 ## The desktop player spawned by --play (or null).

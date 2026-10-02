@@ -1180,10 +1180,17 @@ func get_component(n: Node, type_name: String):
 	var croot := canvas_root(n)
 	if croot != null and node_is_type(croot, type_name):
 		return croot
+	# (unidot names the node of a component after it: a LineRenderer and a MeshRenderer are
+	# both MeshInstance3Ds)
+	var named: Node = null
+	var any: Node = null
 	for c in _component_nodes(n):
 		if _is_component_child(c) and node_is_type(c, type_name):
-			return c
-	return null
+			if any == null:
+				any = c
+			if named == null and String(c.name).trim_suffix("2") == type_name:
+				named = c
+	return named if named != null else any
 
 ## The nodes that may hold components of a GameObject node: its children, and for a UI object
 ## the children of its 3D frame as well (a sound or a collider on a button: unidot keeps what
@@ -3814,9 +3821,19 @@ func debug_draw_line(_a: Vector3, _b: Vector3, _c: Color, _dur: float) -> void:
 # ---------------------------------------------------------------------------
 
 func _line(n: Node) -> Dictionary:
+	if n == null:
+		return {"positions": [], "props": {}}   # (a LineRenderer the scene does not have)
 	var id: int = n.get_instance_id()
 	if not _line_data.has(id):
-		_line_data[id] = {"positions": [], "props": {}}
+		var d: Dictionary = {"positions": [], "props": {}}
+		if n.has_meta("unidot_line"):
+			# an imported LineRenderer: its points and colours as authored (unidot drew them
+			# as a mesh of its own, which the redraw here replaces)
+			var info: Dictionary = n.get_meta("unidot_line")
+			d["positions"] = (info.get("positions", []) as Array).duplicate()
+			d["props"] = {"useWorldSpace": bool(info.get("world_space", true)), "loop": bool(info.get("loop", false)), "startColor": info.get("start_color", Color.WHITE),
+				"endColor": info.get("end_color", Color.WHITE), "startWidth": float(info.get("width", 1.0)), "endWidth": float(info.get("width", 1.0)), "widthMultiplier": float(info.get("width", 1.0))}
+		_line_data[id] = d
 	return _line_data[id]
 
 func line_get_count(n: Node) -> int:
@@ -3865,6 +3882,8 @@ func _line_redraw(n: Node) -> void:
 	var d := _line(n)
 	var mi: MeshInstance3D = n.get_node_or_null("_udon_line")
 	if mi == null:
+		if n is MeshInstance3D and n.has_meta("unidot_line"):
+			n.mesh = null   # (the line as imported: drawn here from now on)
 		mi = MeshInstance3D.new()
 		mi.name = "_udon_line"
 		mi.mesh = ImmediateMesh.new()
@@ -5786,7 +5805,10 @@ func _adopt_constraints_of(n: Node) -> void:
 		var up = cfg.get("up_%d" % ci)
 		if up is NodePath:
 			c["worldUpObject"] = n.get_node_or_null(up)
-		c["target"] = n
+		# (a VRChat constraint may move another object than its own: TargetTransform)
+		var moved = cfg.get("target_%d" % ci)
+		var other: Node = n.get_node_or_null(moved) if moved is NodePath else null
+		c["target"] = other if other != null else n
 		if ci == 0 and not _constraints.has(id):
 			_constraints[id] = c
 		else:

@@ -73,6 +73,47 @@ world udonutils_tests refs/UdonUtils/Packages/tlp.udonutils/Runtime "res://Runti
 # vrcbce (VRCBilliards Community Edition): one table prefab as the scene, played through its menu;
 # --frame / --view put the display pass's camera over the cloth
 world vrcbce refs/vrcbce/Packages/com.vrcbilliards.vrcbce "res://com.vrcbilliards.vrcbce/VRCBCE (M.O.O.N).prefab.tscn" res://scenarios/vrcbce.gd --shadows --frame "Core Table Code/Shadows" --view "0.15,0.8,-0.6" --dist 1.3 --fov 55
+# ... played through the desktop player (the unlock object, the menu's canvas, the cue pickup,
+# the top-down view and a shot by window input alone); a prefab has no ground: --floor
+play() {
+  local name=$1 scene=$2 scenario=$3 out="$WORLDS/$1"
+  local extra=("${@:4}")
+  if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  [ -d "$out" ] && [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ] || return 0
+  rm -f "$out/player_data.dat"
+  timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --play --scenario "$scenario" --shot "$out/shots/${name}_play.png" ${extra[@]+"${extra[@]}"} > "$out/scenario_play.log" 2>&1
+  local code=$?
+  grep -E "^\[scenario\] [0-9]|FAIL |SCENARIO" "$out/scenario_play.log"
+  godot_script_errors "$out/scenario_play.log" || code=1
+  [ $code -ne 0 ] && FAILED+=("$name-play")
+  return 0
+}
+play vrcbce "res://com.vrcbilliards.vrcbce/VRCBCE (M.O.O.N).prefab.tscn" res://scenarios/vrcbce_play.gd --floor 0 --shadows
+# ... the package's sample scene: every table of it (three: the plain one, the fox one with its
+# fur shaders, the one of the tournament) through its own menu, in the world already imported
+scene() {
+  local name=$1 tag=$2 scene=$3 scenario=$4 out="$WORLDS/$1"
+  local extra=("${@:5}")
+  if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  [ -f "$out/${scene#res://}" ] || return 0
+  rm -f "$out/player_data.dat"
+  timeout 600 "$GODOT" --headless --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --debug-scripts --scenario "$scenario" ${extra[@]+"${extra[@]}"} > "$out/scenario_$tag.log" 2>&1
+  local code=$?
+  grep -E "^\[scenario\] [0-9]|FAIL |SCENARIO" "$out/scenario_$tag.log"
+  local logs=("$out/scenario_$tag.log")
+  if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ]; then
+    mkdir -p "$out/shots"
+    timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s world_runner.gd -- --scene "$scene" --frames 5 --scenario "$scenario" --shot "$out/shots/${name}_$tag.png" ${extra[@]+"${extra[@]}"} > "$out/scenario_${tag}_display.log" 2>&1
+    local dcode=$?
+    grep -E "^\[scenario\] [0-9]|FAIL |SCENARIO" "$out/scenario_${tag}_display.log"
+    [ $dcode -ne 0 ] && code=$dcode
+    logs+=("$out/scenario_${tag}_display.log")
+  fi
+  godot_script_errors "${logs[@]}" || code=1
+  [ $code -ne 0 ] && FAILED+=("$name-$tag")
+  return 0
+}
+scene vrcbce all "res://com.vrcbilliards.vrcbce/Samples~/Demo Scene/VRCBilliardsCE_All_Tables.tscn" res://scenarios/vrcbce_all.gd --shadows --frame "VRCBCE CottonFox (akalink)" --view "0.1,0.9,-0.5" --dist 0.75 --fov 55
 # ... and the canvases of its three menu styles against what Unity computes from the prefabs
 # (tools/unity_ui_reference.py), on a display also what is rendered against the transforms
 ui_reference() {
