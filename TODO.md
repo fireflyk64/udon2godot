@@ -8,14 +8,54 @@ Asked for: "Fix the line renderer and font and try doing the mirror drawing blin
 local model to have that property and make sure it looks good". What the last round named as
 not drawn, each with a case in a local fixture and a picture that is looked at.
 
-- [ ] A graphic on a rect of negative size is drawn mirrored (no reference project has one:
-      done from what Unity's Image does, with a fixture case whose picture is looked at)
-- [ ] LineRenderer: its material (colour, texture, blending), the texture modes, rounded
-      corners and caps (`numCornerVertices`, `numCapVertices`)
-- [ ] Font effects of a TextMeshPro material: the inner half of an outline and the face
-      dilate, the softness of an underlay
-- [ ] The text an InputField shows on a canvas in metres (a LineEdit draws at a whole size)
-- [ ] Inline sprites on the baseline by their bearing
+- [x] A graphic on a rect of negative size is drawn mirrored (no reference project has one:
+      done from what Unity's Image does, with a fixture case whose picture is looked at).
+      Unity builds the quad from the rect's corner by its size, so on a negative axis the
+      picture lies on the other side of the corner, mirrored. The Control has no size
+      there: the sprite helper (`runtime/ui_sprite.gd`) is as large as the rect should be
+      and draws mirrored about the Control's origin: a simple sprite, a filled one (the fill
+      runs from the other side), an Image without a sprite; a sliced one's borders are
+      scaled by the negative size and fill the axis between them (Image.GetAdjustedBorders);
+      a tiled one has no tiles there (the tile count comes out negative) and draws nothing.
+      The importer adds the helper to such Images when a canvas is complete, and a rect
+      whose kept size changes says so (`resized`), so the helper follows a layout. Fixture
+      canvas "Mirrored" (a four-colour sprite in eight boxes; looked at: flipped on x, on
+      y, on both), the pixel check compares the mirrored pictures, the reference knows the
+      tiled case; unit tests 550 → 565. Not done: an Image that turns negative at run time
+      without having been so at import gets no helper.
+- [x] LineRenderer: its material (colour, texture, blending), the texture modes, rounded
+      corners and caps (`numCornerVertices`, `numCapVertices`). The ribbon's vertices say
+      how they leave the line (the directions it arrives and leaves with, how far round the
+      corner, the offset across and along) and the shader opens them: a fan about a bent
+      point on each side, which on the inner side ends where the two edges meet; half a
+      disc at each end. Texture coordinates by the mode (stretched, once per unit of
+      length, per segment), carried along when a vertex is moved along the line; the
+      material's colour, texture, tiling and blending go to the ribbon's own material
+      (blended, additive or opaque). Scripts: `Renderer.material` / `sharedMaterial` of a
+      line, a change through the Material functions draws it again; `numCornerVertices`,
+      `numCapVertices`, `textureMode`. Udon fixture: `Rope` (three points, a striped
+      texture, six corner and five cap vertices), looked at from above: 138 / 181 checks.
+      Not done: TrailRenderer (it records no points), lighting of a line.
+- [x] Font effects of a TextMeshPro material: the inner half of an outline and the face
+      dilate, the softness of an underlay. Measured on rendered glyphs first: a label's
+      `outline_size` N is N / 4 units wide (the outlines were a quarter of what was meant),
+      a font's embolden moves every edge by embolden x size / 32 and keeps a glyph's lower
+      left corner, shadow offsets are exact.
+      - [x] the outline is a band about the glyph's edge: the glyphs are drawn thinner (a
+            variation of the font with a negative embolden, by 2 % of the size at most:
+            beyond that thin strokes break up) and the outline about them as wide as both
+            halves; the drawing child is moved so the glyphs keep their middle
+      - [x] the face dilate moves the edge out the same way
+      - [x] an underlay with softness is drawn by a second child, a CanvasGroup that holds
+            the text in the underlay's colour and blurs it over the width of the ramp
+            (`ui_text_underlay.gdshader`); a ramp narrower than 1.5 pixels stays the label's
+            shadow
+      Fixture canvas "TextEffects" (six texts at 110 and 36, looked at), the reference
+      computes the outline about the thinner glyph, the embolden and the ramp's width;
+      unit tests 565 → 585; UI fixture 34 canvases, 998 of 998 nodes.
+- [ ] The text an InputField shows on a canvas in metres (a LineEdit draws at a whole size).
+      Not done: no reference project has an input field on such a canvas.
+- [ ] Inline sprites on the baseline by their bearing. Not done (see the round below).
 
 ## What round 2 left (2026-10-01) — done but for three notes
 

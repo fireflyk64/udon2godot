@@ -3397,6 +3397,8 @@ func _geom(n: Node) -> GeometryInstance3D:
 	return null
 
 func renderer_shared_material(n: Node) -> Material:
+	if _is_line(n):
+		return _line_material(n, false)
 	var g := _geom(n)
 	if g == null:
 		return null
@@ -3411,6 +3413,8 @@ func renderer_shared_material(n: Node) -> Material:
 
 ## Unity `renderer.material` returns a per-instance copy; emulate by duplicating once.
 func renderer_material(n: Node) -> Material:
+	if _is_line(n):
+		return _line_material(n, true)
 	var g := _geom(n)
 	if g == null:
 		return null
@@ -3426,6 +3430,14 @@ func renderer_material(n: Node) -> Material:
 	return m
 
 func renderer_set_material(n: Node, m: Material) -> void:
+	if _is_line(n):
+		var d := _line(n)
+		d["info"]["material"] = m
+		d["own_material"] = true
+		if m != null:
+			_line_materials[m.get_instance_id()] = n.get_instance_id()
+		_line_redraw(n)
+		return
 	var g := _geom(n)
 	if g != null:
 		g.material_override = m
@@ -3517,6 +3529,16 @@ func _shader_value(value):
 	return value
 
 func mat_set(m: Material, key, value) -> void:
+	_mat_set(m, key, value)
+	# (a line is drawn with a material of its own made from this one)
+	if m != null and _line_materials.has(m.get_instance_id()):
+		var line: Node = instance_from_id(_line_materials[m.get_instance_id()]) as Node
+		if line != null and is_instance_valid(line):
+			_line_redraw(line)
+		else:
+			_line_materials.erase(m.get_instance_id())
+
+func _mat_set(m: Material, key, value) -> void:
 	if m == null:
 		return
 	if is_render_texture(value):
@@ -3897,7 +3919,29 @@ func line_get_positions(n: Node, into: Array) -> int:
 		into[i] = d["positions"][i]
 	return c
 
-const _LINE_INFO_KEYS: Dictionary = {"useWorldSpace": "world_space", "loop": "loop", "widthMultiplier": "width", "alignment": "alignment"}
+const _LINE_INFO_KEYS: Dictionary = {"useWorldSpace": "world_space", "loop": "loop", "widthMultiplier": "width", "alignment": "alignment",
+	"numCornerVertices": "corner_vertices", "numCapVertices": "cap_vertices", "textureMode": "texture_mode", "textureScale": "texture_scale"}
+var _line_materials: Dictionary = {}   # material id → node id of the line that is drawn with it
+
+## Is the node a LineRenderer (an imported one, or one a script has given points)?
+func _is_line(n: Node) -> bool:
+	return n != null and (n.has_meta(UiLine.META) or _line_data.has(n.get_instance_id()))
+
+## The material of a line: the renderer's (`own`: a copy that is this line's alone, made at
+## the first call, as Renderer.material makes one). The ribbon is drawn with a material of
+## its own that takes the colour, texture and blending of this one; a change through the
+## script's Material functions draws the line again.
+func _line_material(n: Node, own: bool) -> Material:
+	var d := _line(n)
+	var info: Dictionary = d["info"]
+	if own and not bool(d.get("own_material", false)):
+		info["material"] = (info["material"] as Material).duplicate() if info.get("material") is Material else StandardMaterial3D.new()
+		d["own_material"] = true
+		_line_redraw(n)
+	var m: Material = info.get("material") as Material
+	if m != null:
+		_line_materials[m.get_instance_id()] = n.get_instance_id()
+	return m
 
 ## Unity's width curve of a line (without the multiplier): a constant 1 when it has none.
 func _line_width_curve(info: Dictionary) -> Curve:

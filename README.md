@@ -236,7 +236,8 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   TextMeshPro does); other texts get a system font with the metrics of Liberation Sans
   (TextMeshPro's default, metric-compatible with uGUI's Arial). The outline and the underlay
   of a TextMeshPro material (the font asset's own or a material preset) become the label's
-  outline and shadow, the fallbacks of a font asset and of the project's "TMP Settings"
+  outline and shadow (the outline half inside the glyph's edge, as the distance field shader
+  draws it: the glyphs are drawn thinner; an underlay with softness is blurred), the fallbacks of a font asset and of the project's "TMP Settings"
   become font fallbacks, `<sprite>` tags draw the sprites of a sprite asset, Page overflow
   shows one page and Linked overflow hands the rest of the text to the linked component.
   TextMeshPro's margins take from the rect the text is laid out in (or add to it), the line
@@ -271,7 +272,7 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
   radial 90 / 180 / 360) likewise by a helper child (`ui_sprite.gd`); Unity's built-in sprites (UISprite, Background, Knob, Checkmark ...),
   which no project contains, have stand-ins in `runtime/sprites`. A Sprite that is an asset of
   its own (what an atlas tool or an extracted project leaves) is the part of its texture it
-  was packed into.
+  was packed into. An Image on a rect of negative size is drawn mirrored, as Unity's quad is.
 * **Checked against Unity's numbers without Unity.** `tools/unity_ui_reference.py` reads a
   scene or prefab (nested prefab instances and their overrides included) and computes where
   Unity puts every rect, the colour each graphic is drawn with (or that it is not drawn) and
@@ -442,7 +443,8 @@ toggles, dropdowns, `RectTransform`), `string.Format`/`ToString("F2")` with .NET
 `StringBuilder`, arrays, `DataList`/`DataDictionary`/`VRCJson`, `DateTime`, curves,
 constraints, navigation and character controllers. A LineRenderer is a camera-facing ribbon drawn from the
 `unidot_line` metadata the importer writes (positions, width multiplier and curve, gradient,
-loop, world space, alignment) by unidot's `runtime/line_renderer.gd`; a script's `SetPosition`,
+loop, world space, alignment, corner and cap vertices, texture mode, material) by unidot's
+`runtime/line_renderer.gd`; a script's `SetPosition`,
 `startWidth`, `colorGradient` ... change that description and it is drawn again once a frame.
 
 Physics callbacks are dispatched by the runtime: `OnTriggerEnter/Exit/Stay`,

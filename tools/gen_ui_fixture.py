@@ -728,15 +728,15 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Floats:
-    - _FaceDilate: 0
+    - _FaceDilate: %(dilate)s
     - _GradientScale: 10
     - _OutlineWidth: %(outline)s
     - _ScaleRatioA: 1
     - _ScaleRatioC: 1
-    - _UnderlayDilate: 0
+    - _UnderlayDilate: %(underlay_dilate)s
     - _UnderlayOffsetX: %(ux)s
     - _UnderlayOffsetY: %(uy)s
-    - _UnderlaySoftness: 0
+    - _UnderlaySoftness: %(softness)s
     m_Colors:
     - _FaceColor: {r: 1, g: 1, b: 1, a: 1}
     - _OutlineColor: %(outline_color)s
@@ -744,10 +744,12 @@ Material:
 """
 
 
-def font_material(name, file_id=2180264, outline=0, outline_color=(0, 0, 0, 1), underlay=None, underlay_color=(0, 0, 0, 0.5)):
-    """underlay: its offset (x, y) in the shader's units (fractions of the gradient scale)."""
+def font_material(name, file_id=2180264, outline=0, outline_color=(0, 0, 0, 1), underlay=None, underlay_color=(0, 0, 0, 0.5), dilate=0, underlay_dilate=0, softness=0):
+    """underlay: its offset (x, y) in the shader's units (fractions of the gradient scale);
+    dilate: the face dilate, underlay_dilate and softness: the underlay's."""
     return FONT_MATERIAL_YAML % {"id": file_id, "name": name, "keywords": "UNDERLAY_ON" if underlay else "", "outline": num(outline), "outline_color": vec(outline_color, "rgba"),
-                                 "ux": num(underlay[0] if underlay else 0), "uy": num(underlay[1] if underlay else 0), "underlay_color": vec(underlay_color, "rgba")}
+                                 "ux": num(underlay[0] if underlay else 0), "uy": num(underlay[1] if underlay else 0), "underlay_color": vec(underlay_color, "rgba"),
+                                 "dilate": num(dilate), "underlay_dilate": num(underlay_dilate), "softness": num(softness)}
 
 
 # A TextMeshPro sprite asset: the two halves of Sheet.png, for <sprite> tags.
@@ -861,6 +863,12 @@ def write_fonts(out):
     write("Calistoga Outline SDF.asset.meta", FONT_ASSET_META % FONT_ASSET_OUTLINE)
     # a material preset: the first asset's atlas with an underlay (a drop shadow)
     write("Calistoga SDF Shadow.mat", "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n" + font_material("Calistoga SDF Shadow", 2100000, underlay=(0.5, -0.5), underlay_color=(0, 0, 0, 0.5)))
+    # ... and presets with a soft, dilated underlay; with a thick outline; with a dilated face
+    for preset_name, guid, kw in (("Calistoga SDF Soft", FONT_MATERIAL_SOFT, {"underlay": (0.6, -0.6), "underlay_color": (0, 0, 0, 0.8), "underlay_dilate": 0.2, "softness": 0.6}),
+                                  ("Calistoga SDF Thick", FONT_MATERIAL_THICK, {"outline": 1.0, "outline_color": (0.9, 0.1, 0.1, 1)}),
+                                  ("Calistoga SDF Dilated", FONT_MATERIAL_DILATED, {"dilate": 0.5})):
+        write(preset_name + ".mat", "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n" + font_material(preset_name, 2100000, **kw))
+        write(preset_name + ".mat.meta", "fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 2100000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n" % guid)
     write("Calistoga SDF Shadow.mat.meta", "fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 2100000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n" % FONT_MATERIAL_SHADOW)
     write("Icons.asset", SPRITE_ASSET_YAML % {"sheet": SHEET_GUID, "name": "Icons", "point": 32, "face_scale": 1, "glyph_scale": 1})
     write("Icons.asset.meta", FONT_ASSET_META % SPRITE_ASSET)
@@ -1064,6 +1072,9 @@ FONT_ASSET = "f1a7c1d2e3b44f5a8697a1b2c3d4e5f6"         # Fonts/Calistoga SDF.as
 FONT_ASSET_LOST = "f2a7c1d2e3b44f5a8697a1b2c3d4e5f6"    # Fonts/Lost SDF.asset: its source font is not in the project
 FONT_ASSET_OUTLINE = "f6a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/Calistoga Outline SDF.asset: its material has an outline
 FONT_MATERIAL_SHADOW = "f7a7c1d2e3b44f5a8697a1b2c3d4e5f6"   # Fonts/Calistoga SDF Shadow.mat: a material preset with an underlay
+FONT_MATERIAL_SOFT = "fba7c1d2e3b44f5a8697a1b2c3d4e5f6"     # Fonts/Calistoga SDF Soft.mat: a soft, dilated underlay
+FONT_MATERIAL_THICK = "fca7c1d2e3b44f5a8697a1b2c3d4e5f6"    # Fonts/Calistoga SDF Thick.mat: the widest outline
+FONT_MATERIAL_DILATED = "fda7c1d2e3b44f5a8697a1b2c3d4e5f6"  # Fonts/Calistoga SDF Dilated.mat: a dilated face
 SPRITE_ASSET = "f8a7c1d2e3b44f5a8697a1b2c3d4e5f6"       # Fonts/Icons.asset: a sprite asset
 SPRITE_ASSET_BARE = "faa7c1d2e3b44f5a8697a1b2c3d4e5f6"  # Fonts/IconsBare.asset: a sprite asset without face metrics
 TMP_SETTINGS_ASSET = "f9a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/TMP Settings.asset: the default sprite asset, a fallback font
@@ -1751,6 +1762,16 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     # a linked text goes on where the first one ends
     link_b = f.node("LinkB", c, {"pos": (120, -150), "size": (210, 80)}, [renderer(), tmp("", 30)])
     f.node("LinkA", c, {"pos": (-120, -150), "size": (210, 80)}, [renderer(), tmp("alpha beta gamma delta epsilon zeta eta theta", 30, overflow=6, linked=link_b.components[1][0])])
+
+    # ---- TextEffects: what a material draws about the glyphs, large enough to look at ---------------
+    c = b.world_canvas("TextEffects", (16.2, 3.0, 2), (760, 420))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.55, 0.6, 0.5, 1))
+    f.node("Plain", c, {"pos": (-190, 140), "size": (360, 120)}, [renderer(), tmp("Edge", 110, font=FONT_ASSET)])
+    f.node("Thick", c, {"pos": (190, 140), "size": (360, 120)}, [renderer(), tmp("Edge", 110, font=FONT_ASSET, material=(2100000, FONT_MATERIAL_THICK))])
+    f.node("Dilated", c, {"pos": (-190, 0), "size": (360, 120)}, [renderer(), tmp("Edge", 110, font=FONT_ASSET, material=(2100000, FONT_MATERIAL_DILATED))])
+    f.node("Soft", c, {"pos": (190, 0), "size": (360, 120)}, [renderer(), tmp("Edge", 110, font=FONT_ASSET, material=(2100000, FONT_MATERIAL_SOFT))])
+    f.node("Hard", c, {"pos": (-190, -140), "size": (360, 120)}, [renderer(), tmp("Edge", 110, font=FONT_ASSET, material=(2100000, FONT_MATERIAL_SHADOW))])
+    f.node("SoftSmall", c, {"pos": (190, -140), "size": (360, 120)}, [renderer(), tmp("soft underlay at 36,<br><color=#ffd040>two colours</color>", 36, font=FONT_ASSET, material=(2100000, FONT_MATERIAL_SOFT))])
 
     # ---- TextBoxes: where a text is laid out: TextMeshPro's margins, line spacing -------------------
     c = b.world_canvas("TextBoxes", (14.4, 3.0, 2), (700, 420))

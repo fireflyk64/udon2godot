@@ -1385,8 +1385,11 @@ class TextStyles:
         return out
 
     def effects(self, d):
-        """→ {"outline": (units, colour) or None, "shadow": (x, y, colour) or None} for a text
-        whose material is in the project, else None."""
+        """→ {"outline": (units, colour) or None, "shadow": (x, y, colour) or None, "embolden":
+        how the edge of the glyphs moves (32 per font size: out by the face dilate, in by the
+        half of the outline that lies inside), "soft": the width of the underlay's ramp in
+        units} for a text whose material is in the project, else None. The outline's units
+        are half its band: what lies outside the glyph's edge."""
         font = self._doc(d.get("m_fontAsset"))
         material = self._doc(d.get("m_sharedMaterial"))
         if material is None and font is not None and _ref_id(font.get("material")):
@@ -1401,15 +1404,22 @@ class TextStyles:
             return None
         size = _num(d.get("m_fontSize", 36), 36)
         unit = _num(floats.get("_GradientScale", 0)) * size / point     # the gradient scale in canvas units
-        out = {"outline": None, "shadow": None}
-        width = _num(floats.get("_OutlineWidth", 0)) * _num(floats.get("_ScaleRatioA", 1), 1) * 0.5 * unit
+        out = {"outline": None, "shadow": None, "soft": 0.0}
+        ratio_a = _num(floats.get("_ScaleRatioA", 1), 1)
+        width = _num(floats.get("_OutlineWidth", 0)) * ratio_a * 0.5 * unit
         if width > 0:
             out["outline"] = (width, _color(colors.get("_OutlineColor"), (0.0, 0.0, 0.0, 1.0)))
+        dilate = _num(floats.get("_FaceDilate", 0)) * ratio_a * 0.5 * unit
+        # (the glyphs are drawn thinner by the inner half of the outline, by 2 % of the font
+        # size at most: the outline about them covers the rest)
+        out["inner"] = min(max(width, 0.0), 0.02 * size)
+        out["embolden"] = 32.0 * (dilate - out["inner"]) / size if size > 0 else 0.0
         if "UNDERLAY_ON" in keywords or "UNDERLAY_INNER" in keywords:
             ratio = _num(floats.get("_ScaleRatioC", 1), 1)
             # (Unity's y is up, the dump's is down)
             out["shadow"] = (_num(floats.get("_UnderlayOffsetX", 0)) * ratio * unit, -_num(floats.get("_UnderlayOffsetY", 0)) * ratio * unit,
                              _color(colors.get("_UnderlayColor"), (0.0, 0.0, 0.0, 0.5)))
+            out["soft"] = _num(floats.get("_UnderlaySoftness", 0)) * ratio * unit
         return out
 
     def fallbacks(self, d):
@@ -2016,12 +2026,25 @@ def _drawn_problems(e, d):
     if "text_effects" in e and "text" in d:
         # the outline and the underlay of the text's material, in whole units (pixels of the
         # canvas); one that is thinner than a unit is one unit or none
+        # (Unity's number is the half of the outline's band that lies outside the glyph's
+        # edge; the imported outline lies about a glyph that is drawn thinner, so it is
+        # that half and what the glyph is thinner by; a label's outline is set in quarters)
         want, got = e["text_effects"]["outline"], d.get("outline")
-        if want is None or want[0] < 0.25 * whole:
+        about = (want[0] + e["text_effects"].get("inner", 0.0)) if want is not None else 0.0
+        if want is None or about < 0.05 * whole:
             if got is not None and got[0] > 0 and (want is None or want[0] <= 0):
                 out.append("outline of %s, Unity's material has none" % got[0])
-        elif got is None or abs(got[0] - want[0]) > 0.75 * whole or max(abs(a - b) for a, b in zip(got[1:5], want[1])) > 0.02:
-            out.append("outline %s, Unity's material draws %.3g in %s" % (got, want[0], _fmt(want[1])))
+        elif got is None or abs(got[0] - about) > 0.26 * whole or max(abs(a - b) for a, b in zip(got[1:5], want[1])) > 0.02:
+            out.append("outline %s, Unity's material draws %.3g beyond the glyph's edge and %.3g inside it, in %s" % (got, want[0], e["text_effects"].get("inner", 0.0), _fmt(want[1])))
+        # the glyphs are thinner by the inner half of the outline, wider by the face dilate
+        if abs(d.get("embolden", 0.0) - e["text_effects"].get("embolden", 0.0)) > 0.005:
+            out.append("the font's embolden is %.4g, Unity's material moves the edge by %.4g (32 per font size)" % (d.get("embolden", 0.0), e["text_effects"].get("embolden", 0.0)))
+        # (a ramp that would be narrower than a pixel and a half on its canvas is not blurred)
+        want_soft, got_soft = e["text_effects"].get("soft", 0.0), d.get("shadow_soft", 0.0)
+        if "shadow_soft" not in d and d.get("shadow_soft_pixels", 1e9) < 1.5:
+            want_soft = 0.0
+        if abs(got_soft - want_soft) > 0.02 * max(want_soft, 1.0):
+            out.append("the underlay is blurred over %.4g, Unity's softness is %.4g wide" % (got_soft, want_soft))
         want, got = e["text_effects"]["shadow"], d.get("shadow")
         if want is None:
             if got is not None:
