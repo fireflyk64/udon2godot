@@ -6,13 +6,14 @@ Status legend: [x] done and verified, [~] implemented but needs more coverage, [
 
 The "not done" notes of the round below, taken up one by one; each gets its case first.
 
-State at the end (2026-10-02, main f59a199 / unidot 8ed572d, both pushed): unit tests 550;
+State at the end (2026-10-02, main 1e07e0f / unidot 880b4ac, both pushed): unit tests 550;
 UI fixture 32 canvases, 974 of 974 nodes, dropdown 37, animation 72, pixel check 3049 points
 and 68 of 81 texts, 0 problems; coverage 1104 checks; Udon fixture 134 / 172 / 25 / 16, UI 44
 of 44; billiards 55 / 18 / 17, UI 147 of 147; community worlds pass (vrcbce 28 / 28, play 16,
-sample scene 32, UI 135 / 121 / 184); compile check 362 ok; converter output unchanged on the
-reference repositories. unidot's `ui-canvas` (local, rebuilt: 19f8a09, without the
-LineRenderer and its module) passes the UI suite with the same numbers. Open below: the
+sample scene 32, UI 135 / 121 / 184; SaccFlight's SF-1 canvases 33 of 33); compile check 362
+ok; converter output unchanged on the reference repositories. unidot's `ui-canvas` (local,
+rebuilt from 880b4ac without the LineRenderer and its module) passes the UI suite with the
+same numbers. Open below: the
 baseline of inline sprites, mirrored graphics on negative rects, the engine's message at exit.
 
 - [x] LineRenderer: its width (multiplier x curve), every key of its gradient, a ribbon that
