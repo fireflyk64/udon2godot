@@ -1258,6 +1258,11 @@ def drawn_color(n, group_alpha):
     # Image.GenerateFilledSprite: a filled sprite with (nearly) no fill amount has no mesh
     if name == "Image" and int(_num(d.get("m_Type", 0))) == 3 and _ref_id(d.get("m_Sprite")) and _num(d.get("m_FillAmount", 1), 1) < 0.001:
         c[3] = 0.0
+    # Image.GenerateTiledSprite counts the tiles of an axis from the rect's size: none on a
+    # negative one (the other kinds build their quads from the rect's corner by its size:
+    # mirrored, but there)
+    if name == "Image" and int(_num(d.get("m_Type", 0))) == 2 and _ref_id(d.get("m_Sprite")) and (n.size[0] < 0 or n.size[1] < 0):
+        c[3] = 0.0
     return c
 
 

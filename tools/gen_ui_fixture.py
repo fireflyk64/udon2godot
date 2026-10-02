@@ -455,6 +455,7 @@ SHEET_GUID = "0c11ca5e0000000000000000000000a3"          # 64 x 32, two sprites
 SHEET_LEFT = (7482667652216324301, SHEET_GUID)
 SHEET_RIGHT = (-3219062469524436042, SHEET_GUID)
 PACKED = (21300000, "0c11ca5e0000000000000000000000a4")    # Packed.asset: a Sprite asset, a part of the sheet
+QUAD = (21300000, "0c11ca5e0000000000000000000000a5")      # 32 x 32, four quarters: red, green / blue, yellow
 
 RED, GREEN, BLUE, YELLOW = (230, 60, 60, 255), (60, 200, 80, 255), (60, 90, 230, 255), (240, 220, 60, 255)
 ORANGE, PURPLE, MAGENTA, CYAN = (240, 150, 40, 255), (150, 70, 200, 255), (220, 60, 200, 255), (60, 210, 220, 255)
@@ -611,6 +612,8 @@ def write_textures(out):
             fh.write(meta)
     write("Frame.png", png(64, 64, frame_pixel), TEXTURE_META % {"guid": FRAME[1], "names": " []", "mode": 1, "ppu": 100, "border": "{x: 16, y: 16, z: 16, w: 16}", "sprites": " []"})
     write("Bar.png", png(64, 16, lambda x, y: ORANGE if x < 32 else PURPLE), TEXTURE_META % {"guid": BAR[1], "names": " []", "mode": 1, "ppu": 100, "border": "{x: 0, y: 0, z: 0, w: 0}", "sprites": " []"})
+    # no two of its quarters are alike: a picture that is mirrored shows it
+    write("Quad.png", png(32, 32, lambda x, y: ((RED if x < 16 else GREEN) if y < 16 else (BLUE if x < 16 else YELLOW))), TEXTURE_META % {"guid": QUAD[1], "names": " []", "mode": 1, "ppu": 100, "border": "{x: 0, y: 0, z: 0, w: 0}", "sprites": " []"})
     names = "".join("\n  - first:\n      213: %d\n    second: %s" % (sp[0], nm) for sp, nm in ((SHEET_LEFT, "Sheet_0"), (SHEET_RIGHT, "Sheet_1")))
     # Unity's sprite rects have their origin at the bottom-left: the upper half of the left
     # sprite is magenta, its lower half cyan; the right sprite is the other way round
@@ -1773,6 +1776,24 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("Spaced", c, {"pos": (-230, -150), "size": (200, 100)}, [renderer(), tmp("one<br>two<br>three", 20, line=50)])
     f.node("SpacedTight", c, {"pos": (0, -150), "size": (110, 100)}, [renderer(), text("one two three four five", 20, color=(1, 1, 1, 1), align=0, line=0.8)])
     f.node("SpacedWide", c, {"pos": (230, -150), "size": (110, 100)}, [renderer(), text("one two three four five", 20, color=(1, 1, 1, 1), align=0, line=1.5)])
+
+    # ---- Mirrored: Images on rects of negative size --------------------------------------------------
+    # A rect stretched with insets larger than its parent has a negative size; Unity builds the
+    # Image's quad from the rect's corner by its size all the same: the picture lies on the other
+    # side of that corner, mirrored. Every box is 100 x 60; the first holds the picture as it is.
+    c = b.world_canvas("Mirrored", (15.3, 3.0, 2), (640, 260))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.1, 0.12, 1))
+    for i, (name, delta, kw) in enumerate([
+            ("Plain", (-20, -20), {"sprite": QUAD}),                 # 80 x 40
+            ("FlipH", (-130, -20), {"sprite": QUAD}),                # -30 x 40
+            ("FlipV", (-20, -90), {"sprite": QUAD}),                 # 80 x -30
+            ("FlipBoth", (-130, -90), {"sprite": QUAD}),             # -30 x -30
+            ("FlipFilled", (-160, -20), {"sprite": BAR, "kind": 3, "fill": (0, 0.75, 0)}),   # -60 x 40, three quarters from its left
+            ("FlipColor", (-140, -100), {"color": (0.9, 0.5, 0.1, 1)}),                      # -40 x -40, no sprite
+            ("FlipSliced", (-170, -20), {"sprite": FRAME, "kind": 1}),                        # -70 x 40
+            ("FlipTiled", (-180, -20), {"sprite": QUAD, "kind": 2})]):                        # -80 x 40: two and a half tiles
+        box = b.img(name + "Box", c, {"pos": (-225 + 150 * (i % 4), 60 - 120 * (i // 4)), "size": (100, 60)}, color=(0.28, 0.28, 0.34, 1))
+        f.node(name, box, {"amin": (0, 0), "amax": (1, 1), "size": delta}, [renderer(), image(**kw)])
 
     # ---- Transitions: what a Selectable does over time --------------------------------------------
     c = b.world_canvas("Transitions", (12.3, 3.0, 2), (400, 200))

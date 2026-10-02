@@ -2,6 +2,21 @@
 
 Status legend: [x] done and verified, [~] implemented but needs more coverage, [ ] open.
 
+## Line renderer, font effects, mirrored graphics (2026-10-02) — current work
+
+Asked for: "Fix the line renderer and font and try doing the mirror drawing blind. Modify a
+local model to have that property and make sure it looks good". What the last round named as
+not drawn, each with a case in a local fixture and a picture that is looked at.
+
+- [ ] A graphic on a rect of negative size is drawn mirrored (no reference project has one:
+      done from what Unity's Image does, with a fixture case whose picture is looked at)
+- [ ] LineRenderer: its material (colour, texture, blending), the texture modes, rounded
+      corners and caps (`numCornerVertices`, `numCapVertices`)
+- [ ] Font effects of a TextMeshPro material: the inner half of an outline and the face
+      dilate, the softness of an underlay
+- [ ] The text an InputField shows on a canvas in metres (a LineEdit draws at a whole size)
+- [ ] Inline sprites on the baseline by their bearing
+
 ## What round 2 left (2026-10-01) — done but for three notes
 
 The "not done" notes of the round below, taken up one by one; each gets its case first.
