@@ -118,7 +118,7 @@ func _update_hit() -> void:
 	aq.collide_with_areas = true
 	aq.collide_with_bodies = false
 	var skipped: Array[RID] = []
-	for i in range(6):
+	for i in range(16):
 		aq.exclude = skipped
 		var a: Dictionary = space.intersect_ray(aq)
 		if a.is_empty():
@@ -126,10 +126,14 @@ func _update_hit() -> void:
 		var area: Node = a["collider"]
 		if area.is_in_group("unidot_ui_shape") and area.get_parent() != null and area.get_parent().has_meta("unidot_canvas"):
 			var cv: Node3D = area.get_parent()
-			# readable from the -Z side of the canvas node: the ray must run against that normal
-			if ray_dir.dot(cv.global_transform.basis.z) > 0.0 and ray_origin.distance_to(a["position"]) <= body_d:
+			if ray_origin.distance_to(a["position"]) > body_d:
+				break   # (and so is every canvas behind this one)
+			# readable from the -Z side of the canvas node: the ray must run against that normal.
+			# A canvas that has no graphic under the pointer does not take it (Unity raycasts
+			# the graphics, not the canvases): the ray goes on to what is behind.
+			if ray_dir.dot(cv.global_transform.basis.z) > 0.0 and _graphic_at(cv, a["position"]):
 				ui = a
-			break
+				break
 		skipped.append(a["rid"])
 	var new_hit: Dictionary = {}
 	if not ui.is_empty():
@@ -144,6 +148,22 @@ func _update_hit() -> void:
 			var udon: Node = get_node("/root/Udon")
 			new_hit["kind"] = "pickup" if _is_pickup(t) else ("station" if udon.has_component(t, "station") else "interact")
 	_apply_hit(new_hit)
+
+
+## Is there a graphic that takes raycasts where the ray meets a canvas (unidot's
+## ui_graphic.raycast_hit, on the canvas's root control)?
+func _graphic_at(cv: Node, point: Vector3) -> bool:
+	var u: Node = get_node("/root/U")
+	var root: Control = u.canvas_root(cv)
+	if root == null:
+		return false
+	var px: Vector2 = u.ui_world_to_viewport(cv, u.from_gd_v(point))
+	# (a popup of a widget is a window inside the canvas's viewport)
+	var vp: SubViewport = _viewport_of(cv)
+	for window in (vp.get_embedded_subwindows() if vp != null else []):
+		if window.visible and Rect2(Vector2(window.position), Vector2(window.size)).has_point(px):
+			return true
+	return u.UiGraphic.raycast_hit(root, px)
 
 
 ## The pickup node or interactable behaviour that owns a collider (unidot puts colliders in helper

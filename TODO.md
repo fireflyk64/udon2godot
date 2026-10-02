@@ -116,7 +116,15 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
             (`_holds_ui` looks at the prefabs instanced below a Transform)
       Not done: canvases whose units are metres cannot show text smaller than one unit (a
       font has no size below 1); the sibling order between UI and 3D children of one object.
-- [ ] The pointer falls through a canvas that has nothing under it
+- [x] The pointer falls through a canvas that has nothing under it. Unity raycasts graphics,
+      not canvases: `Graphic.raycastTarget` is imported (`raycast` of the graphic state) and
+      `ui_graphic.raycast_hit` says whether a graphic that takes raycasts is under a point of
+      a canvas (an invisible Image blocks; a disabled one, one below a CanvasGroup that does
+      not block raycasts or outside its mask does not). The pointer walks the canvases
+      along its ray and takes the first one with such a graphic (or an open popup) under it;
+      otherwise the ray goes on, to a canvas behind or to a pickup. Unit tests 494 → 503;
+      Udon fixture: canvas `Glass` in front of `UiCanvas` (the window clicks of the display
+      scenario go through it; 122 / 158 checks).
 - [ ] Sprites packed tightly or rotated in an atlas
 - [ ] The pixel check: translucent graphics, text
 - [ ] vrcbce: `Silent/Filamented` and the fur shaders; the cue through the desktop player; the

@@ -40,7 +40,7 @@ func run(r):
 	for c in probe.get_parent().get_children() if probe != null else []:
 		if not (c is WorldEnvironment) and c.owner != null and not String(c.name).begins_with("Udon"):
 			roots.append(String(c.name))
-	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper", "Blinker"]
+	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper", "Blinker", "Glass"]
 	r.check(roots.slice(0, want.size()) == want, "scene roots in Unity's order: " + str(roots))
 	# an inactive GameObject is hidden, whatever its components say; SetActive shows it
 	var sleeper: Node = r.find("Sleeper")
@@ -59,10 +59,40 @@ func run(r):
 		await r.wait(3)
 	r.check(int(fx.get("interacted")) == interacted + 1, "onClick → UdonBehaviour.Interact: %d → %d" % [interacted, int(fx.get("interacted"))])
 	await _animated_active_checks(r)
+	await _pointer_through_checks(r)
 	# what lives in space on a UI object is where the object is: the sound of the BR button
 	var beep: Node = r.find("BR").get_node_or_null("Unidot3D/AudioSource") if r.find("BR") != null else null
 	r.check(beep is AudioStreamPlayer3D and (beep as Node3D).global_position.distance_to(Vector3(-0.44, 1.23, 3)) < 0.005, "an AudioSource on a button sounds from the button: " + (str((beep as Node3D).global_position) if beep is Node3D else str(beep)))
 	return true
+
+
+## The pointer takes the nearest graphic, not the nearest canvas. Glass is a canvas 0.3 m in
+## front of UiCanvas with two Images: Pane (at Unity (0.3, 1.65), a raycast target) and Ghost
+## (over the middle, no raycast target). Elsewhere it has nothing: the pointer goes through it.
+func _pointer_through_checks(r) -> void:
+	var glass: Node = r.find("Glass")
+	var behind: Node = r.find("UiCanvas")
+	r.check(glass != null and glass.has_meta("unidot_canvas") and behind != null, "the Glass canvas in front of UiCanvas: " + str(glass))
+	if glass == null or behind == null:
+		return
+	var ptr: Node = r.udon().pointer()
+	var eye := Vector3(0, 1.5, 0)   # (Godot space; the canvases face it)
+	var aim := func(unity_point: Vector3) -> Dictionary:
+		ptr.set_ray(eye, Vector3(-unity_point.x, unity_point.y, unity_point.z) - eye)
+		ptr._update_hit()
+		return ptr.hit
+	var hit: Dictionary = aim.call(Vector3(0.3, 1.65, 2.7))
+	r.check(hit.get("canvas") == glass, "a graphic that is a raycast target takes the pointer (Pane): " + str(hit.get("canvas")))
+	hit = aim.call(Vector3(-0.44, 1.77, 3))
+	r.check(hit.get("canvas") == behind, "where the canvas in front has nothing the pointer reaches the button behind it (TL): " + str(hit.get("canvas")))
+	hit = aim.call(Vector3(0, 1.5, 3))
+	r.check(hit.get("canvas") == behind, "... and through a graphic that is no raycast target (Ghost over Center): " + str(hit.get("canvas")))
+	hit = aim.call(Vector3(0.2, 1.62, 3))
+	r.check(hit.get("canvas") != glass and hit.get("canvas") != behind, "where neither canvas has a graphic the pointer is on neither: " + str(hit.get("canvas")))
+	ptr.set_ray(eye, Vector3(0, -1, 0))
+	ptr._update_hit()
+	if DisplayServer.get_name() != "headless":
+		ptr.source = "mouse"
 
 
 ## Blinker's Animator plays a clip that switches m_IsActive of its child Lamp off after a
