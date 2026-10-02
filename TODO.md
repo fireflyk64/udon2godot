@@ -2,11 +2,20 @@
 
 Status legend: [x] done and verified, [~] implemented but needs more coverage, [ ] open.
 
-## Line renderer, font effects, mirrored graphics (2026-10-02) — current work
+## Line renderer, font effects, mirrored graphics (2026-10-02) — done but for two notes
 
 Asked for: "Fix the line renderer and font and try doing the mirror drawing blind. Modify a
 local model to have that property and make sure it looks good". What the last round named as
 not drawn, each with a case in a local fixture and a picture that is looked at.
+
+State at the end: unit tests 585; UI fixture 34 canvases, 1000 of 1000 nodes, pixel check 3136
+points and 73 of 88 texts, 0 problems; coverage 1104; Udon fixture 138 / 181 / 25 / 16;
+billiards 55 / 18 / 17, UI 147 of 147; community worlds pass (vrcbce 28 / 28, play 16, sample
+scene 32, UI 135 / 121 / 184, SaccFlight 33 of 33); compile check 362 ok; converter output
+unchanged. Found on the way: the jump check of the player scenario watched twenty drawn
+frames, which on a fast display is less than one physics tick (it watches ticks now); the
+dump reported a text's box with the shift that keeps thinner glyphs centred (vrcbce's
+outlined texts with margins: the reference flagged 0.23 units).
 
 - [x] A graphic on a rect of negative size is drawn mirrored (no reference project has one:
       done from what Unity's Image does, with a fixture case whose picture is looked at).

@@ -1783,6 +1783,9 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
             ("MarginsBottom", {"margin": (60, 30, 0, 10), "halign": 4, "valign": 1024})]):
         frame = b.img(name + "Frame", c, {"pos": (-230 + 230 * i, 140), "size": (200, 100)}, color=(0.25, 0.22, 0.3, 1))
         f.node(name, frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp(words, 20, **kw)])
+    # margins and an outline: the text is laid out between the margins, its glyphs are thinner
+    frame = b.img("MarginsOutlinedFrame", c, {"pos": (0, 20), "size": (200, 60)}, color=(0.25, 0.22, 0.3, 1))
+    f.node("MarginsOutlined", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp("outlined, in margins", 20, margin=(20, 6, 60, 4), halign=2, valign=512, font=FONT_ASSET_OUTLINE)])
     # a negative margin gives the line room beyond the rect
     frame = b.img("MarginsOutFrame", c, {"pos": (-230, 40), "size": (100, 30)}, color=(0.25, 0.22, 0.3, 1))
     f.node("MarginsOut", frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp("A line longer than its rect", 20, margin=(0, 0, -300, 0))])

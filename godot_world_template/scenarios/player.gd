@@ -28,7 +28,9 @@ func run(r):
 	await r.key(KEY_A, 20)
 	var top: float = player.global_position.y
 	await r.key(KEY_SPACE, 2)
-	for i in range(20):
+	# (watched for physics ticks: a display may draw twenty frames within one)
+	var since: int = Engine.get_physics_frames()
+	while Engine.get_physics_frames() - since < 30:
 		await r.wait(1)
 		top = maxf(top, player.global_position.y)
 	r.check(top - p0.y > 0.1, "Space jumps: rose %.2f m" % (top - p0.y))
