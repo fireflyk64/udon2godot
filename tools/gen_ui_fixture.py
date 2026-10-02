@@ -711,28 +711,58 @@ CLIP_LEFT = "a0a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 CLIP_RIGHT = "a1a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 CLIP_SLIDE = "a2a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 KNOB_CONTROLLER = "a3a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_SHOW_REST = "a5a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_SHOW_TURN = "a6a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_SHOW_FADE = "a7a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_SHOW_FRAMES = "a8a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+SHOW_CONTROLLER = "a9a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 
 
-def _curve(path, attribute, keys, class_id=224):
-    """A float curve of a clip: keys are (time, value); straight between them."""
+def _curve(path, attribute, keys, class_id=224, script=None):
+    """A float curve of a clip: keys are (time, value); straight between them. `script`: the
+    component kind of a MonoBehaviour curve (class id 114)."""
     out = "  - curve:\n      serializedVersion: 2\n      m_Curve:\n"
     for i, (t, v) in enumerate(keys):
         before = (v - keys[i - 1][1]) / (t - keys[i - 1][0]) if i > 0 else 0
         after = (keys[i + 1][1] - v) / (keys[i + 1][0] - t) if i + 1 < len(keys) else 0
         out += ("      - serializedVersion: 3\n        time: %s\n        value: %s\n        inSlope: %s\n        outSlope: %s\n        tangentMode: 69\n        weightedMode: 0\n        inWeight: 0.33333334\n        outWeight: 0.33333334\n"
                 % (num(t), num(v), num(before), num(after)))
-    out += "      m_PreInfinity: 2\n      m_PostInfinity: 2\n      m_RotationOrder: 4\n    attribute: %s\n    path: %s\n    classID: %d\n    script: {fileID: 0}\n" % (attribute, path, class_id)
+    ref = "{fileID: 0}" if script is None else "{fileID: 11500000, guid: %s, type: 3}" % GUID[script]
+    out += "      m_PreInfinity: 2\n      m_PostInfinity: 2\n      m_RotationOrder: 4\n    attribute: %s\n    path: %s\n    classID: %d\n    script: %s\n" % (attribute, path, 114 if script else class_id, ref)
     return out
 
 
-def _clip(name, curves, length):
-    return ("%%YAML 1.1\n%%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n"
-            "  m_Name: %s\n  serializedVersion: 6\n  m_Legacy: 0\n  m_Compressed: 0\n  m_UseHighQualityCurve: 1\n  m_RotationCurves: []\n  m_CompressedRotationCurves: []\n  m_EulerCurves: []\n  m_PositionCurves: []\n  m_ScaleCurves: []\n"
-            "  m_FloatCurves:\n%s  m_PPtrCurves: []\n  m_SampleRate: 60\n  m_WrapMode: 0\n  m_Bounds:\n    m_Center: {x: 0, y: 0, z: 0}\n    m_Extent: {x: 0, y: 0, z: 0}\n  m_ClipBindingConstant:\n    genericBindings: []\n    pptrCurveMapping: []\n"
+def _vcurve(path, keys):
+    """A vector curve (m_EulerCurves, m_PositionCurves, m_ScaleCurves): keys are (time, (x, y, z))."""
+    out = "  - curve:\n      serializedVersion: 2\n      m_Curve:\n"
+    for i, (t, v) in enumerate(keys):
+        before = tuple((v[k] - keys[i - 1][1][k]) / (t - keys[i - 1][0]) for k in range(3)) if i > 0 else (0, 0, 0)
+        after = tuple((keys[i + 1][1][k] - v[k]) / (keys[i + 1][0] - t) for k in range(3)) if i + 1 < len(keys) else (0, 0, 0)
+        third = "{x: 0.33333334, y: 0.33333334, z: 0.33333334}"
+        out += ("      - serializedVersion: 3\n        time: %s\n        value: %s\n        inSlope: %s\n        outSlope: %s\n        tangentMode: 0\n        weightedMode: 0\n        inWeight: %s\n        outWeight: %s\n"
+                % (num(t), vec(v, "xyz"), vec(before, "xyz"), vec(after, "xyz"), third, third))
+    out += "      m_PreInfinity: 2\n      m_PostInfinity: 2\n      m_RotationOrder: 4\n    path: %s\n" % path
+    return out
+
+
+def _pptr(path, attribute, keys, script):
+    """An object curve (m_PPtrCurves): keys are (time, (file id, guid))."""
+    out = "  - curve:\n"
+    for t, (fid, guid) in keys:
+        out += "    - time: %s\n      value: {fileID: %d, guid: %s, type: 3}\n" % (num(t), fid, guid)
+    return out + "    attribute: %s\n    path: %s\n    classID: 114\n    script: {fileID: 11500000, guid: %s, type: 3}\n" % (attribute, path, GUID[script])
+
+
+def _clip(name, curves, length, euler=(), position=(), scale=(), pptr=()):
+    def section(key, items):
+        return "  %s:%s" % (key, ("\n" + "".join(items)) if items else " []\n")
+    template = ("%%YAML 1.1\n%%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n"
+            "  m_Name: %s\n  serializedVersion: 6\n  m_Legacy: 0\n  m_Compressed: 0\n  m_UseHighQualityCurve: 1\n  m_RotationCurves: []\n  m_CompressedRotationCurves: []\n" + section("m_EulerCurves", euler).replace("%", "%%") + section("m_PositionCurves", position).replace("%", "%%") + section("m_ScaleCurves", scale).replace("%", "%%") +
+            section("m_FloatCurves", curves).replace("%", "%%") + section("m_PPtrCurves", pptr).replace("%", "%%") + "  m_SampleRate: 60\n  m_WrapMode: 0\n  m_Bounds:\n    m_Center: {x: 0, y: 0, z: 0}\n    m_Extent: {x: 0, y: 0, z: 0}\n  m_ClipBindingConstant:\n    genericBindings: []\n    pptrCurveMapping: []\n"
             "  m_AnimationClipSettings:\n    serializedVersion: 2\n    m_AdditiveReferencePoseClip: {fileID: 0}\n    m_AdditiveReferencePoseTime: 0\n    m_StartTime: 0\n    m_StopTime: %s\n    m_OrientationOffsetY: 0\n    m_Level: 0\n    m_CycleOffset: 0\n"
             "    m_HasAdditiveReferencePose: 0\n    m_LoopTime: 0\n    m_LoopBlend: 0\n    m_LoopBlendOrientation: 0\n    m_LoopBlendPositionY: 0\n    m_LoopBlendPositionXZ: 0\n    m_KeepOriginalOrientation: 0\n    m_KeepOriginalPositionY: 1\n"
-            "    m_KeepOriginalPositionXZ: 0\n    m_HeightFromFeet: 0\n    m_Mirror: 0\n  m_EditorCurves: []\n  m_EulerEditorCurves: []\n  m_HasGenericRootTransform: 0\n  m_HasMotionFloatCurves: 0\n  m_Events: []\n"
-            % (name, "".join(curves), num(length)))
+            "    m_KeepOriginalPositionXZ: 0\n    m_HeightFromFeet: 0\n    m_Mirror: 0\n  m_EditorCurves: []\n  m_EulerEditorCurves: []\n  m_HasGenericRootTransform: 0\n  m_HasMotionFloatCurves: 0\n  m_Events: []\n")
+    return template % (name, num(length))
 
 
 def _state(fid, name, clip, transitions):
@@ -790,6 +820,40 @@ def write_animations(out):
                   "  m_ChildStateMachines: []\n  m_AnyStateTransitions: []\n  m_EntryTransitions: []\n  m_StateMachineTransitions: {}\n  m_StateMachineBehaviours: []\n  m_AnyStatePosition: {x: 50, y: 20, z: 0}\n  m_EntryPosition: {x: 50, y: 120, z: 0}\n"
                   "  m_ExitPosition: {x: 800, y: 120, z: 0}\n  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}\n  m_DefaultState: {fileID: 1102000000000000001}\n")
     write("Knob.controller", controller, KNOB_CONTROLLER, main=9100000)
+
+    # "Show": clips on the objects of a panel, each in a state of its own (played by name)
+    half = lambda a, b: [(0, a), (0.49, a), (0.51, b), (1, b)]   # a switch half way
+    write("ShowRest.anim", _clip("ShowRest", [_curve("Dial", "m_SizeDelta.x", [(0, 60)])], 0), CLIP_SHOW_REST)
+    # rotation, scale and position come in curve lists without a class id
+    write("ShowTurn.anim", _clip("ShowTurn", [], 1,
+                                 euler=[_vcurve("Dial", [(0, (0, 0, 0)), (1, (0, 0, 90))])],
+                                 scale=[_vcurve("Dial", [(0, (1, 1, 1)), (1, (2, 2, 1))])],
+                                 position=[_vcurve("Holder", [(0, (-80, 90, 0)), (1, (-40, 70, 0))])]), CLIP_SHOW_TURN)
+    # fields of components
+    write("ShowFade.anim", _clip("ShowFade", [
+        _curve("Dial", "m_Color.a", [(0, 1), (1, 0)], script="Image"), _curve("Dial", "m_Color.r", [(0, 1), (1, 0.5)], script="Image"),
+        _curve("Label", "m_fontColor.a", [(0, 1), (1, 0.5)], script="TextMeshProUGUI"), _curve("Label", "m_fontSize", [(0, 20), (1, 40)], script="TextMeshProUGUI"),
+        _curve("Bar", "m_FillAmount", [(0, 0.25), (1, 0.75)], script="Image"),
+        _curve("Group", "m_Alpha", [(0, 1), (1, 0.5)], class_id=225),
+        _curve("Blink", "m_Enabled", half(1, 0), script="Image"),
+        _curve("Hide", "m_IsActive", half(1, 0), class_id=1),
+        _curve("Level", "m_Value", [(0, 0), (1, 1)], script="Slider"),
+        _curve("Check", "m_IsOn", half(0, 1), script="Toggle"),
+        _curve("Go", "m_Interactable", half(1, 0), script="Button"),
+    ], 1), CLIP_SHOW_FADE)
+    # the sprite of an Image, switched half way
+    write("ShowFrames.anim", _clip("ShowFrames", [], 1, pptr=[_pptr("Icon", "m_Sprite", [(0, SHEET_LEFT), (0.5, SHEET_RIGHT)], "Image")]), CLIP_SHOW_FRAMES)
+    states = [(1102000000000000011, "Rest", CLIP_SHOW_REST), (1102000000000000012, "Turn", CLIP_SHOW_TURN), (1102000000000000013, "Fade", CLIP_SHOW_FADE), (1102000000000000014, "Frames", CLIP_SHOW_FRAMES)]
+    show = ("%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!91 &9100000\nAnimatorController:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Show\n  serializedVersion: 5\n"
+            "  m_AnimatorParameters: []\n"
+            "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n    m_StateMachine: {fileID: 1107000000000000011}\n    m_Mask: {fileID: 0}\n    m_Motions: []\n    m_Behaviours: []\n    m_BlendingMode: 0\n    m_SyncedLayerIndex: -1\n"
+            "    m_DefaultWeight: 0\n    m_IKPass: 0\n    m_SyncedLayerAffectsTiming: 0\n    m_Controller: {fileID: 9100000}\n"
+            + "".join(_state(fid, name, clip, []) for fid, name, clip in states)
+            + "--- !u!1107 &1107000000000000011\nAnimatorStateMachine:\n  serializedVersion: 5\n  m_ObjectHideFlags: 1\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Base Layer\n"
+            "  m_ChildStates:\n" + "".join("  - serializedVersion: 1\n    m_State: {fileID: %d}\n    m_Position: {x: 288, y: %d, z: 0}\n" % (fid, 120 * (i + 1)) for i, (fid, _n, _c) in enumerate(states))
+            + "  m_ChildStateMachines: []\n  m_AnyStateTransitions: []\n  m_EntryTransitions: []\n  m_StateMachineTransitions: {}\n  m_StateMachineBehaviours: []\n  m_AnyStatePosition: {x: 50, y: 20, z: 0}\n  m_EntryPosition: {x: 50, y: 120, z: 0}\n"
+            "  m_ExitPosition: {x: 800, y: 120, z: 0}\n  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}\n  m_DefaultState: {fileID: 1102000000000000011}\n")
+    write("Show.controller", show, SHOW_CONTROLLER, main=9100000)
 
 
 def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
@@ -1385,6 +1449,28 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     # the same controller on a second object: its knob is its own
     other = b.img("OtherTrack", c, {"pos": (0, -40), "size": (200, 40)}, [("Animator", KNOB_CONTROLLER)], color=(0.3, 0.35, 0.3, 1))
     b.img("Knob", other, {"pos": (-70, 0), "size": (40, 40)}, color=(0.95, 0.95, 0.6, 1))
+
+    # ---- AnimatedUi: clips on rotation / scale / position, on fields of components, on a sprite ---
+    c = b.world_canvas("AnimatedUi", (11.4, 3.0, 2), (500, 300))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.12, 0.1, 1))
+    show = f.node("Show", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [("Animator", SHOW_CONTROLLER)])
+    b.img("Dial", show, {"pos": (-180, 90), "size": (60, 60)}, color=(1, 0.6, 0.2, 1))
+    held = f.node("Holder", show, pos=(-80, 90, 0))
+    b.img("Held", held, {"pos": (0, 0), "size": (40, 40)}, color=(0.4, 0.8, 1, 1))
+    f.node("Label", show, {"pos": (40, 90), "size": (140, 44)}, [renderer(), tmp("label", 20)])
+    f.node("Bar", show, {"pos": (170, 90), "size": (128, 32)}, [renderer(), image(kind=3, sprite=BAR, fill=(0, 0.25, 0))])
+    group = f.node("Group", show, {"pos": (-180, 0), "size": (80, 40)}, [canvas_group()])
+    b.img("GroupImage", group, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.9, 0.9, 0.3, 1))
+    b.img("Blink", show, {"pos": (-80, 0), "size": (40, 40)}, color=(0.9, 0.3, 0.3, 1))
+    b.img("Hide", show, {"pos": (-20, 0), "size": (40, 40)}, color=(0.3, 0.9, 0.3, 1))
+    level = b.img("Level", show, {"pos": (110, 0), "size": (160, 20)}, color=(0.3, 0.3, 0.3, 1))
+    f.add(level, slider(value=0, target=level.components[1][0]))
+    check = b.img("Check", show, {"pos": (-180, -90), "size": (30, 30)}, color=(1, 1, 1, 1))
+    mark = b.img("Mark", check, {"amin": (0, 0), "amax": (1, 1), "size": (-10, -10)}, color=(0.1, 0.1, 0.1, 1))
+    f.add(check, toggle(on=False, graphic=mark.components[1][0], target=check.components[1][0]))
+    go = b.img("Go", show, {"pos": (-80, -90), "size": (100, 30)}, color=(1, 1, 1, 1))
+    f.add(go, button(target=go.components[1][0]))
+    f.node("Icon", show, {"pos": (60, -90), "size": (64, 64)}, [renderer(), image(sprite=SHEET_LEFT)])
 
     # ---- Cut: TextMeshPro texts that do not fit their rects ------------------------------------
     # Ellipsis (overflow mode 1) ends the text in an ellipsis where it is cut, Truncate (3)

@@ -40,7 +40,7 @@ func run(r):
 	for c in probe.get_parent().get_children() if probe != null else []:
 		if not (c is WorldEnvironment) and c.owner != null and not String(c.name).begins_with("Udon"):
 			roots.append(String(c.name))
-	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper"]
+	var want: Array = ["Directional Light", "Floor", "Probe", "Target", "Canvas", "UiCanvas", "Overlay", "Chair", "VRCWorld", "Holder", "Outer", "Legacy", "LegacyBox", "DllPickup", "DllAudio", "PoolHolder", "Ball", "Shadow", "Twin", "Idle", "Mid", "Scaled", "Sleeper", "Blinker"]
 	r.check(roots.slice(0, want.size()) == want, "scene roots in Unity's order: " + str(roots))
 	# an inactive GameObject is hidden, whatever its components say; SetActive shows it
 	var sleeper: Node = r.find("Sleeper")
@@ -58,7 +58,28 @@ func run(r):
 		r.u().ui_press(bl, null)
 		await r.wait(3)
 	r.check(int(fx.get("interacted")) == interacted + 1, "onClick → UdonBehaviour.Interact: %d → %d" % [interacted, int(fx.get("interacted"))])
+	await _animated_active_checks(r)
 	return true
+
+
+## Blinker's Animator plays a clip that switches m_IsActive of its child Lamp off after a
+## second: the Lamp script is disabled as by SetActive(false).
+func _animated_active_checks(r) -> void:
+	var lamp: Node = r.find("Blinker/Lamp")
+	var script: Node = r.behaviour("Lamp")
+	r.check(lamp is Node3D and script != null, "Lamp below the Animator, with its behaviour: %s %s" % [str(lamp), str(script)])
+	if not (lamp is Node3D) or script == null:
+		return
+	var frames: int = 0
+	while r.u().is_active(lamp) and frames < 600:
+		await r.wait(10)
+		frames += 10
+	r.check(not r.u().is_active(lamp) and not (lamp as Node3D).visible, "the clip's m_IsActive curve deactivates the object (activeSelf): after %d more frames" % frames)
+	r.check(int(script.get("enabledCount")) == 1 and int(script.get("disabledCount")) == 1, "... its script got OnEnable once and then OnDisable: %s / %s" % [str(script.get("enabledCount")), str(script.get("disabledCount"))])
+	r.check(script.get("activeWhenDisabled") == false, "... and saw activeSelf false in OnDisable: " + str(script.get("activeWhenDisabled")))
+	var updates: int = int(script.get("updates"))
+	await r.wait(10)
+	r.check(updates > 10 and int(script.get("updates")) == updates, "... Update ran while it was active (%d) and no longer runs: %d" % [updates, int(script.get("updates"))])
 
 
 ## Unity's Animations constraints authored in the scene are solved by the run time: Ball is at

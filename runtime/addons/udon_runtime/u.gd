@@ -955,9 +955,11 @@ func set_active(n: Node, active: bool) -> void:
 	if n == null:
 		return
 	var was: bool = is_active(n)
+	# (the process mode first: an object whose `visible` a clip animates is watched, see
+	# _on_animated_active, and must find the two in step)
+	n.process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
 	if n is CanvasItem or n is Node3D:
 		n.visible = active
-	n.process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
 	if n is CollisionObject3D:
 		n.set_deferred("disable_mode", CollisionObject3D.DISABLE_MODE_REMOVE)
 	if was != active:
@@ -969,6 +971,23 @@ func is_active(n: Node) -> bool:
 	if n == null:
 		return false
 	return n.process_mode != Node.PROCESS_MODE_DISABLED
+
+## Objects whose m_IsActive an animation clip drives: the importer leaves the track on `visible`
+## and puts the node in the group "udon_animated_active". What the clip shows or hides is
+## activated or deactivated as SetActive would do it (activeSelf, OnEnable / OnDisable).
+func _enter_tree() -> void:
+	get_tree().node_added.connect(_watch_animated_active)
+
+func _watch_animated_active(n: Node) -> void:
+	if not n.is_in_group(&"udon_animated_active") or not n.has_signal(&"visibility_changed"):
+		return
+	var on_change: Callable = _on_animated_active.bind(n)
+	if not n.is_connected(&"visibility_changed", on_change):
+		n.connect(&"visibility_changed", on_change)
+
+func _on_animated_active(n: Node) -> void:
+	if is_instance_valid(n) and bool(n.get("visible")) != is_active(n):
+		set_active(n, bool(n.get("visible")))
 
 func is_active_in_hierarchy(n: Node) -> bool:
 	if n == null:

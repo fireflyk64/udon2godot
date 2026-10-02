@@ -2,7 +2,47 @@
 
 Status legend: [x] done and verified, [~] implemented but needs more coverage, [ ] open.
 
-## RectTransform and canvas positioning (pool table UI) — current work
+## UI leftovers, round 2 (2026-10-02) — current work
+
+Asked for: every leftover of the section below, the animation curves and the ScrollRect's
+inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) before the code.
+
+- [x] Animation clips on UI (fixture canvas "AnimatedUi": a panel whose Animator has one state
+      per clip, sampled by hand in `test/ui_anim_test.gd`, 47 checks)
+      - [x] rotation, scale and position curves of a RectTransform (`m_EulerCurves`,
+            `m_RotationCurves`, `m_ScaleCurves`, `m_PositionCurves`: they carry no class id and
+            become 3D tracks, which a Control cannot take): the tracks are pointed at the
+            `UnidotRect` helper, now a Node3D whose transform (in Godot's convention, as the
+            tracks hold it) is handed to `RT.set_local_position / rotation / scale`. A plain
+            Transform holder between rects moves what it holds the same way.
+      - [x] curves of UI components: Graphic colour (`m_Color`, `m_fontColor`), `m_Enabled`,
+            Image fill amount, text font size, CanvasGroup alpha / interactable / blocks
+            raycasts, Slider value, Toggle `m_IsOn`, Selectable `m_Interactable`: value tracks
+            on a second helper (`runtime/ui_anim.gd`, "UnidotUi") whose setters are those a
+            script uses (`ui_graphic`, `ui_text`, `ui_canvas_group`, `ui_selectable`)
+      - [x] sprite curves (`m_PPtrCurves` on `m_Sprite`): a discrete value track; the keys keep
+            the references until the clip is fitted to an Animator (clips are imported in the
+            same stage as textures, whose sprites do not exist yet)
+      - [x] `m_IsActive` of an object below an Animator (what a script sees as activeSelf): the
+            track stays on `visible`; a plugin hook (`handle_animated_active`) lets the Udon
+            plugin put the node in the group `udon_animated_active`, and the run time makes
+            of each change what `SetActive` does (OnEnable / OnDisable, no more Update).
+            Udon fixture: `Blinker/Lamp`, 5 checks (116 headless / 152 with a display).
+- [ ] ScrollRect: inertia (`decelerationRate`), the elastic spring, `Scrollbar.numberOfSteps`
+- [ ] Selectable: tints fade over `fadeDuration`; sprite swap; animation transition (triggers)
+- [ ] Text: a font asset's material (outline, underlay), fallback fonts, Page and Linked
+      overflow, sprite tags
+- [ ] Rects: negative sizes; an InputField lower than a line; 3D components and plain
+      Transforms without UI below a control; a plain Transform whose only UI is a nested
+      prefab instance
+- [ ] The pointer falls through a canvas that has nothing under it
+- [ ] Sprites packed tightly or rotated in an atlas
+- [ ] The pixel check: translucent graphics, text
+- [ ] vrcbce: `Silent/Filamented` and the fur shaders; the cue through the desktop player; the
+      sample scene with all tables
+- [ ] VRChat's own constraint components authored in a scene
+
+## RectTransform and canvas positioning (pool table UI)
 
 The pool table's canvases showed positioning errors. What was found (2026-09-30):
 
