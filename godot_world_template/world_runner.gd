@@ -332,7 +332,12 @@ func key(keycode: Key, hold_frames: int = 1, unicode: int = 0) -> void:
 		e.pressed = pressed
 		e.unicode = unicode
 		Input.parse_input_event(e)
+		# (held for that many physics ticks at least: a display run may draw several frames
+		# per tick, and what moves the player reads the keys in the ticks)
+		var ticks: int = Engine.get_physics_frames()
 		for i in range(hold_frames):
+			await process_frame
+		while pressed and Engine.get_physics_frames() - ticks < hold_frames:
 			await process_frame
 
 ## Type text: one key event per character (letters, digits, space), then Enter when `submit`.

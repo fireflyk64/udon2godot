@@ -59,6 +59,9 @@ func run(r):
 		await r.wait(3)
 	r.check(int(fx.get("interacted")) == interacted + 1, "onClick → UdonBehaviour.Interact: %d → %d" % [interacted, int(fx.get("interacted"))])
 	await _animated_active_checks(r)
+	# what lives in space on a UI object is where the object is: the sound of the BR button
+	var beep: Node = r.find("BR").get_node_or_null("Unidot3D/AudioSource") if r.find("BR") != null else null
+	r.check(beep is AudioStreamPlayer3D and (beep as Node3D).global_position.distance_to(Vector3(-0.44, 1.23, 3)) < 0.005, "an AudioSource on a button sounds from the button: " + (str((beep as Node3D).global_position) if beep is Node3D else str(beep)))
 	return true
 
 

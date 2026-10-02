@@ -1608,6 +1608,9 @@ def find_canvases(roots):
     return out
 
 
+SPATIAL_COMPONENTS = ("AudioSource", "BoxCollider", "SphereCollider", "CapsuleCollider", "MeshCollider", "MeshRenderer", "ParticleSystem", "Light")
+
+
 def has_rect_below(n):
     """Does a plain Transform hold UI (a RectTransform somewhere below it)?"""
     return any(c.is_rect or has_rect_below(c) for c in n.children)
@@ -1659,7 +1662,22 @@ def describe_canvas(canvas, layout, screen):
         "world_position": [wm[0][3], wm[1][3], wm[2][3]],
         "active": canvas.active,
         "nodes": [],
+        "spatial": [],
     }
+
+    # What is not UI among the UI: objects without a RectTransform on or below them, and
+    # components that live in space (sounds, colliders, meshes) on UI objects. They are where
+    # their Transforms put them: [path, world position].
+    def spatial(n, parent_m):
+        m = mat_mul(parent_m, local_matrix(n))
+        entry["spatial"].append({"path": n.path(canvas), "position": [m[0][3], m[1][3], m[2][3]]})
+        for c in n.children:
+            spatial(c, m)
+
+    def spatial_components(n, m):
+        for name, _d in n.components:
+            if name in SPATIAL_COMPONENTS:
+                entry["spatial"].append({"path": (n.path(canvas) + "/" if n is not canvas else "") + name, "position": [m[0][3], m[1][3], m[2][3]]})
 
     def group_alpha(n):
         g = n.comp("CanvasGroup")
@@ -1668,8 +1686,10 @@ def describe_canvas(canvas, layout, screen):
     def walk(n, parent_m, shown, negative, alpha):
         for c in n.children:
             if not c.is_rect and not has_rect_below(c):
+                spatial(c, parent_m)
                 continue   # (a plain Transform with UI below it is a rect of no size at its origin)
             m = mat_mul(parent_m, local_matrix(c))
+            spatial_components(c, m)
             calpha = alpha * group_alpha(c)
             q = c.local_rotation
             e = {
@@ -1827,6 +1847,16 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                 problems.extend("%s :: %s: %s" % (rc["path"], e["path"], p) for p in _drawn_problems(e, d))
                 walk(rch, dch)
         walk(_tree(rc["nodes"]), _tree(dc["nodes"]))
+        # what is not UI among the UI is where its Transforms put it (world canvases: a screen
+        # canvas's units are pixels of the window)
+        if rc["mode"] == "world":
+            placed = {s["path"]: s["position"] for s in dc.get("spatial", [])}
+            for s in rc.get("spatial", []):
+                got = placed.get(s["path"])
+                if got is None:
+                    problems.append("%s :: %s: a 3D object among the UI is not in the imported canvas (Unity has it at %s)" % (rc["path"], s["path"], _fmt(s["position"])))
+                elif math.dist(got, s["position"]) > tol:
+                    problems.append("%s :: %s: a 3D object among the UI is at %s, Unity has it at %s" % (rc["path"], s["path"], _fmt(got), _fmt(s["position"])))
     return matched, problems
 
 

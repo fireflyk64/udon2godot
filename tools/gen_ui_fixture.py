@@ -250,6 +250,12 @@ class UnityFile:
             o.components.append((cid, 225, "CanvasGroup", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n%s" % (o.go, body)))
         elif kind == "Canvas":
             o.components.append((cid, 223, "Canvas", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n%s" % (o.go, body)))
+        elif kind == "AudioSource":
+            # (a 3D sound: the pan level curve is 1 everywhere)
+            o.components.append((cid, 82, "AudioSource", "  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n  serializedVersion: 4\n  OutputAudioMixerGroup: {fileID: 0}\n  m_audioClip: {fileID: 0}\n  m_PlayOnAwake: 0\n  m_Volume: 1\n  m_Pitch: 1\n  Loop: 0\n  Mute: 0\n  Spatialize: 0\n  SpatializePostEffects: 0\n  Priority: 128\n  DopplerLevel: 1\n  MinDistance: 1\n  MaxDistance: 20\n  Pan2D: 0\n  rolloffMode: 0\n"
+                                 "  panLevelCustomCurve:\n    serializedVersion: 2\n    m_Curve:\n    - serializedVersion: 3\n      time: 0\n      value: 1\n      inSlope: 0\n      outSlope: 0\n      tangentMode: 0\n      weightedMode: 0\n      inWeight: 0.33333334\n      outWeight: 0.33333334\n    m_PreInfinity: 2\n    m_PostInfinity: 2\n    m_RotationOrder: 4\n" % o.go))
+        elif kind == "BoxCollider":
+            o.components.append((cid, 65, "BoxCollider", "  m_GameObject: {fileID: %d}\n  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n  m_Enabled: 1\n  serializedVersion: 3\n%s" % (o.go, body)))
         elif kind == "Animator":
             o.components.append((cid, 95, "Animator", "  serializedVersion: 5\n  m_GameObject: {fileID: %d}\n  m_Enabled: 1\n  m_Avatar: {fileID: 0}\n  m_Controller: {fileID: 9100000, guid: %s, type: 2}\n  m_CullingMode: 0\n  m_UpdateMode: 0\n  m_ApplyRootMotion: 0\n  m_LinearVelocityBlending: 0\n  m_StabilizeFeet: 0\n  m_WarningMessage: \n  m_HasTransformHierarchy: 1\n  m_AllowConstantClipSamplingOptimization: 1\n  m_KeepAnimatorStateOnDisable: 0\n  m_WriteDefaultValuesOnDisable: 0\n" % (o.go, body)))
         elif kind == "CanvasRenderer":
@@ -1319,6 +1325,9 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("SlideV", panel, {"pos": (105, 0), "size": (8, 60)}, [slider(0.75, 2)])
     f.node("Label", panel, {"pos": (-30, -20), "size": (80, 16)}, [renderer(), text("Label", 12)])
     f.node("DirectButton", c, {"pos": (0.5, 0.15), "size": (0.12, 0.05)}, [renderer(), image(COLORS[4]), button()])
+    # input fields lower than a line of any font size (units are metres here; half a unit below)
+    f.node("DirectField", c, {"pos": (0.5, 0.08), "size": (0.12, 0.05)}, [renderer(), image(COLORS[3]), input_field("x")])
+    f.node("LowField", panel, {"pos": (40, -32), "size": (100, 0.5)}, [renderer(), image(COLORS[3]), input_field("y")])
     # a container of 100 x 100 metres (a RectTransform's default size on a canvas of scale 1) with
     # scaled-down items at fractions of a metre: an engine that rounds control origins to whole
     # units of the parent draws them up to half a metre away
@@ -1627,6 +1636,22 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     lifted = f.node("Lifted", c, pos=(0, -60, -80), scale=(0.5, 0.5, 0.5))
     b.img("LiftedImage", lifted, {"pos": (0, 0), "size": (100, 40)}, color=(0.2, 0.9, 0.7, 1))
     f.node("LiftedText", lifted, {"amin": (0, 0), "amax": (1, 1), "pos": (0, -50), "size": (200, 30)}, [renderer(), tmp("in front of the canvas", 20, halign=2, valign=512)])
+
+    # ---- Mixed: what is not UI among the UI -------------------------------------------------------
+    c = b.world_canvas("Mixed", (9.2, 0.6, 2), (400, 240))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.1, 0.1, 0.14, 1))
+    # an object without any UI under a panel (and one below it): 3D objects, at the panel's
+    # pivot plus their local positions, turned and scaled as the panel is
+    panel3d = f.node("Panel3D", c, {"pos": (-100, 50), "size": (120, 80), "pivot": (0, 0), "rot": (0, 0, 90), "scale": (0.5, 0.5, 0.5)}, [renderer(), image((0.2, 0.2, 0.3, 1))])
+    spot = f.node("Spot", panel3d, pos=(30, 20, -10))
+    f.node("SpotChild", spot, pos=(5, 0, 0), scale=(2, 2, 2))
+    # components that are no UI on UI objects: a sound on a button, a collider on a panel
+    f.node("Beeper", c, {"pos": (60, 60), "size": (80, 30)}, [renderer(), image((0.8, 0.8, 0.3, 1)), button(), ("AudioSource", "")])
+    f.add(panel3d, ("BoxCollider", "  m_Size: {x: 120, y: 80, z: 1}\n  m_Center: {x: 60, y: 40, z: 0}\n"))
+    # a plain Transform whose only UI is an instance of a prefab: it holds UI all the same
+    inst_holder = f.node("InstHolder", c, pos=(60, -50, 0))
+    f.instance(card, inst_holder, "HeldCard", [(card_ids["root"].t, "m_AnchoredPosition.x", 0), (card_ids["root"].t, "m_AnchoredPosition.y", 0),
+                                               (card_ids["root"].t, "m_LocalScale.x", 0.5), (card_ids["root"].t, "m_LocalScale.y", 0.5)])
 
     # ---- Animated: an Animator that moves a RectTransform ---------------------------------------
     c = b.world_canvas("Animated", (10.2, 3.0, 2), (400, 200))

@@ -1180,10 +1180,20 @@ func get_component(n: Node, type_name: String):
 	var croot := canvas_root(n)
 	if croot != null and node_is_type(croot, type_name):
 		return croot
-	for c in n.get_children():
+	for c in _component_nodes(n):
 		if _is_component_child(c) and node_is_type(c, type_name):
 			return c
 	return null
+
+## The nodes that may hold components of a GameObject node: its children, and for a UI object
+## the children of its 3D frame as well (a sound or a collider on a button: unidot keeps what
+## lives in space under a Node3D that follows the rect, see RT.META_FRAME).
+func _component_nodes(n: Node) -> Array:
+	var out: Array = n.get_children()
+	var frame: Node = n.get_node_or_null(RT.FRAME) if n is Control else null
+	if frame != null:
+		out.append_array(frame.get_children())
+	return out
 
 ## A child that stands for a separate GameObject (physics body/area, plain spatial, scripted
 ## behaviour) is not a component of its parent; helper nodes (shapes, meshes, audio, lights...) are.
@@ -1256,7 +1266,7 @@ func get_components(n: Node, type_name: String) -> Array:
 		return out
 	if node_is_type(n, type_name):
 		out.append(n)
-	for c in n.get_children():
+	for c in _component_nodes(n):
 		if _is_component_child(c) and node_is_type(c, type_name):
 			out.append(c)
 	return out
@@ -1383,6 +1393,9 @@ func find_transform(n: Node, path: String) -> Node:
 		for host in [RT.child_host(s), s, cur]:
 			if host != null:
 				next = host.get_node_or_null(seg)
+				if next == null and host is Control and host.get_node_or_null(RT.FRAME) != null:
+					# (what is not UI below a UI object hangs in its 3D frame)
+					next = host.get_node(RT.FRAME).get_node_or_null(seg)
 				if next != null:
 					break
 		if next == null:

@@ -176,6 +176,16 @@ public class Fixture : UdonSharpBehaviour
             Check(NearV(uiTL.position, new Vector3(-0.44f, 1.77f, 3f)), "uiTL world position " + uiTL.position);
             Check(NearV(uiTL.localPosition, new Vector3(-440f, 270f, 0f)), "uiTL local position " + uiTL.localPosition);
             Check(NearV(uiBR.position, new Vector3(0.44f, 1.23f, 3f)), "uiBR world position " + uiBR.position);
+            // what is not UI on and below a UI object: a sound on the button, an object without a RectTransform
+            AudioSource beep = uiBR.GetComponent<AudioSource>();
+            Check(beep != null && beep.transform == uiBR, "an AudioSource on a button is a component of the button");
+            Transform marker = uiBR.Find("Marker3D");
+            Check(marker != null && uiBR.childCount == 1 && marker.parent == uiBR, "a plain Transform below a button is its child: " + uiBR.childCount);
+            if (marker != null)
+            {
+                Check(NearV(marker.position, new Vector3(0.46f, 1.24f, 2.995f)), "... at its local position in the button's space: " + marker.position);
+                Check(NearV(marker.localPosition, new Vector3(20f, 10f, -5f)), "... which it keeps: " + marker.localPosition);
+            }
             Check(NearV(uiCenter.position, new Vector3(0f, 1.5f, 3f)), "uiCenter world position " + uiCenter.position);
             Check(NearV(uiScaledBtn.position, new Vector3(0f, 1.7f, 3f)), "uiScaledBtn world position (inside a 2x container) " + uiScaledBtn.position);
             Check(NearV(uiScaledBtn.lossyScale, new Vector3(0.002f, 0.002f, 0.002f)), "uiScaledBtn lossyScale " + uiScaledBtn.lossyScale);

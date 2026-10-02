@@ -89,9 +89,33 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
       Not done: the vertical place of a sprite in its line (Godot centres an inline picture,
       TextMeshPro puts it on the baseline by its bearing), the softness of an underlay, the
       face dilate and the inner half of an outline (Godot outlines outside the glyph only).
-- [ ] Rects: negative sizes; an InputField lower than a line; 3D components and plain
+- [x] Rects: negative sizes; an InputField lower than a line; 3D components and plain
       Transforms without UI below a control; a plain Transform whose only UI is a nested
-      prefab instance
+      prefab instance. Unit tests 471 → 494; fixture: `Cards` body (negative, driven by a
+      layout), screen `Strip`, `Metres` fields, canvas "Mixed" (949 nodes, 0 problems).
+      - [x] negative sizes (a rect stretched with insets larger than its parent): the Control
+            has no size, the size it should have is kept in its `unidot_rect` metadata
+            (`RT.rect_size` returns it) and what is below is placed against it (Godot
+            multiplies the anchors by 0: the offsets make up for it, the Unity values are
+            kept beside them). `RT.resized_below` re-places such rects when a parent's size
+            is set (set_values, layout groups, the scaler of a screen canvas). The reference
+            compare no longer skips them. Not done: the mirrored drawing of a Graphic on a
+            negative rect, and sizes that turn negative through Godot's own layout only.
+      - [x] an InputField lower than a line: the font was already shrunk to fit; a field lower
+            than a line of the smallest font (a canvas in metres) gets a font variation
+            whose lines are that much lower (a LineEdit is as high as its font's line)
+      - [x] what is not UI among the UI: plain Transforms without UI below a control and
+            components that live in space on UI objects (AudioSource, colliders, meshes) hang
+            in the 3D frame of that object: a helper Node3D child of the Control
+            (`runtime/ui_frame.gd`, "Unidot3D") that stays where Unity has the rect and
+            hides with it. `RT.logical_parent` / `logical_children` see through it; the run
+            time's GetComponent and Transform.Find look into it. The reference lists such
+            objects with their world positions and the compare checks them. Udon fixture:
+            a sound and a plain child on a button (117 / 153 checks).
+      - [x] a plain Transform whose only UI is a nested prefab instance holds UI
+            (`_holds_ui` looks at the prefabs instanced below a Transform)
+      Not done: canvases whose units are metres cannot show text smaller than one unit (a
+      font has no size below 1); the sibling order between UI and 3D children of one object.
 - [ ] The pointer falls through a canvas that has nothing under it
 - [ ] Sprites packed tightly or rotated in an atlas
 - [ ] The pixel check: translucent graphics, text
