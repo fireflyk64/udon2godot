@@ -41,7 +41,24 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
       `Scrollbar.numberOfSteps` / `direction` (were stubs). Unit tests 378 → 408 (numbers
       from Unity's formulas), fixture cases `Stepped` and `BarStepped` (918 nodes), coverage
       `TWidgets` 63 checks (1087 in all).
-- [ ] Selectable: tints fade over `fadeDuration`; sprite swap; animation transition (triggers)
+- [x] Selectable: tints fade over `fadeDuration`; sprite swap; animation transition (triggers).
+      Fixture canvas "Transitions", driven by the pointer in `test/ui_anim_test.gd` (68 checks);
+      unit tests 408 → 434.
+      - [x] `ui_graphic.cross_fade` is Graphic.CrossFadeColor / CrossFadeAlpha (a Tween kept in
+            the graphic's metadata; from the colour of the moment, RGB and alpha apart). The
+            Selectable's helper fades the tint when its state changes; a Selectable that
+            appears (OnEnable) and the importer's static pass set it at once. Scripts'
+            `CrossFadeColor` / `CrossFadeAlpha` use the same function.
+      - [x] the Toggle's check mark fades in 0.1 s (`toggleTransition` Fade, now imported)
+      - [x] sprite swap: `m_SpriteState` → `sprites` of the selectable metadata, drawn as the
+            Image's override sprite (`ui_graphic.set_override_sprite`; `Image.sprite` stays).
+            Scripts: `overrideSprite`, `spriteState`, `toggleTransition` (were stubs).
+      - [x] animation transition: `m_AnimationTriggers` → `triggers`; a state change resets the
+            five triggers and sets the state's on the object's AnimationTree. Trigger
+            parameters are now used up: the controller's root lists them (`unidot_triggers`)
+            and `runtime/anim_tree.gd` resets the ones named by the transition a state
+            machine has just taken (before, a trigger stayed set for ever). A clicked button
+            stays Selected, as in Unity.
 - [ ] Text: a font asset's material (outline, underlay), fallback fonts, Page and Linked
       overflow, sprite tags
 - [ ] Rects: negative sizes; an InputField lower than a line; 3D components and plain

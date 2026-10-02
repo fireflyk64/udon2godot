@@ -37,6 +37,7 @@ namespace Coverage
         public Dropdown dropdown;
         public TMP_Dropdown tmpDropdown;   // the same object (for IsExpanded, which only TMP has)
         public Text caption;
+        public Sprite spare;               // a sprite that nothing shows
         public ScrollRect scroll;          // 200 x 200, clamped, content 500 high, a vertical bar
         public RectTransform scrollContent;
         public Scrollbar scrollBar;
@@ -81,6 +82,20 @@ namespace Coverage
             Check(!image.enabled && image.gameObject.activeSelf && kid.gameObject.activeInHierarchy, "a disabled Image leaves its object and children active");
             image.canvasRenderer.SetAlpha(0.25f);
             Check(Near(image.canvasRenderer.GetAlpha(), 0.25f) && Near(image.color.a, 1f), "CanvasRenderer alpha is apart from the colour");
+            image.CrossFadeAlpha(0.5f, 0f, true);
+            Check(Near(image.canvasRenderer.GetAlpha(), 0.5f), "CrossFadeAlpha without a duration is a set: " + image.canvasRenderer.GetAlpha());
+            image.CrossFadeColor(new Color(1f, 0f, 0f, 1f), 0f, true, false);
+            Check(Near(image.canvasRenderer.GetColor().g, 0f) && Near(image.canvasRenderer.GetAlpha(), 0.5f), "CrossFadeColor without alpha leaves the alpha: " + image.canvasRenderer.GetColor());
+            image.CrossFadeColor(Color.white, 0f, true, true);
+            // an override sprite is drawn in place of the sprite, which stays what it is
+            Sprite before = image.sprite;
+            image.overrideSprite = spare;
+            Check(image.overrideSprite == spare && image.sprite == before && before != spare, "overrideSprite is drawn, sprite stays");
+            image.overrideSprite = null;
+            Check(image.overrideSprite == image.sprite && image.sprite == before, "without an override: the sprite itself");
+            image.sprite = spare;
+            Check(image.sprite == spare && image.overrideSprite == spare, "sprite setter");
+            image.sprite = before;
 
             // a filled Image (the runner made `bar` one, at 1): the amount is drawn, the rect stays
             Check(bar.type == Image.Type.Filled && Near(bar.fillAmount, 1f), "filled Image as imported: " + bar.fillAmount);
@@ -96,12 +111,19 @@ namespace Coverage
             Check(button.targetGraphic == buttonImage, "targetGraphic");
             block.normalColor = new Color(1f, 0f, 0f, 1f);
             block.disabledColor = new Color(0f, 0f, 1f, 0.5f);
+            block.fadeDuration = 0f;   // (the tint fades over this time: none, to see it at once)
             button.colors = block;
             Check(Near(buttonImage.canvasRenderer.GetColor().r, 1f) && Near(buttonImage.canvasRenderer.GetColor().g, 0f), "a new ColorBlock tints the target: " + buttonImage.canvasRenderer.GetColor());
             button.interactable = false;
             Check(!button.interactable && Near(buttonImage.canvasRenderer.GetColor().b, 1f) && Near(buttonImage.canvasRenderer.GetAlpha(), 0.5f), "not interactable: the disabled colour: " + buttonImage.canvasRenderer.GetColor());
 
             Check(!toggle.isOn && toggle.graphic == check, "toggle as imported");
+            toggle.toggleTransition = Toggle.ToggleTransition.None;
+            Check(toggle.toggleTransition == Toggle.ToggleTransition.None, "toggleTransition reads back");
+            SpriteState swap = button.spriteState;
+            swap.pressedSprite = spare;
+            button.spriteState = swap;
+            Check(button.spriteState.pressedSprite == spare && button.spriteState.highlightedSprite == null, "spriteState reads back");
             Check(Near(check.canvasRenderer.GetAlpha(), 0f), "the check mark of a toggle that is off");
             toggle.isOn = true;
             Check(toggle.isOn && Near(check.canvasRenderer.GetAlpha(), 1f), "isOn shows the check mark");

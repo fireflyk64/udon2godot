@@ -716,6 +716,10 @@ CLIP_SHOW_TURN = "a6a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 CLIP_SHOW_FADE = "a7a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 CLIP_SHOW_FRAMES = "a8a7c1d2e3b44f5a8697a1b2c3d4e5f6"
 SHOW_CONTROLLER = "a9a7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_PRESS_NORMAL = "aaa7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_PRESS_OVER = "aba7c1d2e3b44f5a8697a1b2c3d4e5f6"
+CLIP_PRESS_DOWN = "aca7c1d2e3b44f5a8697a1b2c3d4e5f6"
+PRESS_CONTROLLER = "ada7c1d2e3b44f5a8697a1b2c3d4e5f6"
 
 
 def _curve(path, attribute, keys, class_id=224, script=None):
@@ -855,6 +859,27 @@ def write_animations(out):
             "  m_ExitPosition: {x: 800, y: 120, z: 0}\n  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}\n  m_DefaultState: {fileID: 1102000000000000011}\n")
     write("Show.controller", show, SHOW_CONTROLLER, main=9100000)
 
+    # "Press": what Unity generates for a Selectable with an animation transition: a trigger and
+    # a state for each selection state, reached from any state; the clips scale the object itself
+    def scale(v):
+        return [_curve("", "m_LocalScale.x", [(0, v)]), _curve("", "m_LocalScale.y", [(0, v)]), _curve("", "m_LocalScale.z", [(0, 1)])]
+    write("PressNormal.anim", _clip("PressNormal", scale(1), 0), CLIP_PRESS_NORMAL)
+    write("PressOver.anim", _clip("PressOver", scale(1.2), 0), CLIP_PRESS_OVER)
+    write("PressDown.anim", _clip("PressDown", scale(0.9), 0), CLIP_PRESS_DOWN)
+    press_states = [("Normal", CLIP_PRESS_NORMAL), ("Highlighted", CLIP_PRESS_OVER), ("Pressed", CLIP_PRESS_DOWN), ("Selected", CLIP_PRESS_OVER), ("Disabled", CLIP_PRESS_NORMAL)]
+    press = ("%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!91 &9100000\nAnimatorController:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Press\n  serializedVersion: 5\n"
+             "  m_AnimatorParameters:\n" + "".join("  - m_Name: %s\n    m_Type: 9\n    m_DefaultFloat: 0\n    m_DefaultInt: 0\n    m_DefaultBool: 0\n    m_Controller: {fileID: 0}\n" % name for name, _c in press_states)
+             + "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n    m_StateMachine: {fileID: 1107000000000000031}\n    m_Mask: {fileID: 0}\n    m_Motions: []\n    m_Behaviours: []\n    m_BlendingMode: 0\n    m_SyncedLayerIndex: -1\n"
+             "    m_DefaultWeight: 0\n    m_IKPass: 0\n    m_SyncedLayerAffectsTiming: 0\n    m_Controller: {fileID: 9100000}\n"
+             + "".join(_transition(1101000000000000031 + i, 1, name, 1102000000000000031 + i, 0.1) for i, (name, _c) in enumerate(press_states))
+             + "".join(_state(1102000000000000031 + i, name, clip, []) for i, (name, clip) in enumerate(press_states))
+             + "--- !u!1107 &1107000000000000031\nAnimatorStateMachine:\n  serializedVersion: 5\n  m_ObjectHideFlags: 1\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_Name: Base Layer\n"
+             "  m_ChildStates:\n" + "".join("  - serializedVersion: 1\n    m_State: {fileID: %d}\n    m_Position: {x: 288, y: %d, z: 0}\n" % (1102000000000000031 + i, 120 * (i + 1)) for i in range(len(press_states)))
+             + "  m_ChildStateMachines: []\n  m_AnyStateTransitions:\n" + "".join("  - {fileID: %d}\n" % (1101000000000000031 + i) for i in range(len(press_states)))
+             + "  m_EntryTransitions: []\n  m_StateMachineTransitions: {}\n  m_StateMachineBehaviours: []\n  m_AnyStatePosition: {x: 50, y: 20, z: 0}\n  m_EntryPosition: {x: 50, y: 120, z: 0}\n"
+             "  m_ExitPosition: {x: 800, y: 120, z: 0}\n  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}\n  m_DefaultState: {fileID: 1102000000000000031}\n")
+    write("Press.controller", press, PRESS_CONTROLLER, main=9100000)
+
 
 def text(value, size=14, color=(0, 0, 0, 1), align=4, style=0, best_fit=False, sizes=(10, 40), rich=True, overflow=(0, 0)):
     return ("Text", _GRAPHIC % vec(color, "rgba") + "  m_FontData:\n    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n    m_FontSize: %d\n    m_FontStyle: %d\n    m_BestFit: %d\n    m_MinSize: %d\n    m_MaxSize: %d\n    m_Alignment: %d\n    m_AlignByGeometry: 0\n    m_RichText: %d\n    m_HorizontalOverflow: %d\n    m_VerticalOverflow: %d\n    m_LineSpacing: 1\n  m_Text: %s\n" % (
@@ -880,12 +905,20 @@ def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72),
         quoted(value), vec(color, "rgba"), num(size), num(size), auto, num(sizes[0]), num(sizes[1]), style, halign, valign, wrap, overflow, rich))
 
 
-def selectable(target=0, transition=1, normal=(1, 1, 1, 1), highlighted=(0.96, 0.96, 0.96, 1), pressed=(0.78, 0.78, 0.78, 1), selected=(0.96, 0.96, 0.96, 1), disabled=(0.78, 0.78, 0.78, 0.5), multiplier=1, interactable=True):
-    """The fields every Selectable serializes. target: file id of the target Graphic component."""
+def selectable(target=0, transition=1, normal=(1, 1, 1, 1), highlighted=(0.96, 0.96, 0.96, 1), pressed=(0.78, 0.78, 0.78, 1), selected=(0.96, 0.96, 0.96, 1), disabled=(0.78, 0.78, 0.78, 0.5), multiplier=1, interactable=True, sprites=None, fade=0.1):
+    """The fields every Selectable serializes. target: file id of the target Graphic component;
+    sprites: {state: (file id, guid)} of a sprite swap (states: Highlighted, Pressed, Selected,
+    Disabled)."""
+    def sprite(state):
+        ref = (sprites or {}).get(state)
+        return "{fileID: 0}" if ref is None else "{fileID: %d, guid: %s, type: 3}" % ref
     return ("  m_Navigation:\n    m_Mode: 3\n    m_WrapAround: 0\n    m_SelectOnUp: {fileID: 0}\n    m_SelectOnDown: {fileID: 0}\n    m_SelectOnLeft: {fileID: 0}\n    m_SelectOnRight: {fileID: 0}\n"
-            "  m_Transition: %d\n  m_Colors:\n    m_NormalColor: %s\n    m_HighlightedColor: %s\n    m_PressedColor: %s\n    m_SelectedColor: %s\n    m_DisabledColor: %s\n    m_ColorMultiplier: %s\n    m_FadeDuration: 0.1\n"
+            "  m_Transition: %d\n  m_Colors:\n    m_NormalColor: %s\n    m_HighlightedColor: %s\n    m_PressedColor: %s\n    m_SelectedColor: %s\n    m_DisabledColor: %s\n    m_ColorMultiplier: %s\n    m_FadeDuration: %s\n"
+            "  m_SpriteState:\n    m_HighlightedSprite: %s\n    m_PressedSprite: %s\n    m_SelectedSprite: %s\n    m_DisabledSprite: %s\n"
+            "  m_AnimationTriggers:\n    m_NormalTrigger: Normal\n    m_HighlightedTrigger: Highlighted\n    m_PressedTrigger: Pressed\n    m_SelectedTrigger: Selected\n    m_DisabledTrigger: Disabled\n"
             "  m_Interactable: %d\n  m_TargetGraphic: {fileID: %d}\n") % (
-        transition, vec(normal, "rgba"), vec(highlighted, "rgba"), vec(pressed, "rgba"), vec(selected, "rgba"), vec(disabled, "rgba"), num(multiplier), interactable, target)
+        transition, vec(normal, "rgba"), vec(highlighted, "rgba"), vec(pressed, "rgba"), vec(selected, "rgba"), vec(disabled, "rgba"), num(multiplier), num(fade),
+        sprite("Highlighted"), sprite("Pressed"), sprite("Selected"), sprite("Disabled"), interactable, target)
 
 
 def button(**sel):
@@ -1485,6 +1518,26 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
             ("EllipsisRich", "<b>Bold</b> and <color=#ffd700>gold words</color> that run on and on", (220, 30), {"overflow": 1, "wrap": False})]):
         frame = b.img(name + "Frame", c, {"pos": (-125 + 250 * (i % 2), 90 - 70 * (i // 2)), "size": size}, color=(0.25, 0.22, 0.3, 1))
         f.node(name, frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp(value, 20, **kw)])
+
+    # ---- Transitions: what a Selectable does over time --------------------------------------------
+    c = b.world_canvas("Transitions", (12.3, 3.0, 2), (400, 200))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.12, 0.1, 0.14, 1))
+    # sprite swap: the sprite of the state in place of the Image's own
+    swap = f.node("BtnSwap", c, {"pos": (-140, 50), "size": (64, 64)}, [renderer(), image(sprite=SHEET_LEFT)])
+    f.add(swap, button(target=swap.components[1][0], transition=2, sprites={"Highlighted": SHEET_RIGHT, "Disabled": SHEET_RIGHT}))
+    swap_off = f.node("BtnSwapOff", c, {"pos": (-60, 50), "size": (64, 64)}, [renderer(), image(sprite=SHEET_LEFT)])
+    f.add(swap_off, button(target=swap_off.components[1][0], transition=2, sprites={"Highlighted": SHEET_RIGHT, "Disabled": SHEET_RIGHT}, interactable=False))
+    # colour tint: fades over fadeDuration
+    fade = f.node("BtnFade", c, {"pos": (60, 50), "size": (100, 30)}, [renderer(), image((1, 1, 1, 1))])
+    f.add(fade, button(target=fade.components[1][0], highlighted=(1, 0, 0, 1), fade=0.2))
+    # animation: triggers to the Animator of the button itself
+    anim = f.node("BtnAnim", c, {"pos": (-100, -50), "size": (100, 30)}, [renderer(), image((0.6, 0.8, 1, 1)), ("Animator", PRESS_CONTROLLER)])
+    f.add(anim, button(target=anim.components[1][0], transition=3))
+    # a Toggle's check mark fades
+    tf = b.box("ToggleFade", c, {"pos": (60, -50), "size": (120, 24)})
+    tf_back = b.img("Background", tf, {"amin": (0, 0.5), "amax": (0, 0.5), "pos": (12, 0), "size": (20, 20)}, color=(0.9, 0.9, 0.9, 1))
+    tf_mark = b.img("Checkmark", tf_back, {"size": (16, 16)}, color=(0.1, 0.1, 0.1, 1))
+    f.add(tf, toggle(False, tf_mark.components[1][0], target=tf_back.components[1][0]))
 
     # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
     c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1440, 640))

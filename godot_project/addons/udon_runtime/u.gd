@@ -4009,22 +4009,16 @@ func ui_set_renderer_alpha(n, a: float) -> void:
 	if t is Control or t is Label3D:
 		UiGraphic.set_renderer_alpha(t, a)
 
+## Graphic.CrossFadeAlpha / CrossFadeColor: the fade unidot's Selectables use for their tints.
 func ui_fade_alpha(n, alpha: float, duration: float) -> void:
-	var c: Color = ui_renderer_color(n)
-	c.a = alpha
-	ui_fade_color(n, c, duration, true)
-
-func ui_fade_color(n, color: Color, duration: float, use_alpha: bool = true) -> void:
 	var t: Node = _ui_draw_node(n)
-	if not (t is Control or t is Label3D):
-		return
-	var from: Color = UiGraphic.renderer_color(t)
-	var to: Color = color if use_alpha else Color(color.r, color.g, color.b, from.a)
-	if duration <= 0.0 or not t.is_inside_tree():
-		UiGraphic.set_renderer_color(t, to)
-		return
-	var tw: Tween = t.create_tween()
-	tw.tween_method(func(c: Color) -> void: UiGraphic.set_renderer_color(t, c), from, to, duration)
+	if t is Control or t is Label3D:
+		UiGraphic.cross_fade(t, Color(0, 0, 0, alpha), duration, true, false)
+
+func ui_fade_color(n, color: Color, duration: float, use_alpha: bool = true, use_rgb: bool = true) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t is Control or t is Label3D:
+		UiGraphic.cross_fade(t, color, duration, use_alpha, use_rgb)
 
 func ui_get_font_size_f(n) -> float:
 	return UiText.font_size(_ui_draw_node(n))
@@ -4067,17 +4061,30 @@ func ui_text_preferred(n, axis: int) -> float:
 		return t.size[axis]
 	return 0.0
 
+## Image.sprite: the Image's own sprite (a Selectable's sprite swap may draw another one in
+## its place, see ui_set_override_sprite).
 func ui_get_texture(n: Node):
-	return n.get("texture")
+	if n is TextureRect or (n is Control and UiGraphic.has_graphic(n)):
+		return UiGraphic.sprite(n)
+	return n.get("texture") if n != null else null
 
 func ui_set_texture(n: Node, t) -> void:
-	if n.get("texture") != null or n is TextureRect:
-		n.set("texture", t)
-		if n is TextureRect:
-			n.set_meta("unidot_no_sprite", t == null)
+	if n is Control:
+		UiGraphic.set_sprite(n, t as Texture2D)
 		_ui_sprite_redraw(n)
-	elif n is Control:
-		UiGraphic.update(n, {"texture": t})   # the background of a widget
+	elif n != null and n.get("texture") != null:
+		n.set("texture", t)
+
+## Image.overrideSprite: what is drawn (the sprite itself when nothing overrides it).
+func ui_get_override_sprite(n: Node):
+	if n is TextureRect and not bool(n.get_meta("unidot_no_sprite", false)):
+		return n.texture
+	return ui_get_texture(n) if not (n is TextureRect) else null
+
+func ui_set_override_sprite(n: Node, t) -> void:
+	if n is Control:
+		UiGraphic.set_override_sprite(n, t as Texture2D)
+		_ui_sprite_redraw(n)
 
 ## How an Image draws its sprite when it is not simply stretched (`sprite` of the graphic
 ## metadata, drawn by unidot's runtime/ui_sprite.gd): type (1 sliced, 2 tiled, 3 filled),
@@ -7321,12 +7328,28 @@ func ui_sprite_state_get(n: Node) -> Dictionary:
 	if n != null and n.has_meta("udon_sprite_state"):
 		for k in n.get_meta("udon_sprite_state"):
 			d[k] = n.get_meta("udon_sprite_state")[k]
+	# an imported Selectable: the sprites of its sprite swap (unidot's runtime/selectable.gd)
+	var c: Control = _ui_ctl(n)
+	if c != null and c.has_meta(UiSelectable.META):
+		var sprites: Dictionary = (c.get_meta(UiSelectable.META) as Dictionary).get("sprites", {})
+		for st in ["highlighted", "pressed", "selected", "disabled"]:
+			d[st + "Sprite"] = sprites.get(st)
 	return d
 
 func ui_sprite_state_set(n: Node, d: Dictionary) -> void:
 	if n == null:
 		return
 	n.set_meta("udon_sprite_state", d.duplicate())
+	var c: Control = _ui_ctl(n)
+	if c != null and c.has_meta(UiSelectable.META):
+		var cfg: Dictionary = (c.get_meta(UiSelectable.META) as Dictionary).duplicate(true)
+		var sprites: Dictionary = {}
+		for st in ["highlighted", "pressed", "selected", "disabled"]:
+			if d.get(st + "Sprite") is Texture2D:
+				sprites[st] = d[st + "Sprite"]
+		cfg["sprites"] = sprites
+		c.set_meta(UiSelectable.META, cfg)
+		UiSelectable.refresh_host(c)
 	if n is TextureButton:
 		n.texture_hover = d.get("highlightedSprite")
 		n.texture_pressed = d.get("pressedSprite")

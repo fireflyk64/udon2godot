@@ -74,7 +74,7 @@ type Toggle
   OnSubmit(BaseEventData): void => U.ui_press($0, null)
   Rebuild(CanvasUpdate): void => pass
   group: ToggleGroup => U.toggle_get_group($0)
-  toggleTransition: Toggle.ToggleTransition => !stored U.prop_get($0, "toggleTransition", 0)
+  toggleTransition: Toggle.ToggleTransition => (1 if bool(U.ui_selectable_get($0, "toggle_fade", true)) else 0)
   set_graphic(): Graphic => !stub null
   set group: ToggleGroup => U.toggle_set_group($0, $v)
   set_toggleTransition(): Toggle.ToggleTransition => !stub 0

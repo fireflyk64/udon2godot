@@ -3484,7 +3484,7 @@ type CinemachinePathBase
 
 type Toggle
   set graphic: Graphic => U.ui_selectable_set_part($0, "graphic", $v)
-  set toggleTransition: int => !stored U.prop_set($0, "toggleTransition", $v)
+  set toggleTransition: int => U.ui_selectable_set($0, "toggle_fade", $v != 0)
 
 type ButtonButtonClickedEvent
   ctor() => Signal()
@@ -3969,7 +3969,7 @@ type Texture3D
   ctor(int, int, int, TextureFormat, bool, bool) => U.new_texture3d($1, $2, $3)
 
 type Graphic
-  CrossFadeColor(Color, float, bool, bool, bool): void => U.ui_fade_color($0, $1, $2, $4)
+  CrossFadeColor(Color, float, bool, bool, bool): void => U.ui_fade_color($0, $1, $2, $4, $5)
 
 type VertexHelper
   ctor(Mesh) => {"verts": 0, "indices": 0}

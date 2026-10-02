@@ -634,8 +634,8 @@ type Image : Graphic kind=component gd=Control extern=UnityEngineUIImage
   set type: int => U.ui_sprite_set($0, "type", $v)
   preserveAspect: bool => true
   set preserveAspect: bool => pass
-  overrideSprite: Sprite => U.ui_get_texture($0)
-  set overrideSprite: Sprite => U.ui_set_texture($0, $v)
+  overrideSprite: Sprite => U.ui_get_override_sprite($0)
+  set overrideSprite: Sprite => U.ui_set_override_sprite($0, $v)
 
 type RawImage : Graphic kind=component gd=TextureRect extern=UnityEngineUIRawImage
   texture: Texture => $0.texture

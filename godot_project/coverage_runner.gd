@@ -770,6 +770,7 @@ func _wire(name: String, t: Node3D, host: Node3D, script) -> void:
 			t.set("dropdown", wroot.get_node("Dropdown"))
 			t.set("tmpDropdown", wroot.get_node("Dropdown"))
 			t.set("caption", wroot.get_node("Dropdown/Label"))
+			t.set("spare", GradientTexture2D.new())
 			t.set("scroll", wroot.get_node("Scroll"))
 			t.set("scrollContent", wroot.get_node("Scroll/Viewport/Content"))
 			t.set("scrollBar", wroot.get_node("Scroll/Scrollbar"))
