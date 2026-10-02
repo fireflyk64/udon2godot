@@ -17,15 +17,15 @@ UdonSharp .cs  ──udon2godot──▶  .sgd  ──godot-sandbox──▶  RI
 
 | Corpus | Classes | Lines of C# | Converter errors | Compiles in sandbox | Runs |
 |---|---|---|---|---|---|
-| [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break (9 checks), then played through window input (17 checks) |
+| [MS-VRCSA-Billiards](https://github.com/Sacchan-VRC/MS-VRCSA-Billiards) (official pool table, scene + prefabs) | 30 | 16.9k | 0 | 30/30 | imported world: lobby → 8-ball → break (55 checks), its menus (18), then played through window input (17 checks); its canvases match the Unity reference |
 | [EmyChess](https://github.com/emymin/EmyChess) (example scene) | 13 | 2.2k | 0 | 13/13 | imported world: a game is played, 20/20 scenario checks (`scripts/test_world_community.sh`) |
-| [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | 1.9k | 0 | 6/6 | imported world, fields decoded from the Udon variable table: player list, player settings, groups, event dispatcher, 16/16 scenario checks |
+| [UdonEssentials](https://github.com/Varneon/UdonEssentials) (UdonSharp 0.x example scene) | 6 | 1.9k | 0 | 6/6 | imported world, fields decoded from the Udon variable table: player list, player settings, groups, event dispatcher, 17/17 scenario checks |
 | [UdonUtils](https://github.com/Guribo/UdonUtils) (TLP runtime-testing example scene) | 148 | 19.4k | 0 | 148/148 | imported world; the package's own TestController runs its 17 test cases: the 7 single-player ones pass, 10 report "requires 2 players" (`scenarios/udonutils_tests.gd`, 6 checks) |
 | [VUdon-Udonity](https://github.com/Varneon/VUdon-Udonity), [UdonCombatSystem](https://github.com/Toly65/UdonCombatSystem), [vrchat-glb-loader](https://github.com/vr-voyage/vrchat-glb-loader), [3d-model-loader-tablet](https://github.com/vr-voyage/vrchat-3d-model-loader-tablet), [UdonZip](https://github.com/Foorack/UdonZip) (no example scene, or one that needs packages that are not in the repository) | 169 | 25.1k | 0 | 169/169 (`scripts/compile_check_refs.sh`) | — |
-| [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table, prefabs) | 21 | 7.1k | 0 | 21/21 | imported table prefab: unlocked, joined and started through its menu, a break is played, the turn ends (22 scenario checks); the canvases of its three menu styles match the Unity reference (`scripts/test_world_community.sh`) |
-| [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | — |
-| `tests/coverage/*.cs` API coverage fixtures (18 files) | 21 | 3.0k | 0 | all | 954/954 checks |
-| `tests/unity_fixture` Unity scene + prefabs through unidot + udon_integration | 5 | — | 0 | 5/5 | 77 headless / 110 display / 25 player / 16 VR checks |
+| [vrcbce](https://github.com/VRCBilliards/vrcbce) (pool table, prefabs) | 21 | 7.1k | 0 | 21/21 | imported table prefab: unlocked, joined and started through its menu, a break is played, the turn ends (28 scenario checks); a game through the desktop player's window input (16); the three tables of its sample scene (32); the canvases of its three menu styles match the Unity reference (`scripts/test_world_community.sh`) |
+| [SaccFlightAndVehicles](https://github.com/Sacchan-VRC/SaccFlightAndVehicles) | 87 | 36.6k | 0 | 87/87 | imported (625 scripts attached), not run yet; the canvases of a vehicle prefab (cockpit displays in metres, font sizes of 0.02) match the Unity reference |
+| `tests/coverage/*.cs` API coverage fixtures (20 files) | 23 | 3.5k | 0 | all | 1104/1104 checks |
+| `tests/unity_fixture` Unity scene + prefabs through unidot + udon_integration | 5 | — | 0 | 5/5 | 134 headless / 172 display / 25 player / 16 VR checks |
 | `tests/fixtures/Counter.cs` end-to-end lifecycle | 1 | — | 0 | 1/1 | 23/23 checks |
 | `tests/fixtures/Counter.cs` over ENet, host + client processes | 1 | — | 0 | 1/1 | 28/28 checks |
 

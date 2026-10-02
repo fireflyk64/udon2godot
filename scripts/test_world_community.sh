@@ -131,7 +131,7 @@ ui_reference() {
     echo "$(basename "$unity"): $(tail -1 "$out/ui_compare_$tag.log")"
     grep -q ", 0 problem(s)" "$out/ui_compare_$tag.log" || code=1
     if [ -n "${DISPLAY:-}" ] && [ "${SHOTS:-1}" = 1 ]; then
-      timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s addons/unidot_importer/test/ui_shots.gd -- --scene "$scene" --out "$out/shots/canvases_$tag" --check 1 --static 1 --all 1 > "$out/ui_pixels_$tag.log" 2>&1 || code=1
+      timeout 600 "$GODOT" --display-driver x11 --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1152x648 --path "$out" -s addons/unidot_importer/test/ui_shots.gd -- --scene "$scene" --out "$out/shots/canvases_$tag" --check 1 --static 1 --all "${UI_ALL:-1}" > "$out/ui_pixels_$tag.log" 2>&1 || code=1
       grep -E "MISDRAWN|pixel check" "$out/ui_pixels_$tag.log" | head -10
     fi
   done
@@ -140,6 +140,32 @@ ui_reference() {
 }
 VRCBCE=refs/vrcbce/Packages/com.vrcbilliards.vrcbce
 [ -d "$VRCBCE" ] && ui_reference vrcbce "$VRCBCE" "$VRCBCE/VRCBCE (M.O.O.N).prefab" "$VRCBCE/VRCBCE (esnya).prefab" "$VRCBCE/VRCBCE (akalink).prefab"
+# SaccFlightAndVehicles: imported for its canvases alone (no scenario yet). The displays of a
+# cockpit are canvases in metres with font sizes like 0.022, below objects that are inactive
+# until a pilot sits down (UI_ALL=2: the picture is taken with every object shown)
+import_only() {
+  local name=$1 src=$2 probe=$3 out="$WORLDS/$1"
+  if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  echo; echo "===== $name"
+  if [ ! -d "$src" ]; then echo "skipped: $src is not cloned (scripts/setup_deps.sh --community)"; return 0; fi
+  local stale=""
+  [ -f "$out/$probe" ] && stale=$(find refs/unidot_importer -maxdepth 1 -name "*.gd" -newer "$out/$probe" -type f 2>/dev/null | head -1)
+  if [ ! -f "$out/$probe" ] || [ -n "$stale" ] || [ "${REIMPORT:-0}" = 1 ]; then
+    [ -n "$stale" ] && echo "re-importing: $stale is newer than the imported scene"
+    rm -rf "$out"
+    scripts/import_world.sh "$src" "$out" > "$out.import.log" 2>&1 || true
+    grep -E "class\(es\)|import finished|did not finish|scripts attached" "$out.import.log"
+  else
+    install_runtime "$out"
+    cp godot_world_template/world_runner.gd "$out/"; cp godot_world_template/scenarios/*.gd "$out/scenarios/"
+  fi
+  [ -f "$out/$probe" ] || FAILED+=("$name-import")
+  godot_guard_report "$out.import.log"
+  return 0
+}
+SACC=refs/SaccFlightAndVehicles
+import_only saccflight "$SACC" "SaccFlightAndVehicles/Prefabs/SF-1Main.prefab.tscn"
+[ -d "$SACC" ] && UI_ALL=2 ui_reference saccflight "$SACC" "$SACC/Prefabs/SF-1Main.prefab"
 world udon_essentials "refs/UdonEssentials/Assets/Varneon/Udon Prefabs" "res://Assets/Varneon/Udon Prefabs/Essentials/Examples/UdonEssentials_ExampleScene.tscn" res://scenarios/udon_essentials.gd
 
 echo

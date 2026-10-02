@@ -65,6 +65,15 @@ baseline of inline sprites, mirrored graphics on negative rects, the engine's me
       nodes, pixel check 3049 points and 67 of 75 texts; coverage 1104 checks.
       Not done: the text an InputField shows on such a canvas (a LineEdit draws it itself,
       at a whole font size).
+      An independent check: SaccFlightAndVehicles is imported in the community suite now
+      (87 classes, 625 scripts attached, 1249 UI nodes; no scenario yet) and the canvases
+      of its `SF-1Main` prefab are compared with the reference: 3 canvases, 33 of 33 nodes,
+      0 problems, 20 texts of sizes 0.015 to 0.023 laid out at their size (the stick
+      displays' two rings of labels, the race timer); the pixel check finds 10 of the 31
+      texts large enough to compare. For it the reference compares a canvas below a parent
+      the files do not describe (an object of a model) in its own frame, and
+      `ui_shots.gd --all 2` shows every object (the displays are inactive until a pilot
+      sits down).
 - [x] Sprites of a sprite asset without face metrics (`m_PointSize: 0`, what VUdon-Udonity's
       icon asset is): TextMeshPro sizes them by the ascent of the text's font (ascent /
       glyph height x the sprite's scale); they were drawn one unit large. The font asset's

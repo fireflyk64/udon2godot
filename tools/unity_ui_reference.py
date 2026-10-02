@@ -534,6 +534,8 @@ def build_graph(model, assets):
             n.parent.children.append(n)
         else:
             roots.append(n)
+            # (a parent these files do not describe: an object of a model, a missing prefab)
+            n.detached = bool(pid)
     for n in nodes.values():
         listed = [_ref_id(c) for c in (n.t.data.get("m_Children") or [])]
         index = {cid: i for i, cid in enumerate(listed)}
@@ -1700,6 +1702,48 @@ def corners_of(n, m):
     return [mat_point(m, [lx, ly, 0.0]) for lx, ly in ((-px * w, -py * h), (-px * w, (1 - py) * h), ((1 - px) * w, (1 - py) * h), ((1 - px) * w, -py * h))]
 
 
+def _detached(n):
+    """Is the node below a parent the files do not describe (an object of a model, a missing
+    prefab)? Where it is in the world is not known then: only where its rects are to each other."""
+    while n.parent is not None:
+        n = n.parent
+    return bool(getattr(n, "detached", False))
+
+
+def _frame_fit(pairs):
+    """→ a function that takes a point of the imported scene to the reference's space, from
+    the first pair of rects (reference corners, imported corners) that spans a plane: the
+    imported rect is laid on the reference's (corner, two edges and their normal)."""
+    def frame(c):
+        o = c[0]
+        u = [c[3][i] - o[i] for i in range(3)]
+        v = [c[1][i] - o[i] for i in range(3)]
+        w = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+        area = math.sqrt(sum(x * x for x in w))
+        if area < 1e-12 or not all(math.isfinite(x) for x in o + u + v):
+            return None
+        k = math.sqrt(area)
+        return o, u, v, [x / k for x in w]
+    for want, got in pairs:
+        fr, fd = frame(want), frame(got)
+        if fr is None or fd is None:
+            continue
+        o, u, v, w = fd
+        det = u[0] * (v[1] * w[2] - v[2] * w[1]) - v[0] * (u[1] * w[2] - u[2] * w[1]) + w[0] * (u[1] * v[2] - u[2] * v[1])
+        if abs(det) < 1e-18:
+            continue
+
+        def solve(p, o=o, u=u, v=v, w=w, det=det, fr=fr):
+            r = [p[i] - o[i] for i in range(3)]
+            a = (r[0] * (v[1] * w[2] - v[2] * w[1]) - v[0] * (r[1] * w[2] - r[2] * w[1]) + w[0] * (r[1] * v[2] - r[2] * v[1])) / det
+            b = (u[0] * (r[1] * w[2] - r[2] * w[1]) - r[0] * (u[1] * w[2] - u[2] * w[1]) + w[0] * (u[1] * r[2] - u[2] * r[1])) / det
+            c = (u[0] * (v[1] * r[2] - v[2] * r[1]) - v[0] * (u[1] * r[2] - u[2] * r[1]) + r[0] * (u[1] * v[2] - u[2] * v[1])) / det
+            ro, ru, rv, rw = fr
+            return [ro[i] + a * ru[i] + b * rv[i] + c * rw[i] for i in range(3)]
+        return solve
+    return None
+
+
 def describe_canvas(canvas, layout, screen):
     layout.layout_canvas(canvas, screen)
     cv = canvas.comp("Canvas")
@@ -1713,6 +1757,7 @@ def describe_canvas(canvas, layout, screen):
         "world_scale": scale,
         "world_position": [wm[0][3], wm[1][3], wm[2][3]],
         "active": canvas.active,
+        "detached": _detached(canvas),
         "nodes": [],
         "spatial": [],
     }
@@ -1869,6 +1914,26 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                 problems.append("canvas %s: size %s, Unity %s" % (rc["path"], _fmt(dc["size"]), _fmt(rc["size"])))
                 break
 
+        # a canvas below a parent the Unity files do not describe (an object of a model): where
+        # it is in the world is not known, so the imported rects are laid on the reference's
+        # by the first rect both have, and compared from there
+        place = None
+        if rc.get("detached") and rc["mode"] == "world":
+            pairs = []
+
+            def collect(rnode, dnode):
+                taken = set()
+                for rch in rnode["children"]:
+                    want = godot_name(rch["entry"]["path"].split("/")[-1])
+                    for i, dch in enumerate(dnode["children"]):
+                        if i not in taken and _same_name(want, dch["entry"]["path"].split("/")[-1]):
+                            taken.add(i)
+                            pairs.append((rch["entry"]["corners"], dch["entry"]["corners"]))
+                            collect(rch, dch)
+                            break
+            collect(_tree(rc["nodes"]), _tree(dc["nodes"]))
+            place = _frame_fit(pairs)
+
         def walk(rnode, dnode):
             nonlocal matched
             taken = set()
@@ -1892,11 +1957,12 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                 limit = tol + diag * rel
                 # (an overlay canvas is drawn without perspective: z places nothing on the screen)
                 dims = 3 if rc["mode"] == "world" else 2
-                worst = max(math.dist(a[:dims], b[:dims]) if all(math.isfinite(x) for x in b) else float("inf") for a, b in zip(e["corners"], d["corners"]))
+                got_corners = [place(c) if all(math.isfinite(x) for x in c) else c for c in d["corners"]] if place else d["corners"]
+                worst = max(math.dist(a[:dims], b[:dims]) if all(math.isfinite(x) for x in b) else float("inf") for a, b in zip(e["corners"], got_corners))
                 if worst > limit:
                     note = "  [text-sized: needs the font]" if e.get("text_sized") else ""
                     if not e.get("text_sized") or worst > limit * 20:
-                        problems.append("%s :: %s: off by %.4g (limit %.3g)  Unity %s, imported %s%s%s" % (rc["path"], e["path"], worst, limit, _corners(e["corners"]), _corners(d["corners"]), "" if e["shown"] else "  [hidden]", note))
+                        problems.append("%s :: %s: off by %.4g (limit %.3g)  Unity %s, imported %s%s%s" % (rc["path"], e["path"], worst, limit, _corners(e["corners"]), _corners(got_corners), "" if e["shown"] else "  [hidden]", note))
                 if check_active and bool(d.get("active", True)) != bool(e["active"]):
                     problems.append("%s :: %s: active %s, Unity %s" % (rc["path"], e["path"], d.get("active"), e["active"]))
                 problems.extend("%s :: %s: %s" % (rc["path"], e["path"], p) for p in _drawn_problems(e, d))
@@ -1910,7 +1976,7 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                 got = placed.get(s["path"])
                 if got is None:
                     problems.append("%s :: %s: a 3D object among the UI is not in the imported canvas (Unity has it at %s)" % (rc["path"], s["path"], _fmt(s["position"])))
-                elif math.dist(got, s["position"]) > tol:
+                elif math.dist(place(got) if place else got, s["position"]) > tol:
                     problems.append("%s :: %s: a 3D object among the UI is at %s, Unity has it at %s" % (rc["path"], s["path"], _fmt(got), _fmt(s["position"])))
     return matched, problems
 
