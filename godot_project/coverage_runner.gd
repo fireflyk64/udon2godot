@@ -577,6 +577,24 @@ func _build_scene(name: String, target: Node3D, host: Node3D) -> void:
 			dd.set_meta(_U._UiDropdown.META, {"caption": dd.get_path_to(caption), "template": dd.get_path_to(template), "item_text": dd.get_path_to(item_label)})
 			helper.call(dd, _U._UiDropdown.HELPER, _U._UiDropdown)
 			_U._UiDropdown.refresh_caption(dd)
+			# a scroll view: 200 x 200, the viewport stretched over it, content 500 high anchored to
+			# its top, a vertical Scrollbar with its handle
+			var sv: Control = mk.call("Control", "Scroll", croot, {"anchored_position": Vector2(-250, -100), "size_delta": Vector2(200, 200)})
+			var sview: Control = mk.call("Control", "Viewport", sv, {"anchor_min": Vector2.ZERO, "anchor_max": Vector2.ONE, "pivot": Vector2(0, 1), "size_delta": Vector2.ZERO})
+			var scontent: Control = mk.call("Control", "Content", sview, {"anchor_min": Vector2(0, 1), "anchor_max": Vector2(1, 1), "pivot": Vector2(0, 1), "size_delta": Vector2(0, 500)})
+			var sbar: VScrollBar = mk.call("VScrollBar", "Scrollbar", sv, {"anchor_min": Vector2(1, 0), "anchor_max": Vector2(1, 1), "pivot": Vector2(1, 1), "size_delta": Vector2(20, 0)})
+			sbar.min_value = 0.0
+			sbar.max_value = 1.0
+			sbar.step = 0.0
+			sbar.page = 0.0
+			var sarea: Control = mk.call("Control", "Sliding Area", sbar, {"anchor_min": Vector2.ZERO, "anchor_max": Vector2.ONE, "size_delta": Vector2(-20, -20)})
+			var shandle: Control = mk.call("TextureRect", "Handle", sarea, {"anchor_min": Vector2.ZERO, "anchor_max": Vector2(1, 0.2), "size_delta": Vector2(20, 20)})
+			sbar.set_meta("unidot_scrollbar", {"direction": 2, "size": 0.2})
+			sbar.set_meta(_U.UiSelectable.META, {"transition": 0, "handle": sbar.get_path_to(shandle), "direction": 2})
+			helper.call(sbar, _U.UiSelectable.HELPER, _U.UiSelectable)
+			sv.set_meta(_U._UiScroll.META, {"content": sv.get_path_to(scontent), "viewport": sv.get_path_to(sview), "vbar": sv.get_path_to(sbar),
+				"horizontal": false, "vertical": true, "movement": 2, "elasticity": 0.1, "inertia": true, "deceleration": 0.135, "sensitivity": 1.0, "visibility": [0, 0], "spacing": [0.0, 0.0]})
+			helper.call(sv, _U._UiScroll.HELPER, _U._UiScroll)
 			var t3 := Node3D.new()
 			t3.name = "Text3D"
 			host.add_child(t3)
@@ -752,6 +770,9 @@ func _wire(name: String, t: Node3D, host: Node3D, script) -> void:
 			t.set("dropdown", wroot.get_node("Dropdown"))
 			t.set("tmpDropdown", wroot.get_node("Dropdown"))
 			t.set("caption", wroot.get_node("Dropdown/Label"))
+			t.set("scroll", wroot.get_node("Scroll"))
+			t.set("scrollContent", wroot.get_node("Scroll/Viewport/Content"))
+			t.set("scrollBar", wroot.get_node("Scroll/Scrollbar"))
 		"TVRC":
 			var other := host.get_node("Other")
 			other.set_script(script)

@@ -955,9 +955,11 @@ func set_active(n: Node, active: bool) -> void:
 	if n == null:
 		return
 	var was: bool = is_active(n)
+	# (the process mode first: an object whose `visible` a clip animates is watched, see
+	# _on_animated_active, and must find the two in step)
+	n.process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
 	if n is CanvasItem or n is Node3D:
 		n.visible = active
-	n.process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
 	if n is CollisionObject3D:
 		n.set_deferred("disable_mode", CollisionObject3D.DISABLE_MODE_REMOVE)
 	if was != active:
@@ -969,6 +971,23 @@ func is_active(n: Node) -> bool:
 	if n == null:
 		return false
 	return n.process_mode != Node.PROCESS_MODE_DISABLED
+
+## Objects whose m_IsActive an animation clip drives: the importer leaves the track on `visible`
+## and puts the node in the group "udon_animated_active". What the clip shows or hides is
+## activated or deactivated as SetActive would do it (activeSelf, OnEnable / OnDisable).
+func _enter_tree() -> void:
+	get_tree().node_added.connect(_watch_animated_active)
+
+func _watch_animated_active(n: Node) -> void:
+	if not n.is_in_group(&"udon_animated_active") or not n.has_signal(&"visibility_changed"):
+		return
+	var on_change: Callable = _on_animated_active.bind(n)
+	if not n.is_connected(&"visibility_changed", on_change):
+		n.connect(&"visibility_changed", on_change)
+
+func _on_animated_active(n: Node) -> void:
+	if is_instance_valid(n) and bool(n.get("visible")) != is_active(n):
+		set_active(n, bool(n.get("visible")))
 
 func is_active_in_hierarchy(n: Node) -> bool:
 	if n == null:
@@ -4306,13 +4325,12 @@ func scroll_set_part(s, key: String, value) -> void:
 func scroll_content(s) -> Control:
 	return scroll_part(s, "content") as Control
 
-## ScrollRect.onValueChanged
-func scroll_signal(s) -> Signal:
-	if s is ScrollContainer:
-		return s.get_v_scroll_bar().value_changed
+## The node that scrolls a ScrollRect (unidot's helper child; a ScrollRect made by a script
+## gets one).
+func _scroll_helper(s) -> Node:
 	var h: Control = _scroll_host(s)
 	if h == null:
-		return Signal()
+		return null
 	var helper: Node = h.get_node_or_null(_UiScroll.HELPER)
 	if helper == null:
 		helper = Node.new()
@@ -4320,7 +4338,24 @@ func scroll_signal(s) -> Signal:
 		helper.set_meta(RT.META_HELPER, true)
 		helper.set_script(_UiScroll)
 		h.add_child(helper)
-	return Signal(helper, "scrolled")
+	return helper
+
+## ScrollRect.onValueChanged
+func scroll_signal(s) -> Signal:
+	if s is ScrollContainer:
+		return s.get_v_scroll_bar().value_changed
+	var helper: Node = _scroll_helper(s)
+	return Signal(helper, "scrolled") if helper != null else Signal()
+
+## ScrollRect.velocity (units of the content's anchored position per second) / StopMovement.
+func scroll_velocity(s) -> Vector2:
+	var helper: Node = _scroll_helper(s)
+	return helper.velocity if helper != null else Vector2.ZERO
+
+func scroll_set_velocity(s, v: Vector2) -> void:
+	var helper: Node = _scroll_helper(s)
+	if helper != null:
+		helper.velocity = v
 
 ## Unity's Scrollbar.size (handle size 0..1). The imported bar keeps page = 0 so that `value`
 ## spans 0..1 as in Unity; the size is kept in its metadata and the handle object follows.
@@ -4328,6 +4363,31 @@ func scrollbar_get_size(bar: Range) -> float:
 	if bar != null and bar.has_meta("unidot_scrollbar"):
 		return float(bar.get_meta("unidot_scrollbar").get("size", 1.0))
 	return 1.0
+
+## Scrollbar.numberOfSteps: with more than one the bar's value is one of the steps.
+func scrollbar_get_steps(bar: Range) -> int:
+	return UiSelectable.scrollbar_steps(bar) if bar != null else 0
+
+func scrollbar_set_steps(bar: Range, steps: int) -> void:
+	if bar == null:
+		return
+	UiSelectable.scrollbar_set_steps(bar, steps)
+	bar.value = bar.value
+	UiSelectable.refresh_host(bar)
+
+## Scrollbar.direction (0 left to right, 1 right to left, 2 bottom to top, 3 top to bottom).
+func scrollbar_get_direction(bar: Range) -> int:
+	if bar != null and bar.has_meta("unidot_scrollbar"):
+		return int(bar.get_meta("unidot_scrollbar").get("direction", 0))
+	return 2 if bar is VScrollBar else 0
+
+func scrollbar_set_direction(bar: Range, direction: int) -> void:
+	if bar == null:
+		return
+	var cfg: Dictionary = (bar.get_meta("unidot_scrollbar") as Dictionary).duplicate() if bar.has_meta("unidot_scrollbar") else {}
+	cfg["direction"] = direction
+	bar.set_meta("unidot_scrollbar", cfg)
+	UiSelectable.refresh_host(bar)
 
 func scrollbar_set_size(bar: Range, v: float) -> void:
 	if bar == null:

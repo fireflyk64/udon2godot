@@ -1060,6 +1060,19 @@ class Layout:
             content.anchored_position = [content.anchored_position[0] + offset[0], content.anchored_position[1] + offset[1]]
             self.relayout(content)
             vmin, vmax, cmin, cmax = self.scroll_bounds(view, content)
+        # a Scrollbar with steps takes the nearest step and hands it back (its onValueChanged is
+        # ScrollRect.SetNormalizedPosition): the content lies on a step
+        for axis in range(2):
+            bar = bars[axis]
+            steps = int(_num(bar.comp("Scrollbar").get("m_NumberOfSteps", 0))) if bar is not None and bar.comp("Scrollbar") else 0
+            csize, vsize = cmax[axis] - cmin[axis], vmax[axis] - vmin[axis]
+            if steps > 1 and csize > vsize + 0.01:
+                at = (vmin[axis] - cmin[axis]) / (csize - vsize)
+                step = round(at * (steps - 1)) / (steps - 1)
+                if abs(step - at) > 1e-4:
+                    content.anchored_position[axis] += (vmin[axis] - step * (csize - vsize)) - cmin[axis]
+                    self.relayout(content)
+                    vmin, vmax, cmin, cmax = self.scroll_bounds(view, content)
         for axis in range(2):
             bar = bars[axis]
             if bar is None:
@@ -1204,6 +1217,10 @@ def scrollbar_visuals(n, nodes):
     if handle is None or handle.parent is None or not handle.parent.is_rect:
         return
     value = n.scroll_value if n.scroll_value is not None else _num(d.get("m_Value", 0))
+    steps = int(_num(d.get("m_NumberOfSteps", 0)))
+    if steps > 1:
+        # Scrollbar.value: the nearest of the steps
+        value = round(value * (steps - 1)) / (steps - 1)
     size = n.scroll_size if n.scroll_size is not None else _num(d.get("m_Size", 0.2), 0.2)
     size = min(max(size, 0.0), 1.0)
     direction = int(_num(d.get("m_Direction", 0)))

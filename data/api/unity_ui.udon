@@ -421,7 +421,7 @@ type ScrollRect
   OnInitializePotentialDrag(PointerEventData): void => pass
   OnScroll(PointerEventData): void => pass
   Rebuild(CanvasUpdate): void => pass
-  StopMovement(): void => pass
+  StopMovement(): void => U.scroll_set_velocity($0, Vector2.ZERO)
   flexibleHeight: float => -1.0
   flexibleWidth: float => -1.0
   horizontalScrollbar: Scrollbar => U.scroll_part($0, "hbar")

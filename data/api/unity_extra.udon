@@ -1794,12 +1794,12 @@ type ScrollRect
   set vertical: bool => U.scroll_set($0, "vertical", $v)
   movementType: int => int(U.scroll_get($0, "movement", 1))
   set movementType: int => U.scroll_set($0, "movement", $v)
-  elasticity: float => 0.1
-  set elasticity: float => pass
-  inertia: bool => true
-  set inertia: bool => pass
-  decelerationRate: float => 0.135
-  set decelerationRate: float => pass
+  elasticity: float => float(U.scroll_get($0, "elasticity", 0.1))
+  set elasticity: float => U.scroll_set($0, "elasticity", $v)
+  inertia: bool => bool(U.scroll_get($0, "inertia", true))
+  set inertia: bool => U.scroll_set($0, "inertia", $v)
+  decelerationRate: float => float(U.scroll_get($0, "deceleration", 0.135))
+  set decelerationRate: float => U.scroll_set($0, "deceleration", $v)
   scrollSensitivity: float => float(U.scroll_get($0, "sensitivity", 1.0))
   set scrollSensitivity: float => U.scroll_set($0, "sensitivity", $v)
   viewport: RectTransform => U.scroll_part($0, "viewport")
@@ -1829,7 +1829,7 @@ type ScrollRect
   Rebuild(int): void => pass
   LayoutComplete(): void => pass
   GraphicUpdateComplete(): void => pass
-  StopMovement(): void => pass
+  StopMovement(): void => U.scroll_set_velocity($0, Vector2.ZERO)
   SetLayoutHorizontal(): void => pass
   SetLayoutVertical(): void => pass
   CalculateLayoutInputHorizontal(): void => pass
@@ -1860,10 +1860,10 @@ type Dropdown
   OnCancel(object): void => pass
 
 type Scrollbar
-  direction: int => 0
-  set direction: int => pass
-  numberOfSteps: int => 0
-  set numberOfSteps: int => pass
+  direction: int => U.scrollbar_get_direction($0)
+  set direction: int => U.scrollbar_set_direction($0, $v)
+  numberOfSteps: int => U.scrollbar_get_steps($0)
+  set numberOfSteps: int => U.scrollbar_set_steps($0, $v)
   handleRect: RectTransform => $0
   set handleRect: RectTransform => pass
   onValueChanged: UnityEvent => $0.value_changed

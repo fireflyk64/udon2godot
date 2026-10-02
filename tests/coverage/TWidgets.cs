@@ -37,6 +37,9 @@ namespace Coverage
         public Dropdown dropdown;
         public TMP_Dropdown tmpDropdown;   // the same object (for IsExpanded, which only TMP has)
         public Text caption;
+        public ScrollRect scroll;          // 200 x 200, clamped, content 500 high, a vertical bar
+        public RectTransform scrollContent;
+        public Scrollbar scrollBar;
 
         private void Check(bool ok, string what)
         {
@@ -159,6 +162,26 @@ namespace Coverage
             Check(text3d.text == "<b>Winner</b>", "3D text reads back as set");
             text3d.color = new Color(0f, 1f, 0f, 1f);
             Check(Near(text3d.color.g, 1f) && Near(text3d.color.r, 0f), "3D text colour");
+
+            // ScrollRect: the settings of its movement, its velocity, a Scrollbar with steps
+            Check(scroll.inertia && Near(scroll.decelerationRate, 0.135f) && Near(scroll.elasticity, 0.1f), "ScrollRect movement settings as imported");
+            scroll.inertia = false;
+            scroll.decelerationRate = 0.5f;
+            scroll.elasticity = 0.2f;
+            Check(!scroll.inertia && Near(scroll.decelerationRate, 0.5f) && Near(scroll.elasticity, 0.2f), "... and as set");
+            scroll.inertia = true;
+            scroll.velocity = new Vector2(0f, 120f);
+            Check(Near(scroll.velocity.y, 120f), "velocity reads back: " + scroll.velocity);
+            scroll.StopMovement();
+            Check(Near(scroll.velocity.y, 0f), "StopMovement");
+            scroll.verticalNormalizedPosition = 0.5f;
+            Check(Near(scrollContent.anchoredPosition.y, 150f), "normalized 0.5: half of the 300 hidden: " + scrollContent.anchoredPosition);
+            Check(scrollBar.direction == Scrollbar.Direction.BottomToTop && scrollBar.numberOfSteps == 0, "Scrollbar direction / steps as imported");
+            scrollBar.numberOfSteps = 5;
+            scrollBar.value = 0.3f;
+            Check(scrollBar.numberOfSteps == 5 && Near(scrollBar.value, 0.25f), "a value between steps is the nearest step: " + scrollBar.value);
+            Check(Near(scrollContent.anchoredPosition.y, 225f), "... and the content follows the bar: " + scrollContent.anchoredPosition);
+            scrollBar.numberOfSteps = 0;
             done = true;
         }
     }

@@ -915,9 +915,9 @@ def scroll_rect(content, viewport=0, hbar=0, vbar=0, horizontal=True, vertical=T
         content, horizontal, vertical, movement, viewport, hbar, vbar, visibility[0], visibility[1], num(spacing[0]), num(spacing[1])))
 
 
-def scrollbar(handle=0, direction=0, value=0, size=0.2, **sel):
+def scrollbar(handle=0, direction=0, value=0, size=0.2, steps=0, **sel):
     """direction 0 left to right, 1 right to left, 2 bottom to top, 3 top to bottom."""
-    return ("Scrollbar", selectable(**sel) + "  m_HandleRect: {fileID: %d}\n  m_Direction: %d\n  m_Value: %s\n  m_Size: %s\n  m_NumberOfSteps: 0\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (handle, direction, num(value), num(size)))
+    return ("Scrollbar", selectable(**sel) + "  m_HandleRect: {fileID: %d}\n  m_Direction: %d\n  m_Value: %s\n  m_Size: %s\n  m_NumberOfSteps: %d\n  m_OnValueChanged:\n    m_PersistentCalls:\n      m_Calls: []\n" % (handle, direction, num(value), num(size), steps))
 
 
 def dropdown(options, value=0, template=0, caption=0, item_text=0, **sel):
@@ -1487,10 +1487,10 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
         f.node(name, frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp(value, 20, **kw)])
 
     # ---- Scroll: ScrollRects and Scrollbars --------------------------------------------------------
-    c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1000, 640))
+    c = b.world_canvas("Scroll", (7.6, 3.0, 2), (1440, 640))
     b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.13, 0.12, 0.15, 1))
 
-    def make_bar(parent, name, vertical, direction=None, value=0, size=0.2, rect=None):
+    def make_bar(parent, name, vertical, direction=None, value=0, size=0.2, rect=None, steps=0):
         """A Scrollbar as Unity's menu builds it: 20 thick along an edge, a sliding area with
         insets of 10 and a handle that overhangs them by 10 (so it spans the bar)."""
         if rect is None:
@@ -1498,10 +1498,10 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
         bar = f.node(name, parent, rect, [renderer(), image((0.25, 0.25, 0.3, 1))])
         area = b.box("Sliding Area", bar, {"amin": (0, 0), "amax": (1, 1), "size": (-20, -20)})
         handle = b.img("Handle", area, {"amin": (0, 0), "amax": (0.2, 1) if not vertical else (1, 0.2), "size": (20, 20)}, color=(0.8, 0.8, 0.85, 1))
-        comp = f.add(bar, scrollbar(handle.t, (2 if vertical else 0) if direction is None else direction, value, size, target=handle.components[1][0]))
+        comp = f.add(bar, scrollbar(handle.t, (2 if vertical else 0) if direction is None else direction, value, size, steps, target=handle.components[1][0]))
         return bar, comp
 
-    def make_scroll(name, pos, size, content_size, content_pos=(0, 0), content_pivot=(0, 1), bars=(True, True), items=0, group=False, **kw):
+    def make_scroll(name, pos, size, content_size, content_pos=(0, 0), content_pivot=(0, 1), bars=(True, True), items=0, group=False, steps=0, **kw):
         """Unity's Scroll View: the ScrollRect, a masked viewport stretched over it (pivot top-left),
         the content anchored to the viewport's top (stretched along x unless it has a width)."""
         root = f.node(name, c, {"pos": pos, "size": size}, [renderer(), image((0.2, 0.2, 0.24, 1))])
@@ -1515,7 +1515,7 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
         for i in range(items):
             b.img("Item%d" % i, content, {"amin": (0, 1), "amax": (1, 1), "pivot": (0.5, 1), "pos": (0, -8 - i * 44), "size": (-16, 36)} if not group else {"size": (10, 36)})
         hbar = make_bar(root, "Scrollbar Horizontal", False) if bars[0] else (None, 0)
-        vbar = make_bar(root, "Scrollbar Vertical", True) if bars[1] else (None, 0)
+        vbar = make_bar(root, "Scrollbar Vertical", True, steps=steps) if bars[1] else (None, 0)
         f.add(root, scroll_rect(content.t, view.t, hbar[1], vbar[1], **kw))
         return root
     make_scroll("Tall", (-380, 190), (200, 200), (None, 500), items=6)                                     # scrolls vertically: the view gives way to the bar
@@ -1537,6 +1537,10 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     make_bar(c, "BarBottomToTop", True, 2, 1, 0.25, {"pos": (-660, -220), "size": (20, 160)})
     make_bar(c, "BarTopToBottom", True, 3, 0.25, 0.5, {"pos": (-620, -220), "size": (20, 160)})
     make_bar(c, "BarFull", True, 2, 0.3, 1, {"pos": (-580, -220), "size": (20, 160)})
+    # a Scrollbar with steps takes the nearest one: 0.4 of four steps is 1/3; the content of a
+    # ScrollRect follows its bar (300 hidden, 120 down is 0.6 from the bottom: the step is 0.5)
+    make_bar(c, "BarStepped", False, 0, 0.4, 0.25, {"pos": (500, -40), "size": (160, 20)}, steps=4)
+    make_scroll("Stepped", (500, 190), (200, 200), (None, 500), content_pos=(0, 120), items=6, steps=5)
 
     # ---- Widgets: what one object does to another, and what is drawn ---------------------------
     c = b.world_canvas("Widgets", (3.5, 3.0, 2), (800, 600))

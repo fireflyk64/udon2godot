@@ -28,7 +28,19 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
             plugin put the node in the group `udon_animated_active`, and the run time makes
             of each change what `SetActive` does (OnEnable / OnDisable, no more Update).
             Udon fixture: `Blinker/Lamp`, 5 checks (116 headless / 152 with a display).
-- [ ] ScrollRect: inertia (`decelerationRate`), the elastic spring, `Scrollbar.numberOfSteps`
+- [x] ScrollRect: inertia (`decelerationRate`), the elastic spring, `Scrollbar.numberOfSteps`.
+      `runtime/scroll_rect.gd` is ScrollRect.LateUpdate now: `move` (the velocity decays by
+      decelerationRate ^ time and carries the content; content outside the view springs back
+      by Mathf.SmoothDamp over `elasticity`, three times slower while the wheel scrolls;
+      clamped content is put back), `drag_to` (OnDrag with RubberDelta), the wheel may
+      overshoot an elastic rect, a drag leaves its velocity, a press stops it, the handle
+      shrinks while the content is over-stretched. A Scrollbar with steps is a Range with
+      that step; a ScrollRect linked to it puts its content on the step (what Unity's
+      onValueChanged round trip does). The first frame still finds the content at rest.
+      Scripts: `velocity`, `StopMovement`, `inertia`, `decelerationRate`, `elasticity`,
+      `Scrollbar.numberOfSteps` / `direction` (were stubs). Unit tests 378 → 408 (numbers
+      from Unity's formulas), fixture cases `Stepped` and `BarStepped` (918 nodes), coverage
+      `TWidgets` 63 checks (1087 in all).
 - [ ] Selectable: tints fade over `fadeDuration`; sprite swap; animation transition (triggers)
 - [ ] Text: a font asset's material (outline, underlay), fallback fonts, Page and Linked
       overflow, sprite tags

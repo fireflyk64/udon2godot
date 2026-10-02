@@ -699,8 +699,8 @@ type ScrollRect : Behaviour kind=component gd=Control extern=UnityEngineUIScroll
   horizontalNormalizedPosition: float => U.scroll_get_h($0)
   set horizontalNormalizedPosition: float => U.scroll_set_h($0, $v)
   content: RectTransform => U.scroll_content($0)
-  velocity: Vector2 => Vector2.ZERO
-  set velocity: Vector2 => pass
+  velocity: Vector2 => U.scroll_velocity($0)
+  set velocity: Vector2 => U.scroll_set_velocity($0, $v)
 
 type Dropdown : Selectable kind=component gd=OptionButton extern=UnityEngineUIDropdown
   value: int => $0.selected

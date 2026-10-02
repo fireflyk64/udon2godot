@@ -4325,13 +4325,12 @@ func scroll_set_part(s, key: String, value) -> void:
 func scroll_content(s) -> Control:
 	return scroll_part(s, "content") as Control
 
-## ScrollRect.onValueChanged
-func scroll_signal(s) -> Signal:
-	if s is ScrollContainer:
-		return s.get_v_scroll_bar().value_changed
+## The node that scrolls a ScrollRect (unidot's helper child; a ScrollRect made by a script
+## gets one).
+func _scroll_helper(s) -> Node:
 	var h: Control = _scroll_host(s)
 	if h == null:
-		return Signal()
+		return null
 	var helper: Node = h.get_node_or_null(_UiScroll.HELPER)
 	if helper == null:
 		helper = Node.new()
@@ -4339,7 +4338,24 @@ func scroll_signal(s) -> Signal:
 		helper.set_meta(RT.META_HELPER, true)
 		helper.set_script(_UiScroll)
 		h.add_child(helper)
-	return Signal(helper, "scrolled")
+	return helper
+
+## ScrollRect.onValueChanged
+func scroll_signal(s) -> Signal:
+	if s is ScrollContainer:
+		return s.get_v_scroll_bar().value_changed
+	var helper: Node = _scroll_helper(s)
+	return Signal(helper, "scrolled") if helper != null else Signal()
+
+## ScrollRect.velocity (units of the content's anchored position per second) / StopMovement.
+func scroll_velocity(s) -> Vector2:
+	var helper: Node = _scroll_helper(s)
+	return helper.velocity if helper != null else Vector2.ZERO
+
+func scroll_set_velocity(s, v: Vector2) -> void:
+	var helper: Node = _scroll_helper(s)
+	if helper != null:
+		helper.velocity = v
 
 ## Unity's Scrollbar.size (handle size 0..1). The imported bar keeps page = 0 so that `value`
 ## spans 0..1 as in Unity; the size is kept in its metadata and the handle object follows.
@@ -4347,6 +4363,31 @@ func scrollbar_get_size(bar: Range) -> float:
 	if bar != null and bar.has_meta("unidot_scrollbar"):
 		return float(bar.get_meta("unidot_scrollbar").get("size", 1.0))
 	return 1.0
+
+## Scrollbar.numberOfSteps: with more than one the bar's value is one of the steps.
+func scrollbar_get_steps(bar: Range) -> int:
+	return UiSelectable.scrollbar_steps(bar) if bar != null else 0
+
+func scrollbar_set_steps(bar: Range, steps: int) -> void:
+	if bar == null:
+		return
+	UiSelectable.scrollbar_set_steps(bar, steps)
+	bar.value = bar.value
+	UiSelectable.refresh_host(bar)
+
+## Scrollbar.direction (0 left to right, 1 right to left, 2 bottom to top, 3 top to bottom).
+func scrollbar_get_direction(bar: Range) -> int:
+	if bar != null and bar.has_meta("unidot_scrollbar"):
+		return int(bar.get_meta("unidot_scrollbar").get("direction", 0))
+	return 2 if bar is VScrollBar else 0
+
+func scrollbar_set_direction(bar: Range, direction: int) -> void:
+	if bar == null:
+		return
+	var cfg: Dictionary = (bar.get_meta("unidot_scrollbar") as Dictionary).duplicate() if bar.has_meta("unidot_scrollbar") else {}
+	cfg["direction"] = direction
+	bar.set_meta("unidot_scrollbar", cfg)
+	UiSelectable.refresh_host(bar)
 
 func scrollbar_set_size(bar: Range, v: float) -> void:
 	if bar == null:
