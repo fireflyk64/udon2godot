@@ -217,7 +217,8 @@ of Udon: `ui_integration.gd` (import) and `runtime/rect_transform.gd`, `canvas_p
 * **What is not UI among the UI.** A RectTransform is a Transform: a sound on a button, a
   collider or a mesh under a panel, plain objects without any UI below them hang in the 3D
   frame of that UI object, a helper Node3D that stays where Unity has the rect in the world
-  (`ui_frame.gd`). `transform.parent`, `Find` and `GetComponent` see through it.
+  (`ui_frame.gd`). `transform.parent`, `Find` and `GetComponent` see through it, and a 3D
+  object keeps its place among the UI children (`GetChild`, `GetSiblingIndex`).
 * **Sizes Godot does not have.** A rect stretched with insets larger than its parent has a
   negative size in Unity, and its children are laid out against it; the Control has no size
   and what is below is placed by the size the rect should have. An input field lower than a
