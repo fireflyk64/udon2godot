@@ -134,7 +134,15 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
       it. A UI Image draws that rect whatever the packing: Unity's UI does not use the
       sprite's mesh either, which is why its manual tells to switch rotation and tight
       packing off for UI sprites. Fixture: `Packed.asset` (four nodes), reference included.
-- [ ] The pixel check: translucent graphics, text
+- [x] The pixel check: translucent graphics, text. `test/ui_shots.gd --check` composes what
+      the graphics at a point add up to (each over what is below it, from the last opaque one
+      up; the picture of a transparent canvas holds colours multiplied by their alpha), so
+      translucent colours and textures are compared too, and looks for the colour of every
+      text in its rect (texts of one opaque colour, at least 10 pixels high, that fit their
+      rect, where nothing covers them and the colour below is known and different): a text
+      that is not drawn, or drawn elsewhere, is reported. Glyph shapes are not compared.
+      UI fixture: 3014 points on 541 of 594 graphics (44 blends), 55 of 63 texts, 0 problems.
+      Still not compared: widgets Godot draws itself (LineEdit, OptionButton).
 - [ ] vrcbce: `Silent/Filamented` and the fur shaders; the cue through the desktop player; the
       sample scene with all tables
 - [ ] VRChat's own constraint components authored in a scene
