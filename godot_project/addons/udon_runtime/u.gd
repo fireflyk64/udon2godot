@@ -931,6 +931,14 @@ func set_sibling_index(n: Node, i: int) -> void:
 	if p == null:
 		return
 	var sibs: Array = go_children(go_parent(n))
+	# 3D objects among the children of a UI object hang in its 3D frame and know their place
+	# by their metadata: the whole order is laid down again
+	var me: int = sibs.find(RT.identity(n))
+	if me >= 0 and sibs.any(func(c) -> bool: return (c as Node).has_meta(RT.META_SIBLING)):
+		sibs.remove_at(me)
+		sibs.insert(sibs.size() if i < 0 or i > sibs.size() else i, RT.identity(n))
+		_set_sibling_order(sibs)
+		return
 	if i < 0 or i >= sibs.size() - 1:
 		p.move_child(s, p.get_child_count() - 1)
 		return
@@ -940,6 +948,25 @@ func set_sibling_index(n: Node, i: int) -> void:
 		p.move_child(s, target.get_index())
 
 ## Transform.GetSiblingIndex: the position among the parent's child GameObjects.
+## Child GameObjects of a UI object in a new order: the nodes that are in the tree's order
+## take the places they have between them, the 3D objects of the frame get their index.
+func _set_sibling_order(sibs: Array) -> void:
+	var stores: Array = []
+	var slots: Array = []
+	for index in range(sibs.size()):
+		var c: Node = sibs[index]
+		if c.has_meta(RT.META_SIBLING):
+			c.set_meta(RT.META_SIBLING, index)
+		else:
+			var st: Node = RT.store(c)
+			stores.append(st)
+			slots.append(st.get_index())
+	slots.sort()
+	for k in range(stores.size()):
+		var st: Node = stores[k]
+		if st.get_parent() != null and st.get_index() != slots[k]:
+			st.get_parent().move_child(st, slots[k])
+
 func sibling_index(n: Node) -> int:
 	var p: Node = go_parent(n)
 	if p == null:

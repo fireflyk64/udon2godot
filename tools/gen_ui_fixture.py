@@ -760,7 +760,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 84a92b25f83d49b9bc132d206b370281, type: 3}
-  m_Name: Icons
+  m_Name: %(name)s
   m_EditorClassIdentifier: 
   hashCode: -1836805472
   material: {fileID: 0}
@@ -770,8 +770,8 @@ MonoBehaviour:
     m_FaceIndex: 0
     m_FamilyName: 
     m_StyleName: 
-    m_PointSize: 32
-    m_Scale: 1
+    m_PointSize: %(point)s
+    m_Scale: %(face_scale)s
     m_LineHeight: 40
     m_AscentLine: 32
     m_CapLine: 0
@@ -805,7 +805,7 @@ MonoBehaviour:
       m_Y: 0
       m_Width: 32
       m_Height: 32
-    m_Scale: 1
+    m_Scale: %(glyph_scale)s
     m_AtlasIndex: 0
   - m_Index: 1
     m_Metrics:
@@ -819,7 +819,7 @@ MonoBehaviour:
       m_Y: 0
       m_Width: 32
       m_Height: 32
-    m_Scale: 1
+    m_Scale: %(glyph_scale)s
     m_AtlasIndex: 0
   spriteInfoList: []
   fallbackSpriteAssets: []
@@ -859,8 +859,13 @@ def write_fonts(out):
     # a material preset: the first asset's atlas with an underlay (a drop shadow)
     write("Calistoga SDF Shadow.mat", "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n" + font_material("Calistoga SDF Shadow", 2100000, underlay=(0.5, -0.5), underlay_color=(0, 0, 0, 0.5)))
     write("Calistoga SDF Shadow.mat.meta", "fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 2100000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n" % FONT_MATERIAL_SHADOW)
-    write("Icons.asset", SPRITE_ASSET_YAML % {"sheet": SHEET_GUID})
+    write("Icons.asset", SPRITE_ASSET_YAML % {"sheet": SHEET_GUID, "name": "Icons", "point": 32, "face_scale": 1, "glyph_scale": 1})
     write("Icons.asset.meta", FONT_ASSET_META % SPRITE_ASSET)
+    # a sprite asset without face metrics (made from a texture, not from a sprite sheet with a
+    # font's proportions): its sprites are as high as the ascent of the text's font, times
+    # their scale
+    write("IconsBare.asset", SPRITE_ASSET_YAML % {"sheet": SHEET_GUID, "name": "IconsBare", "point": 0, "face_scale": 0, "glyph_scale": 1.5})
+    write("IconsBare.asset.meta", FONT_ASSET_META % SPRITE_ASSET_BARE)
     # TextMeshPro's settings: the sprite asset of texts that name none, fallbacks for every font
     write("TMP Settings.asset", "%%YAML 1.1\n%%TAG !u! tag:unity3d.com,2011:\n--- !u!114 &11400000\nMonoBehaviour:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n"
           "  m_GameObject: {fileID: 0}\n  m_Enabled: 1\n  m_EditorHideFlags: 0\n  m_Script: {fileID: 11500000, guid: 2705215ac5b84b70bacc50632be6e391, type: 3}\n  m_Name: TMP Settings\n  m_EditorClassIdentifier: \n"
@@ -1057,6 +1062,7 @@ FONT_ASSET_LOST = "f2a7c1d2e3b44f5a8697a1b2c3d4e5f6"    # Fonts/Lost SDF.asset: 
 FONT_ASSET_OUTLINE = "f6a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/Calistoga Outline SDF.asset: its material has an outline
 FONT_MATERIAL_SHADOW = "f7a7c1d2e3b44f5a8697a1b2c3d4e5f6"   # Fonts/Calistoga SDF Shadow.mat: a material preset with an underlay
 SPRITE_ASSET = "f8a7c1d2e3b44f5a8697a1b2c3d4e5f6"       # Fonts/Icons.asset: a sprite asset
+SPRITE_ASSET_BARE = "faa7c1d2e3b44f5a8697a1b2c3d4e5f6"  # Fonts/IconsBare.asset: a sprite asset without face metrics
 TMP_SETTINGS_ASSET = "f9a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/TMP Settings.asset: the default sprite asset, a fallback font
 
 
@@ -1732,6 +1738,10 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
     f.node("Sprites", c, {"pos": (-110, 70), "size": (440, 50)}, [renderer(), tmp('Pot <sprite=1> the <sprite name="left"> ball <sprite index=0>', 36, sprites=SPRITE_ASSET)])
     # (no sprite asset of its own: the one of TextMeshPro's settings)
     f.node("SpritesDefault", c, {"pos": (230, 70), "size": (220, 50)}, [renderer(), tmp('Default <sprite=1>', 36)])
+    # sprites of an asset without face metrics: sized by the ascent of the text's font (the
+    # font asset's face info: 81 of 81; TextMeshPro's default font, which is not in the project)
+    f.node("SpritesBare", c, {"pos": (-200, -85), "size": (260, 50)}, [renderer(), tmp('Bare <sprite=0> icon', 36, font=FONT_ASSET, sprites=SPRITE_ASSET_BARE)])
+    f.node("SpritesBareDefault", c, {"pos": (120, -85), "size": (300, 50)}, [renderer(), tmp('Bare <sprite=1> <size=18>small <sprite=1>', 36, sprites=SPRITE_ASSET_BARE)])
     # pages: what fits the rect is a page (two lines of 30 in 80)
     for i, page in enumerate((1, 2, 3)):
         f.node("Page%d" % page, c, {"pos": (-230 + i * 230, -20), "size": (210, 80)}, [renderer(), tmp("one<br>two<br>three<br>four<br>five", 30, overflow=5, page=page)])

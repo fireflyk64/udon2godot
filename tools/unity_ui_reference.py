@@ -1448,10 +1448,30 @@ class TextStyles:
             if glyph is None:
                 continue
             rect, metrics = glyph.get("m_GlyphRect") or {}, glyph.get("m_Metrics") or {}
-            k = (size / point if point > 0 else 1.0) * scale * _num(found[0].get("m_Scale", 1), 1) * _num(glyph.get("m_Scale", 1), 1)
             x, y, w, h = (_num(rect.get(key, 0)) for key in ("m_X", "m_Y", "m_Width", "m_Height"))
+            own = _num(found[0].get("m_Scale", 1), 1) * _num(glyph.get("m_Scale", 1), 1)
+            # (the size at the tag: the text's, or that of the <size> tag around it)
+            at = size
+            for tag in re.finditer(r"<size=([\d.]+)>|</size>", str(d.get("m_text") or "")[:m.start()]):
+                at = _num(tag.group(1), size) if tag.group(1) else size
+            if point > 0:
+                k = at / point * scale * own
+            else:
+                # an asset without face metrics: the sprite is as high as the ascent of the
+                # text's font, times its scale
+                k = self.ascent(d) * at / max(_num(metrics.get("m_Height", h), h), 1e-6) * own
             out.append([x, sheet_size[1] - y - h, w, h, _num(metrics.get("m_Width", w), w) * k, _num(metrics.get("m_Height", h), h) * k])
         return out
+
+    def ascent(self, d):
+        """The ascent of the text's font per unit of font size (the font asset's face info);
+        TextMeshPro's default font (Liberation Sans) when the asset is not in the project."""
+        font = self._doc(d.get("m_fontAsset"))
+        face = (font or {}).get("m_FaceInfo") or {}
+        point = _num(face.get("m_PointSize", 0))
+        if point > 0 and _num(face.get("m_AscentLine", 0)) > 0:
+            return _num(face.get("m_AscentLine")) / point * _num(face.get("m_Scale", 1), 1)
+        return 0.905
 
 
 _styles = None   # set by reference()

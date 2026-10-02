@@ -84,6 +84,10 @@ func run(r):
 	# what lives in space on a UI object is where the object is: the sound of the BR button
 	var beep: Node = r.find("BR").get_node_or_null("Unidot3D/AudioSource") if r.find("BR") != null else null
 	r.check(beep is AudioStreamPlayer3D and (beep as Node3D).global_position.distance_to(Vector3(-0.44, 1.23, 3)) < 0.005, "an AudioSource on a button sounds from the button: " + (str((beep as Node3D).global_position) if beep is Node3D else str(beep)))
+	# ... and the plain object below it keeps its place among the button's children
+	var marker: Node = r.find("BR").get_node_or_null("Unidot3D/Marker3D") if r.find("BR") != null else null
+	# (imported at index 1, between two rects; the script moved it to the front since)
+	r.check(marker != null and marker.has_meta("unidot_sibling") and int(marker.get_meta("unidot_sibling")) == 0, "a 3D object below a button knows its place among the children: " + str(marker.get_meta("unidot_sibling", null) if marker != null else null))
 	return true
 
 

@@ -54,12 +54,40 @@ The "not done" notes of the round below, taken up one by one; each gets its case
       canvas "Metres" (0.05; fitted between 0.01 and 0.2: 0.032; 0.03 wrapped and centred),
       compared in the rect's units; unit tests 522 → 544; UI fixture 32 canvases, 972 of 972
       nodes, pixel check 3049 points and 67 of 75 texts; coverage 1104 checks.
-- [ ] Inline sprites of a text sit on the baseline by their bearing (Godot centres them)
-- [ ] A graphic on a rect of negative size is drawn mirrored
-- [ ] Sibling order between the UI and the 3D children of one object (GetChild,
-      GetSiblingIndex)
-- [ ] The pixel check looks at widgets Godot draws itself (LineEdit, OptionButton)
-- [ ] The engine's "Parameter "material" is null" at exit (billiards, vrcbce)
+      Not done: the text an InputField shows on such a canvas (a LineEdit draws it itself,
+      at a whole font size).
+- [x] Sprites of a sprite asset without face metrics (`m_PointSize: 0`, what VUdon-Udonity's
+      icon asset is): TextMeshPro sizes them by the ascent of the text's font (ascent /
+      glyph height x the sprite's scale); they were drawn one unit large. The font asset's
+      ascent per unit of size goes to the text settings (`ascent`; Liberation Sans' 0.905
+      when the asset is not in the project). Fixture: `IconsBare.asset`, two texts (54 with
+      the fixture's font asset, 49 and 24 with the default font); the reference computes
+      the same from the files.
+- [x] Sibling order between the UI and the 3D children of one object (GetChild,
+      GetSiblingIndex). A 3D object in the frame of a UI object keeps its index among the
+      object's children (`unidot_sibling`, from the parent's `m_Children`);
+      `RT.logical_children` puts it there (the frame's other nodes, the object's components,
+      come last), and `SetSiblingIndex` / `SetAsLastSibling` lay the whole order down again
+      when such an object is among the siblings. Udon fixture: `Marker3D` between two rects
+      of a button, moved to the end, passed by a rect, moved to the front (134 / 172 checks).
+- [x] The pixel check looks at input fields: the text (or the placeholder) a LineEdit draws
+      itself is looked for in its rect like any text (UI fixture: 81 texts seen, 68
+      compared; of its four fields one is large enough on screen and is found). Sliders,
+      scroll bars and option buttons draw nothing themselves here (Unity's child objects
+      do): nothing to compare.
+- [ ] Inline sprites of a text sit on the baseline by their bearing. Not done: Godot places
+      an inline picture by its top, centre or bottom against the line's top, centre,
+      baseline or bottom, without an offset; the centre (what is used) is within a few
+      hundredths of the font size of TextMeshPro's place for sprites whose bearing is about
+      three quarters of their height (TextMeshPro's default assets, Udonity's icons).
+- [ ] A graphic on a rect of negative size is drawn mirrored. Not done: no file of the
+      reference projects has one (negative sizes come from stretched rects in parents that
+      are too small, where nothing should be seen).
+- [ ] The engine's "Parameter "material" is null" at exit (billiards 1, vrcbce 2 per table;
+      four per instance on a display). Looked into, not found: it comes from the scene as
+      it is deleted after the run, only when the behaviours ran (not with `--static`), not
+      when the geometry nodes are freed one by one, and neither a material override nor a
+      Label3D freed while changed reproduces it. No effect while the world runs.
 
 Not planned (the engine's text drawing has no such thing; a font shader of our own would be
 needed): the softness of an underlay, the face dilate and the inner half of an outline. Fur

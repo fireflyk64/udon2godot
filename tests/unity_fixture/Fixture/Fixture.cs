@@ -205,7 +205,17 @@ public class Fixture : UdonSharpBehaviour
             AudioSource beep = uiBR.GetComponent<AudioSource>();
             Check(beep != null && beep.transform == uiBR, "an AudioSource on a button is a component of the button");
             Transform marker = uiBR.Find("Marker3D");
-            Check(marker != null && uiBR.childCount == 1 && marker.parent == uiBR, "a plain Transform below a button is its child: " + uiBR.childCount);
+            Check(marker != null && uiBR.childCount == 3 && marker.parent == uiBR, "a plain Transform below a button is its child: " + uiBR.childCount);
+            Check(marker != null && uiBR.GetChild(1) == marker && marker.GetSiblingIndex() == 1 && uiBR.GetChild(0).name == "BRDot" && uiBR.GetChild(2).name == "BRDot2", "... between the two rects, as in the scene: " + uiBR.GetChild(0).name + " " + uiBR.GetChild(1).name + " " + uiBR.GetChild(2).name);
+            if (marker != null && uiBR.childCount == 3)
+            {
+                marker.SetAsLastSibling();
+                Check(uiBR.GetChild(2) == marker && uiBR.GetChild(1).name == "BRDot2", "... moved to the end: " + uiBR.GetChild(2).name);
+                uiBR.GetChild(0).SetAsLastSibling();
+                Check(uiBR.GetChild(0).name == "BRDot2" && uiBR.GetChild(1) == marker && uiBR.GetChild(2).name == "BRDot", "a rect moved past it: " + uiBR.GetChild(0).name + " " + uiBR.GetChild(1).name + " " + uiBR.GetChild(2).name);
+                marker.SetSiblingIndex(0);
+                Check(marker.GetSiblingIndex() == 0 && uiBR.GetChild(1).name == "BRDot2", "... and the 3D object back to the front");
+            }
             if (marker != null)
             {
                 Check(NearV(marker.position, new Vector3(0.46f, 1.24f, 2.995f)), "... at its local position in the button's space: " + marker.position);
