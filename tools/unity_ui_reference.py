@@ -1340,6 +1340,124 @@ class Fonts:
 _fonts = None   # set by reference()
 
 
+class TextStyles:
+    """What a TextMeshPro text draws beside its glyphs, read from the files: the outline and
+    the underlay of its material (the distance field shader's numbers are fractions of the
+    atlas's gradient scale; an atlas pixel is fontSize / pointSize units), the fallbacks of its
+    font asset, the sprites of its <sprite> tags."""
+
+    def __init__(self, assets):
+        self.assets = assets
+        # TextMeshPro's settings: the default sprite asset and the fallbacks of every font
+        self.settings = {}
+        for path in assets.guid_to_path.values():
+            if os.path.basename(path) == "TMP Settings.asset" and os.path.isfile(path):
+                for obj in assets.file(path).values():
+                    if "m_defaultSpriteAsset" in obj.data or "m_fallbackFontAssets" in obj.data:
+                        self.settings = obj.data
+
+    def _doc(self, ref):
+        if not isinstance(ref, dict) or not _ref_id(ref):
+            return None
+        path = self.assets.guid_to_path.get(ref.get("guid", ""))
+        if not path or not os.path.isfile(path):
+            return None
+        obj = self.assets.file(path).get(_ref_id(ref))
+        return obj.data if obj is not None else None
+
+    @staticmethod
+    def _table(entries):
+        out = {}
+        for e in entries or []:
+            if isinstance(e, dict):
+                if "first" in e and "second" in e:      # (the newer serialization)
+                    name = e["first"].get("name") if isinstance(e["first"], dict) else e["first"]
+                    out[str(name)] = e["second"]
+                else:
+                    out.update(e)
+        return out
+
+    def effects(self, d):
+        """→ {"outline": (units, colour) or None, "shadow": (x, y, colour) or None} for a text
+        whose material is in the project, else None."""
+        font = self._doc(d.get("m_fontAsset"))
+        material = self._doc(d.get("m_sharedMaterial"))
+        if material is None and font is not None and _ref_id(font.get("material")):
+            material = self._doc({"fileID": _ref_id(font.get("material")), "guid": d.get("m_fontAsset", {}).get("guid", "")})
+        if font is None or material is None:
+            return None
+        saved = material.get("m_SavedProperties") or {}
+        floats, colors = self._table(saved.get("m_Floats")), self._table(saved.get("m_Colors"))
+        keywords = str(material.get("m_ShaderKeywords") or "").split() + [str(k) for k in (material.get("m_ValidKeywords") or [])]
+        point = _num((font.get("m_FaceInfo") or {}).get("m_PointSize", 0)) or _num((font.get("m_fontInfo") or {}).get("PointSize", 0))
+        if point <= 0:
+            return None
+        size = _num(d.get("m_fontSize", 36), 36)
+        unit = _num(floats.get("_GradientScale", 0)) * size / point     # the gradient scale in canvas units
+        out = {"outline": None, "shadow": None}
+        width = _num(floats.get("_OutlineWidth", 0)) * _num(floats.get("_ScaleRatioA", 1), 1) * 0.5 * unit
+        if width > 0:
+            out["outline"] = (width, _color(colors.get("_OutlineColor"), (0.0, 0.0, 0.0, 1.0)))
+        if "UNDERLAY_ON" in keywords or "UNDERLAY_INNER" in keywords:
+            ratio = _num(floats.get("_ScaleRatioC", 1), 1)
+            # (Unity's y is up, the dump's is down)
+            out["shadow"] = (_num(floats.get("_UnderlayOffsetX", 0)) * ratio * unit, -_num(floats.get("_UnderlayOffsetY", 0)) * ratio * unit,
+                             _color(colors.get("_UnderlayColor"), (0.0, 0.0, 0.0, 0.5)))
+        return out
+
+    def fallbacks(self, d):
+        """The families of the font asset's fallbacks whose font files are in the project."""
+        font = self._doc(d.get("m_fontAsset"))
+        own = (d.get("m_fontAsset") or {}).get("guid", "") if isinstance(d.get("m_fontAsset"), dict) else ""
+        refs = list((font.get("m_FallbackFontAssetTable") or font.get("fallbackFontAssets") or []) if font else [])
+        refs += list(self.settings.get("m_fallbackFontAssets") or [])
+        out = []
+        for ref in refs:
+            if not isinstance(ref, dict) or ref.get("guid", "") == own:
+                continue
+            family = _fonts.family(ref) if _fonts is not None else None
+            if family and family not in out:
+                out.append(family)
+        return out
+
+    def sprites(self, d):
+        """[x, y, width, height of the sheet (y from the top), drawn width, drawn height] of
+        every <sprite> tag of the text, or None without a sprite asset."""
+        asset = self._doc(d.get("m_spriteAsset")) or self._doc(self.settings.get("m_defaultSpriteAsset"))
+        if asset is None or _num(d.get("m_isRichText", 1), 1) == 0:
+            return None
+        sheet = self.assets.guid_to_path.get((asset.get("spriteSheet") or {}).get("guid", ""))
+        sheet_size = _image_size(sheet) if sheet else None
+        if sheet_size is None:
+            return None
+        glyphs = {int(_num(g.get("m_Index", 0))): g for g in asset.get("m_SpriteGlyphTable") or [] if isinstance(g, dict)}
+        characters = [c for c in asset.get("m_SpriteCharacterTable") or [] if isinstance(c, dict)]
+        face = asset.get("m_FaceInfo") or {}
+        point, scale = _num(face.get("m_PointSize", 0)), _num(face.get("m_Scale", 1), 1)
+        size = _num(d.get("m_fontSize", 36), 36)
+        out = []
+        for m in re.finditer(r"<sprite(?:=(\d+)|\s+index=(\d+)|\s+name=\"([^\"]*)\")[^<>]*>", str(d.get("m_text") or "")):
+            if m.group(3) is not None:
+                found = [c for c in characters if str(c.get("m_Name", "")) == m.group(3)]
+            else:
+                index = int(m.group(1) or m.group(2))
+                found = characters[index:index + 1]
+            if not found:
+                continue
+            glyph = glyphs.get(int(_num(found[0].get("m_GlyphIndex", 0))))
+            if glyph is None:
+                continue
+            rect, metrics = glyph.get("m_GlyphRect") or {}, glyph.get("m_Metrics") or {}
+            k = (size / point if point > 0 else 1.0) * scale * _num(found[0].get("m_Scale", 1), 1) * _num(glyph.get("m_Scale", 1), 1)
+            x, y, w, h = (_num(rect.get(key, 0)) for key in ("m_X", "m_Y", "m_Width", "m_Height"))
+            out.append([x, sheet_size[1] - y - h, w, h, _num(metrics.get("m_Width", w), w) * k, _num(metrics.get("m_Height", h), h) * k])
+        return out
+
+
+_styles = None   # set by reference()
+linked_targets = set()   # (ids of) the nodes whose text another text goes on in
+
+
 def font_family(n):
     name, d = graphic_of(n)
     if name == "TextMeshProUGUI" and _fonts is not None:
@@ -1583,6 +1701,18 @@ def describe_canvas(canvas, layout, screen):
                     e["font_size"] = font_size(c)
                 if font_family(c) is not None:
                     e["font"] = font_family(c)
+                tmp = c.comp("TextMeshProUGUI")
+                if tmp is not None and _styles is not None:
+                    effects = _styles.effects(tmp)
+                    if effects is not None:
+                        e["text_effects"] = effects
+                    e["fallbacks"] = _styles.fallbacks(tmp)
+                    sprites = _styles.sprites(tmp)
+                    if sprites is not None:
+                        e["sprites"] = sprites
+                    if id(c) in linked_targets:
+                        # (a text that another one goes on in shows what that one has left)
+                        del e["text"]
             if c.field_text:
                 e["field_text"] = True   # drawn by the input field itself
             entry["nodes"].append(e)
@@ -1595,10 +1725,18 @@ def reference(assets_dir, target, screen=(1152.0, 648.0)):
     global _fonts
     assets = Assets(assets_dir)
     _fonts = Fonts(assets)
+    global _styles
+    _styles = TextStyles(assets)
     model = assets.flatten(target)
     nodes, roots = build_graph(model, assets)
     layout = Layout(Sprites(assets).preferred, nodes)
     apply_selectables(nodes)
+    owner = {cid: n for n in nodes.values() for cid in n.component_ids}
+    linked_targets.clear()
+    for n in nodes.values():
+        tmp = n.comp("TextMeshProUGUI")
+        if tmp is not None and int(_num(tmp.get("m_overflowMode", 0))) == 6 and owner.get(_ref_id(tmp.get("m_linkedTextComponent"))) is not None:
+            linked_targets.add(id(owner[_ref_id(tmp.get("m_linkedTextComponent"))]))
     out = [describe_canvas(c, layout, screen) for c in find_canvases(roots)]
     return out, assets.warnings, nodes
 
@@ -1680,7 +1818,7 @@ def compare(ref, dump, tolerance, rel, check_active=False):
                 # (an overlay canvas is drawn without perspective: z places nothing on the screen)
                 dims = 3 if rc["mode"] == "world" else 2
                 worst = max(math.dist(a[:dims], b[:dims]) if all(math.isfinite(x) for x in b) else float("inf") for a, b in zip(e["corners"], d["corners"]))
-                if worst > limit and not e.get("negative_size"):
+                if worst > limit:
                     note = "  [text-sized: needs the font]" if e.get("text_sized") else ""
                     if not e.get("text_sized") or worst > limit * 20:
                         problems.append("%s :: %s: off by %.4g (limit %.3g)  Unity %s, imported %s%s%s" % (rc["path"], e["path"], worst, limit, _corners(e["corners"]), _corners(d["corners"]), "" if e["shown"] else "  [hidden]", note))
@@ -1716,6 +1854,30 @@ def _drawn_problems(e, d):
             out.append("font %r, Unity's font asset is made from %r (in the project)" % (d.get("font", ""), e["font"]))
     if "font_size" in e and "font_size" in d and abs(e["font_size"] - d["font_size"]) > 0.51:
         out.append("font size %s, Unity %s" % (d["font_size"], e["font_size"]))
+    if "text_effects" in e and "text" in d:
+        # the outline and the underlay of the text's material, in whole units (pixels of the
+        # canvas); one that is thinner than a unit is one unit or none
+        want, got = e["text_effects"]["outline"], d.get("outline")
+        if want is None or want[0] < 0.25:
+            if got is not None and got[0] > 0 and (want is None or want[0] <= 0):
+                out.append("outline of %s, Unity's material has none" % got[0])
+        elif got is None or abs(got[0] - want[0]) > 0.75 or max(abs(a - b) for a, b in zip(got[1:5], want[1])) > 0.02:
+            out.append("outline %s, Unity's material draws %.3g in %s" % (got, want[0], _fmt(want[1])))
+        want, got = e["text_effects"]["shadow"], d.get("shadow")
+        if want is None:
+            if got is not None:
+                out.append("shadow %s, Unity's material has no underlay" % got)
+        elif got is None or abs(got[0] - want[0]) > 0.75 or abs(got[1] - want[1]) > 0.75 or max(abs(a - b) for a, b in zip(got[2:6], want[2])) > 0.02:
+            out.append("shadow %s, Unity's underlay is offset by (%.3g, %.3g) in %s" % (got, want[0], want[1], _fmt(want[2])))
+    if e.get("fallbacks") and "text" in d:
+        got = [str(x).lower() for x in d.get("fallbacks", [])]
+        missing = [x for x in e["fallbacks"] if x.lower() not in got]
+        if missing:
+            out.append("font fallbacks %s, Unity's font asset falls back to %s" % (d.get("fallbacks", []), e["fallbacks"]))
+    if "sprites" in e and "text" in d:
+        got = d.get("sprites", [])
+        if len(got) != len(e["sprites"]) or any(max(abs(a - b) for a, b in zip(g, w)) > 0.51 for g, w in zip(got, e["sprites"])):
+            out.append("inline sprites %s, Unity draws %s" % (got, [[round(v, 2) for v in w] for w in e["sprites"]]))
     return out
 
 

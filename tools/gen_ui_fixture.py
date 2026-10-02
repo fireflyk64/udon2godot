@@ -627,7 +627,7 @@ MonoBehaviour:
   m_Name: %(name)s
   m_EditorClassIdentifier: 
   hashCode: 841032664
-  material: {fileID: 0}
+  material: {fileID: 2180264}
   materialHashCode: 0
   m_Version: 1.1.0
   m_SourceFontFileGUID: %(source)s
@@ -664,7 +664,7 @@ MonoBehaviour:
   m_AtlasHeight: 1024
   m_AtlasPadding: 9
   m_AtlasRenderMode: 4165
-  m_FallbackFontAssetTable: []
+  m_FallbackFontAssetTable:%(fallbacks)s
   m_CreationSettings:
     sourceFontFileName: 
     sourceFontFileGUID: %(source)s
@@ -678,6 +678,132 @@ MonoBehaviour:
   boldSpacing: 7
   italicStyle: 35
   tabSize: 10
+"""
+# The material of a font asset (a sub-asset of its file) or a material preset (a file of its
+# own): TextMeshPro's distance field shader, whose outline and underlay are fractions of the
+# atlas's gradient scale.
+FONT_MATERIAL_YAML = """--- !u!21 &%(id)d
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: %(name)s
+  m_Shader: {fileID: 4800000, guid: 68e6db2ebdc24f95958faec2be5558d6, type: 3}
+  m_ShaderKeywords: %(keywords)s
+  m_LightmapFlags: 5
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: 3000
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _FaceDilate: 0
+    - _GradientScale: 10
+    - _OutlineWidth: %(outline)s
+    - _ScaleRatioA: 1
+    - _ScaleRatioC: 1
+    - _UnderlayDilate: 0
+    - _UnderlayOffsetX: %(ux)s
+    - _UnderlayOffsetY: %(uy)s
+    - _UnderlaySoftness: 0
+    m_Colors:
+    - _FaceColor: {r: 1, g: 1, b: 1, a: 1}
+    - _OutlineColor: %(outline_color)s
+    - _UnderlayColor: %(underlay_color)s
+"""
+
+
+def font_material(name, file_id=2180264, outline=0, outline_color=(0, 0, 0, 1), underlay=None, underlay_color=(0, 0, 0, 0.5)):
+    """underlay: its offset (x, y) in the shader's units (fractions of the gradient scale)."""
+    return FONT_MATERIAL_YAML % {"id": file_id, "name": name, "keywords": "UNDERLAY_ON" if underlay else "", "outline": num(outline), "outline_color": vec(outline_color, "rgba"),
+                                 "ux": num(underlay[0] if underlay else 0), "uy": num(underlay[1] if underlay else 0), "underlay_color": vec(underlay_color, "rgba")}
+
+
+# A TextMeshPro sprite asset: the two halves of Sheet.png, for <sprite> tags.
+SPRITE_ASSET_YAML = """%%YAML 1.1
+%%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 84a92b25f83d49b9bc132d206b370281, type: 3}
+  m_Name: Icons
+  m_EditorClassIdentifier: 
+  hashCode: -1836805472
+  material: {fileID: 0}
+  materialHashCode: 0
+  m_Version: 1.1.0
+  m_FaceInfo:
+    m_FaceIndex: 0
+    m_FamilyName: 
+    m_StyleName: 
+    m_PointSize: 32
+    m_Scale: 1
+    m_LineHeight: 40
+    m_AscentLine: 32
+    m_CapLine: 0
+    m_MeanLine: 0
+    m_Baseline: 0
+    m_DescentLine: -8
+  spriteSheet: {fileID: 2800000, guid: %(sheet)s, type: 3}
+  m_SpriteCharacterTable:
+  - m_ElementType: 2
+    m_Unicode: 65534
+    m_GlyphIndex: 0
+    m_Scale: 1
+    m_Name: left
+    m_HashCode: 3317767
+  - m_ElementType: 2
+    m_Unicode: 65534
+    m_GlyphIndex: 1
+    m_Scale: 1
+    m_Name: right
+    m_HashCode: 108511772
+  m_SpriteGlyphTable:
+  - m_Index: 0
+    m_Metrics:
+      m_Width: 32
+      m_Height: 32
+      m_HorizontalBearingX: 0
+      m_HorizontalBearingY: 28
+      m_HorizontalAdvance: 32
+    m_GlyphRect:
+      m_X: 0
+      m_Y: 0
+      m_Width: 32
+      m_Height: 32
+    m_Scale: 1
+    m_AtlasIndex: 0
+  - m_Index: 1
+    m_Metrics:
+      m_Width: 32
+      m_Height: 32
+      m_HorizontalBearingX: 0
+      m_HorizontalBearingY: 28
+      m_HorizontalAdvance: 32
+    m_GlyphRect:
+      m_X: 32
+      m_Y: 0
+      m_Width: 32
+      m_Height: 32
+    m_Scale: 1
+    m_AtlasIndex: 0
+  spriteInfoList: []
+  fallbackSpriteAssets: []
 """
 FONT_ASSET_META = "fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 11400000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n"
 FONT_FILE_META = ("fileFormatVersion: 2\nguid: %s\nTrueTypeFontImporter:\n  externalObjects: {}\n  serializedVersion: 4\n  fontSize: 16\n  forceTextureCase: -2\n  characterSpacing: 0\n"
@@ -700,10 +826,29 @@ def write_fonts(out):
         fh.write("fileFormatVersion: 2\nguid: f3a7c1d2e3b44f5a8697a1b2c3d4e5f6\nfolderAsset: yes\nDefaultImporter:\n  externalObjects: {}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
     write("Calistoga.ttf.meta", FONT_FILE_META % FONT_FILE)
     write("OFL.txt.meta", "fileFormatVersion: 2\nguid: f4a7c1d2e3b44f5a8697a1b2c3d4e5f6\nTextScriptImporter:\n  externalObjects: {}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n")
-    write("Calistoga SDF.asset", FONT_ASSET_YAML % {"name": "Calistoga SDF", "source": FONT_FILE, "family": "Calistoga"})
+    write("Calistoga SDF.asset", FONT_ASSET_YAML % {"name": "Calistoga SDF", "source": FONT_FILE, "family": "Calistoga", "fallbacks": " []"} + font_material("Calistoga SDF Material"))
     write("Calistoga SDF.asset.meta", FONT_ASSET_META % FONT_ASSET)
-    write("Lost SDF.asset", FONT_ASSET_YAML % {"name": "Lost SDF", "source": "f5a7c1d2e3b44f5a8697a1b2c3d4e5f6", "family": "Lost Family"})
+    # (its font file is gone; what it cannot show is looked for in its fallback, the asset above)
+    write("Lost SDF.asset", FONT_ASSET_YAML % {"name": "Lost SDF", "source": "f5a7c1d2e3b44f5a8697a1b2c3d4e5f6", "family": "Lost Family",
+                                               "fallbacks": "\n  - {fileID: 11400000, guid: %s, type: 2}" % FONT_ASSET} + font_material("Lost SDF Material"))
     write("Lost SDF.asset.meta", FONT_ASSET_META % FONT_ASSET_LOST)
+    # a font asset whose own material has an outline: half of the gradient scale (10 atlas
+    # pixels at 81 points), half of which lies outside the glyphs
+    write("Calistoga Outline SDF.asset", FONT_ASSET_YAML % {"name": "Calistoga Outline SDF", "source": FONT_FILE, "family": "Calistoga", "fallbacks": " []"}
+          + font_material("Calistoga Outline SDF Material", outline=0.5, outline_color=(0.1, 0.2, 0.9, 1)))
+    write("Calistoga Outline SDF.asset.meta", FONT_ASSET_META % FONT_ASSET_OUTLINE)
+    # a material preset: the first asset's atlas with an underlay (a drop shadow)
+    write("Calistoga SDF Shadow.mat", "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n" + font_material("Calistoga SDF Shadow", 2100000, underlay=(0.5, -0.5), underlay_color=(0, 0, 0, 0.5)))
+    write("Calistoga SDF Shadow.mat.meta", "fileFormatVersion: 2\nguid: %s\nNativeFormatImporter:\n  externalObjects: {}\n  mainObjectFileID: 2100000\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n" % FONT_MATERIAL_SHADOW)
+    write("Icons.asset", SPRITE_ASSET_YAML % {"sheet": SHEET_GUID})
+    write("Icons.asset.meta", FONT_ASSET_META % SPRITE_ASSET)
+    # TextMeshPro's settings: the sprite asset of texts that name none, fallbacks for every font
+    write("TMP Settings.asset", "%%YAML 1.1\n%%TAG !u! tag:unity3d.com,2011:\n--- !u!114 &11400000\nMonoBehaviour:\n  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n"
+          "  m_GameObject: {fileID: 0}\n  m_Enabled: 1\n  m_EditorHideFlags: 0\n  m_Script: {fileID: 11500000, guid: 2705215ac5b84b70bacc50632be6e391, type: 3}\n  m_Name: TMP Settings\n  m_EditorClassIdentifier: \n"
+          "  m_enableWordWrapping: 1\n  m_defaultFontAsset: {fileID: 11400000, guid: %s, type: 2}\n  m_defaultFontAssetPath: Fonts & Materials/\n  m_defaultFontSize: 36\n"
+          "  m_fallbackFontAssets:\n  - {fileID: 11400000, guid: %s, type: 2}\n  m_matchMaterialPreset: 1\n  m_defaultSpriteAsset: {fileID: 11400000, guid: %s, type: 2}\n  m_defaultSpriteAssetPath: Sprite Assets/\n"
+          % (TMP_DEFAULT_FONT, FONT_ASSET, SPRITE_ASSET))
+    write("TMP Settings.asset.meta", FONT_ASSET_META % TMP_SETTINGS_ASSET)
 
 
 # ---- animation clips and a controller ---------------------------------------------------------
@@ -890,19 +1035,28 @@ TMP_DEFAULT_FONT = "8f586378b4e144a9851e7b34d9b748ee"   # LiberationSans SDF of 
 FONT_FILE = "f0a7c1d2e3b44f5a8697a1b2c3d4e5f6"          # Fonts/Calistoga.ttf (SIL Open Font License, Fonts/OFL.txt)
 FONT_ASSET = "f1a7c1d2e3b44f5a8697a1b2c3d4e5f6"         # Fonts/Calistoga SDF.asset: a font asset made from it
 FONT_ASSET_LOST = "f2a7c1d2e3b44f5a8697a1b2c3d4e5f6"    # Fonts/Lost SDF.asset: its source font is not in the project
+FONT_ASSET_OUTLINE = "f6a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/Calistoga Outline SDF.asset: its material has an outline
+FONT_MATERIAL_SHADOW = "f7a7c1d2e3b44f5a8697a1b2c3d4e5f6"   # Fonts/Calistoga SDF Shadow.mat: a material preset with an underlay
+SPRITE_ASSET = "f8a7c1d2e3b44f5a8697a1b2c3d4e5f6"       # Fonts/Icons.asset: a sprite asset
+TMP_SETTINGS_ASSET = "f9a7c1d2e3b44f5a8697a1b2c3d4e5f6" # Fonts/TMP Settings.asset: the default sprite asset, a fallback font
 
 
-def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72), wrap=True, overflow=0, halign=1, valign=256, rich=True, font=TMP_DEFAULT_FONT):
+def tmp(value, size=36, color=(1, 1, 1, 1), style=0, auto=False, sizes=(18, 72), wrap=True, overflow=0, halign=1, valign=256, rich=True, font=TMP_DEFAULT_FONT,
+        material=None, page=1, linked=0, first=0, sprites=None):
     """TextMeshProUGUI. style: 1 bold, 2 italic, 4 underline, 8 lower, 16 upper, 32 small caps;
     halign 1 left, 2 centre, 4 right; valign 256 top, 512 middle, 1024 bottom; font: guid of
-    the font asset."""
+    the font asset; material: (file id, guid) of a material preset (the font asset's own
+    otherwise); page: the page shown in overflow mode 5; linked: file id of the text component
+    that goes on in mode 6; sprites: guid of a sprite asset."""
+    shared = "{fileID: %d, guid: %s, type: 2}" % (material if material else (2180264, font))
+    sprite_asset = "{fileID: 11400000, guid: %s, type: 2}" % sprites if sprites else "{fileID: 0}"
     return ("TextMeshProUGUI", _GRAPHIC % vec((1, 1, 1, 1), "rgba") + (
         "  m_text: %s\n  m_isRightToLeft: 0\n  m_fontAsset: {fileID: 11400000, guid: " + font + ", type: 2}\n"
-        "  m_sharedMaterial: {fileID: 2180264, guid: " + font + ", type: 2}\n  m_fontColor32:\n    serializedVersion: 2\n    rgba: 4294967295\n"
-        "  m_fontColor: %s\n  m_enableVertexGradient: 0\n  m_fontSize: %s\n  m_fontSizeBase: %s\n  m_fontWeight: 400\n  m_enableAutoSizing: %d\n  m_fontSizeMin: %s\n  m_fontSizeMax: %s\n"
+        "  m_sharedMaterial: " + shared + "\n  m_fontColor32:\n    serializedVersion: 2\n    rgba: 4294967295\n"
+        "  m_fontColor: %s\n  m_enableVertexGradient: 0\n  m_spriteAsset: " + sprite_asset + "\n  m_fontSize: %s\n  m_fontSizeBase: %s\n  m_fontWeight: 400\n  m_enableAutoSizing: %d\n  m_fontSizeMin: %s\n  m_fontSizeMax: %s\n"
         "  m_fontStyle: %d\n  m_HorizontalAlignment: %d\n  m_VerticalAlignment: %d\n  m_textAlignment: 65535\n  m_characterSpacing: 0\n  m_lineSpacing: 0\n"
-        "  m_enableWordWrapping: %d\n  m_overflowMode: %d\n  m_isRichText: %d\n  m_margin: {x: 0, y: 0, z: 0, w: 0}\n") % (
-        quoted(value), vec(color, "rgba"), num(size), num(size), auto, num(sizes[0]), num(sizes[1]), style, halign, valign, wrap, overflow, rich))
+        "  m_enableWordWrapping: %d\n  m_overflowMode: %d\n  m_linkedTextComponent: {fileID: %d}\n  m_firstVisibleCharacter: %d\n  m_pageToDisplay: %d\n  m_isRichText: %d\n  m_margin: {x: 0, y: 0, z: 0, w: 0}\n") % (
+        quoted(value), vec(color, "rgba"), num(size), num(size), auto, num(sizes[0]), num(sizes[1]), style, halign, valign, wrap, overflow, linked, first, page, rich))
 
 
 def selectable(target=0, transition=1, normal=(1, 1, 1, 1), highlighted=(0.96, 0.96, 0.96, 1), pressed=(0.78, 0.78, 0.78, 1), selected=(0.96, 0.96, 0.96, 1), disabled=(0.78, 0.78, 0.78, 0.5), multiplier=1, interactable=True, sprites=None, fade=0.1):
@@ -1518,6 +1672,23 @@ def build_scene(card, card_ids, board, board_ids, widgets, widget_ids):
             ("EllipsisRich", "<b>Bold</b> and <color=#ffd700>gold words</color> that run on and on", (220, 30), {"overflow": 1, "wrap": False})]):
         frame = b.img(name + "Frame", c, {"pos": (-125 + 250 * (i % 2), 90 - 70 * (i // 2)), "size": size}, color=(0.25, 0.22, 0.3, 1))
         f.node(name, frame, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, [renderer(), tmp(value, 20, **kw)])
+
+    # ---- TextStyles: what a font asset's material draws, fallbacks, sprites, pages, linked texts ----
+    c = b.world_canvas("TextStyles", (13.4, 3.0, 2), (700, 520))
+    b.img("Back", c, {"amin": (0, 0), "amax": (1, 1), "size": (0, 0)}, color=(0.14, 0.14, 0.18, 1))
+    f.node("Outlined", c, {"pos": (-160, 200), "size": (340, 90)}, [renderer(), tmp("Outlined", 72, font=FONT_ASSET_OUTLINE)])
+    f.node("Shadowed", c, {"pos": (180, 200), "size": (340, 90)}, [renderer(), tmp("Shadowed", 72, font=FONT_ASSET, material=(2100000, FONT_MATERIAL_SHADOW))])
+    f.node("OutlinedSmall", c, {"pos": (-160, 130), "size": (340, 40)}, [renderer(), tmp("the same outline at 18", 18, font=FONT_ASSET_OUTLINE)])
+    f.node("Fallback", c, {"pos": (180, 130), "size": (340, 40)}, [renderer(), tmp("Lost, with a fallback", 30, font=FONT_ASSET_LOST)])
+    f.node("Sprites", c, {"pos": (-110, 70), "size": (440, 50)}, [renderer(), tmp('Pot <sprite=1> the <sprite name="left"> ball <sprite index=0>', 36, sprites=SPRITE_ASSET)])
+    # (no sprite asset of its own: the one of TextMeshPro's settings)
+    f.node("SpritesDefault", c, {"pos": (230, 70), "size": (220, 50)}, [renderer(), tmp('Default <sprite=1>', 36)])
+    # pages: what fits the rect is a page (two lines of 30 in 80)
+    for i, page in enumerate((1, 2, 3)):
+        f.node("Page%d" % page, c, {"pos": (-230 + i * 230, -20), "size": (210, 80)}, [renderer(), tmp("one<br>two<br>three<br>four<br>five", 30, overflow=5, page=page)])
+    # a linked text goes on where the first one ends
+    link_b = f.node("LinkB", c, {"pos": (120, -150), "size": (210, 80)}, [renderer(), tmp("", 30)])
+    f.node("LinkA", c, {"pos": (-120, -150), "size": (210, 80)}, [renderer(), tmp("alpha beta gamma delta epsilon zeta eta theta", 30, overflow=6, linked=link_b.components[1][0])])
 
     # ---- Transitions: what a Selectable does over time --------------------------------------------
     c = b.world_canvas("Transitions", (12.3, 3.0, 2), (400, 200))

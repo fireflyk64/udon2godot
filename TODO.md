@@ -59,8 +59,36 @@ inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) bef
             and `runtime/anim_tree.gd` resets the ones named by the transition a state
             machine has just taken (before, a trigger stayed set for ever). A clicked button
             stays Selected, as in Unity.
-- [ ] Text: a font asset's material (outline, underlay), fallback fonts, Page and Linked
-      overflow, sprite tags
+- [x] Text: a font asset's material (outline, underlay), fallback fonts, Page and Linked
+      overflow, sprite tags. Fixture canvas "TextStyles" (font assets with materials, a
+      material preset, a sprite asset, TextMeshPro's settings asset); the reference reads the
+      same files on its own (`TextStyles` in `tools/unity_ui_reference.py`) and compares the
+      outline, the shadow, the fallbacks and the inline sprites of every TextMeshPro text;
+      unit tests 434 → 471.
+      - [x] outline and underlay: the distance field shader's numbers are fractions of the
+            atlas's gradient scale; the importer turns them into lengths per font size
+            (`outline: {ratio, color}`, `underlay: {x, y, dilate, color}` of the text
+            settings) from the font asset's own material (an object of the asset's file) or
+            the text's material preset (`handle_asset_resource` hook → `unidot_tmp_material`),
+            and `ui_text.gd` draws them as the label's outline and shadow in whole units
+            (thinner than a unit but visible: one unit). vrcbce's menus use both.
+      - [x] fallback fonts: the asset's `m_FallbackFontAssetTable` and the fallbacks of the
+            project's "TMP Settings" asset become `Font.fallbacks` (on a scene-local
+            variation: the asset's font is a file of its own), for the stand-in family too
+      - [x] Page overflow: `page_range` finds the lines of the page in the laid out text and
+            the drawing child shows them as a text of their own; `pageToDisplay` for scripts
+      - [x] Linked overflow: the text shows its whole lines and gives the linked text its
+            string and `first` (TextMeshPro's firstVisibleCharacter, also imported and
+            scriptable), from which that one goes on
+      - [x] sprite tags (`<sprite=1>`, `index=`, `name=""`, with an asset name): a sprite
+            asset becomes a Resource (`unidot_tmp_sprites`); the text's asset, or the default
+            one of "TMP Settings", is drawn as `[img]` regions of the sheet, scaled with the
+            font size as TextMeshPro scales them; a sprite counts as one character
+      - [x] scripts: `outlineWidth`, `outlineColor`, `pageToDisplay`, `firstVisibleCharacter`
+            (were stubs); coverage `TWidgets` 74 checks (1098 in all)
+      Not done: the vertical place of a sprite in its line (Godot centres an inline picture,
+      TextMeshPro puts it on the baseline by its bearing), the softness of an underlay, the
+      face dilate and the inner half of an outline (Godot outlines outside the glyph only).
 - [ ] Rects: negative sizes; an InputField lower than a line; 3D components and plain
       Transforms without UI below a control; a plain Transform whose only UI is a nested
       prefab instance

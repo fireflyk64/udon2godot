@@ -73,6 +73,19 @@ namespace Coverage
             label.enabled = true;
             Check(label.enabled, "text enabled again");
             Check(fitted.enableAutoSizing && Near(fitted.fontSizeMin, 8f) && Near(fitted.fontSizeMax, 60f), "auto-size settings as imported");
+            // the outline of the text's material, pages, the first visible character
+            Check(Near(label.outlineWidth, 0f), "no outline as imported: " + label.outlineWidth);
+            label.outlineWidth = 0.2f;
+            label.outlineColor = new Color32(255, 0, 0, 255);
+            Check(Near(label.outlineWidth, 0.2f) && label.outlineColor.r == 255 && label.outlineColor.g == 0, "outlineWidth / outlineColor read back: " + label.outlineWidth);
+            label.outlineWidth = 0f;
+            label.overflowMode = TextOverflowModes.Page;
+            label.pageToDisplay = 2;
+            Check(label.pageToDisplay == 2 && label.overflowMode == TextOverflowModes.Page, "pageToDisplay reads back");
+            label.overflowMode = TextOverflowModes.Overflow;
+            label.firstVisibleCharacter = 3;
+            Check(label.firstVisibleCharacter == 3, "firstVisibleCharacter reads back");
+            label.firstVisibleCharacter = 0;
 
             // graphics: enabled is not the object's activity
             Check(Near(image.color.g, 0.5f), "image colour as imported: " + image.color);

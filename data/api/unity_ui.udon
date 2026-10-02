@@ -444,7 +444,7 @@ type TMP_Text
   alpha: float => U.ui_get_color($0).a
   characterWidthAdjustment: float => !stored U.prop_get($0, "characterWidthAdjustment", 0.0)
   enableWordWrapping: bool => U.ui_wrap_get($0)
-  firstVisibleCharacter: int => !stored int(U.prop_get($0, "firstVisibleCharacter", 0))
+  firstVisibleCharacter: int => int(U.ui_text_get($0, "first", 0))
   fontMaterial: Material => $0.material
   fontSharedMaterial: Material => $0.material
   fontSizeMax: float => float(U.ui_text_get($0, "max", 72.0))
@@ -463,7 +463,7 @@ type TMP_Text
   set alpha: float => U.ui_set_color_alpha($0, $v)
   set characterWidthAdjustment: float => !stored U.prop_set($0, "characterWidthAdjustment", $v)
   set enableWordWrapping: bool => U.ui_wrap_set($0, $v)
-  set firstVisibleCharacter: int => !stored U.prop_set($0, "firstVisibleCharacter", $v)
+  set firstVisibleCharacter: int => U.ui_text_set($0, "first", $v)
   set fontMaterial: Material => $0.material = $v
   set fontSharedMaterial: Material => $0.material = $v
   set fontSizeMax: float => U.ui_text_set($0, "max", $v)

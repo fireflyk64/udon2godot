@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Lost SDF
   m_EditorClassIdentifier: 
   hashCode: 841032664
-  material: {fileID: 0}
+  material: {fileID: 2180264}
   materialHashCode: 0
   m_Version: 1.1.0
   m_SourceFontFileGUID: f5a7c1d2e3b44f5a8697a1b2c3d4e5f6
@@ -50,7 +50,8 @@ MonoBehaviour:
   m_AtlasHeight: 1024
   m_AtlasPadding: 9
   m_AtlasRenderMode: 4165
-  m_FallbackFontAssetTable: []
+  m_FallbackFontAssetTable:
+  - {fileID: 11400000, guid: f1a7c1d2e3b44f5a8697a1b2c3d4e5f6, type: 2}
   m_CreationSettings:
     sourceFontFileName: 
     sourceFontFileGUID: f5a7c1d2e3b44f5a8697a1b2c3d4e5f6
@@ -64,3 +65,40 @@ MonoBehaviour:
   boldSpacing: 7
   italicStyle: 35
   tabSize: 10
+--- !u!21 &2180264
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Lost SDF Material
+  m_Shader: {fileID: 4800000, guid: 68e6db2ebdc24f95958faec2be5558d6, type: 3}
+  m_ShaderKeywords: 
+  m_LightmapFlags: 5
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: 3000
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _FaceDilate: 0
+    - _GradientScale: 10
+    - _OutlineWidth: 0
+    - _ScaleRatioA: 1
+    - _ScaleRatioC: 1
+    - _UnderlayDilate: 0
+    - _UnderlayOffsetX: 0
+    - _UnderlayOffsetY: 0
+    - _UnderlaySoftness: 0
+    m_Colors:
+    - _FaceColor: {r: 1, g: 1, b: 1, a: 1}
+    - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
+    - _UnderlayColor: {r: 0, g: 0, b: 0, a: 0.5}

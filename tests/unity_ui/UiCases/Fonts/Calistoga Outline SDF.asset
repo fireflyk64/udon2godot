@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 71c1514a6bd24e1e882cebbe1904ce04, type: 3}
-  m_Name: Calistoga SDF
+  m_Name: Calistoga Outline SDF
   m_EditorClassIdentifier: 
   hashCode: 841032664
   material: {fileID: 2180264}
@@ -71,7 +71,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Calistoga SDF Material
+  m_Name: Calistoga Outline SDF Material
   m_Shader: {fileID: 4800000, guid: 68e6db2ebdc24f95958faec2be5558d6, type: 3}
   m_ShaderKeywords: 
   m_LightmapFlags: 5
@@ -90,7 +90,7 @@ Material:
     m_Floats:
     - _FaceDilate: 0
     - _GradientScale: 10
-    - _OutlineWidth: 0
+    - _OutlineWidth: 0.5
     - _ScaleRatioA: 1
     - _ScaleRatioC: 1
     - _UnderlayDilate: 0
@@ -99,5 +99,5 @@ Material:
     - _UnderlaySoftness: 0
     m_Colors:
     - _FaceColor: {r: 1, g: 1, b: 1, a: 1}
-    - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
+    - _OutlineColor: {r: 0.1, g: 0.2, b: 0.9, a: 1}
     - _UnderlayColor: {r: 0, g: 0, b: 0, a: 0.5}

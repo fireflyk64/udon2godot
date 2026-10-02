@@ -7799,6 +7799,32 @@ func ui_alignment_set(n: Node, v: int) -> void:
 	ui_halign_set(n, v & 0xFF)
 	ui_valign_set(n, v & 0xFF00)
 
+## TMP_Text.outlineWidth / outlineColor: the outline of the text's material. The width is a
+## fraction of the font atlas's gradient scale, of which half lies outside the glyphs; `unit`
+## of the text settings is that scale per unit of font size (TextMeshPro's own LiberationSans
+## SDF: 10 pixels in an atlas made at 90 points).
+func ui_outline_width(n) -> float:
+	var s: Dictionary = UiText.settings(_ui_draw_node(n))
+	var outline = s.get("outline")
+	var unit: float = float(s.get("unit", 10.0 / 90.0))
+	return float(outline.get("ratio", 0.0)) / (0.5 * unit) if outline is Dictionary and unit > 0.0 else 0.0
+
+func ui_outline_color(n) -> Color:
+	var outline = UiText.settings(_ui_draw_node(n)).get("outline")
+	return outline.get("color", Color.BLACK) if outline is Dictionary else Color.BLACK
+
+func ui_set_outline(n, width, color) -> void:
+	var t: Node = _ui_draw_node(n)
+	if t == null or not t.has_meta(UiText.META):
+		return
+	var s: Dictionary = UiText.settings(t)
+	var outline: Dictionary = (s["outline"] as Dictionary).duplicate() if s.get("outline") is Dictionary else {"ratio": 0.0, "color": Color.BLACK}
+	if width != null:
+		outline["ratio"] = float(width) * 0.5 * float(s.get("unit", 10.0 / 90.0))
+	if color != null:
+		outline["color"] = color
+	UiText.update(t, {"outline": outline})
+
 ## TextOverflowModes: Overflow 0, Ellipsis 1, Masking 2, Truncate 3, ScrollRect 4, Page 5, Linked 6
 func ui_overflow_get(n: Node) -> int:
 	var t: Node = _ui_draw_node(n)

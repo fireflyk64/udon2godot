@@ -571,10 +571,12 @@ type TMP_Text : Graphic kind=component gd=Control extern=TMProTMP_Text
   set enableAutoSizing: bool => U.ui_text_set($0, "auto", $v)
   characterSpacing: float => 0.0
   set characterSpacing: float => pass
-  outlineWidth: float => 0.0
-  set outlineWidth: float => pass
-  outlineColor: Color32 => Color.BLACK
-  set outlineColor: Color32 => pass
+  outlineWidth: float => U.ui_outline_width($0)
+  set outlineWidth: float => U.ui_set_outline($0, $v, null)
+  outlineColor: Color32 => U.ui_outline_color($0)
+  set outlineColor: Color32 => U.ui_set_outline($0, null, $v)
+  pageToDisplay: int => int(U.ui_text_get($0, "page", 1))
+  set pageToDisplay: int => U.ui_text_set($0, "page", $v)
   faceColor: Color32 => U.ui_get_color($0)
   set faceColor: Color32 => U.ui_set_color($0, $v)
   preferredWidth: float => U.ui_text_preferred($0, 0)
