@@ -81,6 +81,29 @@ func run(r):
 		r.check(sides.size() == 6 and absf(sides[0].x + 0.1) < 0.001 and absf(sides[1].x - 0.1) < 0.001 and absf(sides[5].x - 0.05) < 0.001, "... 0.2 wide at the start, 0.1 (set by the script) at the end: " + str(sides))
 		r.check(tints.size() == 6 and tints[0].is_equal_approx(Color.WHITE) and absf(tints[2].g - 0.5) < 0.01 and absf(tints[2].a - 0.625) < 0.01 and absf(tints[5].g) < 0.01 and absf(tints[5].a - 0.25) < 0.01, "... coloured by the gradient: " + str(tints))
 		r.check((line as Node3D).global_position.distance_to(Vector3(6, 1, 2)) < 0.001, "... where the object is: " + str((line as Node3D).global_position))
+	# a line with a material, rounded corners and caps: the ribbon has a fan about its middle
+	# point and half a disc at each end, texture coordinates by its length, and a material of
+	# its own that carries the renderer's material (the script made the caps 8 and tinted it)
+	var rope: MeshInstance3D = r.find("Rope").get_node_or_null("LineRenderer") as MeshInstance3D if r.find("Rope") != null else null
+	var rope_info: Dictionary = rope.get_meta("unidot_line") if rope != null and rope.has_meta("unidot_line") else {}
+	r.check(rope != null and int(rope_info.get("corner_vertices", 0)) == 6 and int(rope_info.get("cap_vertices", 0)) == 5 and int(rope_info.get("texture_mode", 0)) == 1 and rope_info.get("material") is Material,
+		"a LineRenderer's corner and cap vertices, texture mode and material are imported: " + str(rope_info.get("material")))
+	if rope != null and rope.mesh != null:
+		var rope_arrays: Array = rope.mesh.surface_get_arrays(0)
+		var rope_points: PackedVector3Array = rope_arrays[Mesh.ARRAY_VERTEX]
+		var rope_uvs: PackedVector2Array = rope_arrays[Mesh.ARRAY_TEX_UV]
+		var rope_indices: PackedInt32Array = rope_arrays[Mesh.ARRAY_INDEX]
+		# ends: a pair and a cap of 1 + 10; the corner: 1 + 2 x 8
+		r.check(rope_points.size() == 43 and rope_indices.size() == 114, "... the ribbon: 43 vertices, 38 triangles (two segments, a corner fan on each side and its two wedges, two caps of 8): %d, %d" % [rope_points.size(), rope_indices.size() / 3])
+		var far_u: float = 0.0
+		for uv in rope_uvs:
+			far_u = maxf(far_u, uv.x)
+		r.check(absf(far_u - 3.5) < 0.001, "... the texture runs once per unit of its length (3.5): %.3f" % far_u)
+		var ribbon_material: ShaderMaterial = rope.mesh.surface_get_material(0) as ShaderMaterial
+		var tint = ribbon_material.get_shader_parameter("albedo") if ribbon_material != null else null
+		var tiling = ribbon_material.get_shader_parameter("uv_st") if ribbon_material != null else null
+		r.check(tint is Color and absf((tint as Color).g - 0.8) < 0.01 and ribbon_material.get_shader_parameter("albedo_texture") is Texture2D and tiling is Vector4 and is_equal_approx((tiling as Vector4).x, 2.0),
+			"... drawn with the material's colour (set by the script), texture and tiling: %s %s" % [str(tint), str(tiling)])
 	# what lives in space on a UI object is where the object is: the sound of the BR button
 	var beep: Node = r.find("BR").get_node_or_null("Unidot3D/AudioSource") if r.find("BR") != null else null
 	r.check(beep is AudioStreamPlayer3D and (beep as Node3D).global_position.distance_to(Vector3(-0.44, 1.23, 3)) < 0.005, "an AudioSource on a button sounds from the button: " + (str((beep as Node3D).global_position) if beep is Node3D else str(beep)))
@@ -487,6 +510,43 @@ func _line_pixels(r) -> void:
 		var across: float = Vector3(on.r - inside.r, on.g - inside.g, on.b - inside.b).length()
 		var beyond: float = Vector3(outside.r - far.r, outside.g - far.g, outside.b - far.b).length()
 		r.check(seen > 0.08 and across < seen * 0.5 and beyond < seen * 0.5, "the line at %.2f of its length is drawn %.3f wide: centre %s, inside %s, outside %s, far %s" % [t, half * 2.0, str(on), str(inside), str(outside), str(far)])
+	await _rope_pixels(r)
+
+
+## The LineRenderer `Rope` as it is drawn, seen from above: 0.3 wide from Godot (9, 1, 2) to
+## (9, 1, 4) and on to (7.5, 1, 4), with round ends and a round corner, its texture (two
+## repeats per unit: a quarter of a unit yellow, a quarter blue, a white band along one
+## edge) tinted by the material's colour.
+func _rope_pixels(r) -> void:
+	var cam: Camera3D = r.camera()
+	cam.global_transform = Transform3D(Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)), Vector3(8.3, 5.0, 3.0))
+	cam.fov = 50
+	await r.wait(3)
+	await r.shot("rope")
+	var ground: Color = await r.pixel(r.project(Vector3(7.6, 1, 2.2)))
+	var differs := func(c: Color) -> bool: return Vector3(c.r - ground.r, c.g - ground.g, c.b - ground.b).length() > 0.12
+	# round caps: drawn within half the width beyond the ends, not at the corners of a square end
+	var cap: Color = await r.pixel(r.project(Vector3(9, 1, 1.9)))
+	var cap_corner: Color = await r.pixel(r.project(Vector3(9.13, 1, 1.87)))
+	var beyond: Color = await r.pixel(r.project(Vector3(9, 1, 1.75)))
+	r.check(differs.call(cap) and not differs.call(cap_corner) and not differs.call(beyond), "the rope's end is round: drawn 0.1 beyond it %s, not at a square end's corner %s, not 0.25 beyond %s (ground %s)" % [str(cap), str(cap_corner), str(beyond), str(ground)])
+	var far_cap: Color = await r.pixel(r.project(Vector3(7.4, 1, 4)))
+	r.check(differs.call(far_cap), "... the other end too: " + str(far_cap))
+	# a round corner: drawn 0.13 out along the diagonal, not where a mitre would reach (0.19)
+	var round_in: Color = await r.pixel(r.project(Vector3(9.092, 1, 4.092)))
+	var round_out: Color = await r.pixel(r.project(Vector3(9.135, 1, 4.135)))
+	r.check(differs.call(round_in) and not differs.call(round_out), "the rope's corner is round: drawn 0.13 out on the diagonal %s, not 0.19 out %s" % [str(round_in), str(round_out)])
+	# the texture: yellow, then blue, a quarter of a unit each along the line
+	var yellow: Color = await r.pixel(r.project(Vector3(9, 1, 2.12)))
+	var blue: Color = await r.pixel(r.project(Vector3(9, 1, 2.37)))
+	var yellow_again: Color = await r.pixel(r.project(Vector3(9, 1, 2.62)))
+	r.check(yellow.r > yellow.b + 0.3 and blue.b > blue.r + 0.15 and yellow_again.r > yellow_again.b + 0.3, "the rope's texture repeats twice per unit: %s %s %s" % [str(yellow), str(blue), str(yellow_again)])
+	# ... its white band along one edge, tinted by the material's colour (1, 0.8, 0.8)
+	var edge_a: Color = await r.pixel(r.project(Vector3(9.12, 1, 2.12)))
+	var edge_b: Color = await r.pixel(r.project(Vector3(8.88, 1, 2.12)))
+	var band: Color = edge_a if edge_a.b > edge_b.b else edge_b
+	var other: Color = edge_b if edge_a.b > edge_b.b else edge_a
+	r.check(band.r > 0.85 and absf(band.g - band.b) < 0.1 and band.g > 0.6 and band.g < 0.95 and other.b < 0.4, "the white band on one edge, in the material's tint: %s (the other edge %s)" % [str(band), str(other)])
 
 
 func _rect_is(c: Node, x: float, y: float, w: float, h: float) -> bool:

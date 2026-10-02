@@ -36,6 +36,7 @@ public class Fixture : UdonSharpBehaviour
     public VRC.SDK3.Dynamics.Constraint.Components.VRCPositionConstraint follower;
     // a LineRenderer with two points of its own space
     public LineRenderer guide;
+    public LineRenderer rope;
     // an inactive GameObject with an enabled component (its collider)
     public GameObject sleeper;
     public BoxCollider floorCollider;
@@ -139,6 +140,20 @@ public class Fixture : UdonSharpBehaviour
             Check(Near(lineStart.g, 1f) && Near(lineStart.a, 1f) && Near(lineEnd.r, 1f) && Near(lineEnd.g, 0f) && Near(lineEnd.a, 0.25f), "... its colours at both ends: " + lineStart + " " + lineEnd);
             guide.endWidth = 0.1f;
             Check(Near(guide.endWidth, 0.1f) && Near(guide.startWidth, 0.2f) && Near(guide.widthMultiplier, 0.2f), "... the end made wider by the script: " + guide.endWidth);
+        }
+        // a line with a material, rounded corners and caps, its texture once per unit of length
+        Check(rope != null && rope.positionCount == 3 && rope.numCornerVertices == 6 && rope.numCapVertices == 5, "authored LineRenderer: corner and cap vertices: " + (rope == null ? -1 : rope.numCornerVertices));
+        if (rope != null)
+        {
+            Check(rope.textureMode == LineTextureMode.Tile, "... its texture mode: " + rope.textureMode);
+            Material ropeShared = rope.sharedMaterial;
+            Check(ropeShared != null && ropeShared.name == "Rope" && ropeShared.mainTexture != null, "... its material and the material's texture: " + (ropeShared == null ? "none" : ropeShared.name));
+            Material ropeOwn = rope.material;
+            Check(ropeOwn != null && ropeOwn != ropeShared && rope.sharedMaterial == ropeOwn, "... Renderer.material makes it a material of its own");
+            ropeOwn.color = new Color(1f, 0.8f, 0.8f, 1f);
+            Check(Near(rope.material.color.g, 0.8f), "... whose colour the script sets: " + rope.material.color);
+            rope.numCapVertices = 8;
+            Check(rope.numCapVertices == 8, "... cap vertices set by the script");
         }
         Check(sleeper != null && !sleeper.activeSelf && !sleeper.activeInHierarchy, "an inactive GameObject is inactive for the script");
         GameObject first = pool != null ? pool.TryToSpawn() : null;
