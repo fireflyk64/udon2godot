@@ -2,10 +2,26 @@
 
 Status legend: [x] done and verified, [~] implemented but needs more coverage, [ ] open.
 
-## UI leftovers, round 2 (2026-10-02) — current work
+## UI leftovers, round 2 (2026-10-02) — done
 
 Asked for: every leftover of the section below, the animation curves and the ScrollRect's
 inertia first. Each item gets a case in `tests/unity_ui` (or the unit tests) before the code.
+
+State at the end (2026-10-01, main 09d2152 / unidot 3ab702f, both pushed): unit tests 503;
+UI fixture 31 canvases, 953 of 953 nodes, dropdown 37, animation 72, pixel check 3014 points
+and 55 texts, 0 problems; coverage 1098 checks; Udon fixture 129 / 165 / 25 / 16; billiards
+55 / 18 / 17, UI 147 of 147; community worlds pass (vrcbce 26 / 26, play 16, sample scene 32,
+UI 135 / 121 / 184); compile check 362 ok; converter output unchanged on the reference
+repositories. unidot's `ui-canvas` (upstream + UI only, local, rebuilt by
+`tools/unidot_ui_branch.py`: now with Sprite assets and the asset hook, without the
+LineRenderer) passes the UI suite with the same numbers.
+
+What is left, named in the items below: the vertical place of an inline sprite, the softness
+of an underlay and the inner half of an outline; the mirrored drawing of a graphic on a
+negative rect; text below one unit on canvases in metres; the sibling order between UI and
+3D children; the width of a LineRenderer; blended fur shells; widgets Godot draws itself in
+the pixel check. An engine message at exit ("Parameter "material" is null", after the run is
+done; billiards had it before this work) is not looked into.
 
 - [x] Animation clips on UI (fixture canvas "AnimatedUi": a panel whose Animator has one state
       per clip, sampled by hand in `test/ui_anim_test.gd`, 47 checks)

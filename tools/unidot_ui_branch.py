@@ -74,6 +74,8 @@ def oa_keep(h):
     a = added(h)
     if not a.strip():
         return False
+    if "class UnidotSprite:" in a:   # (a UI Image's sprite; it names its file extension)
+        return True
     return not any(k in a for k in NOT_UI)
 n = apply("object_adapter.gd", oa_keep, oa_edit)
 print("object_adapter.gd: %d of %d hunks" % n)
@@ -94,7 +96,20 @@ if start >= 0:
     assert count == 6, count
     open(p, "w").write(s)
     print("object_adapter.gd: constraint classes left out")
+# ... and so is the LineRenderer, which shares its hunk with a node signature
+s = open(p).read()
+start, end = s.find("## A LineRenderer:"), s.find("class UnidotAudioSource:")
+if start >= 0:
+    assert end > start
+    s = s[:start] + s[end:]
+    s, count = re.subn(r'(?m)^\t"LineRenderer": UnidotLineRenderer,$', '\t# "LineRenderer": UnidotLineRenderer,', s)
+    assert count == 1, count
+    open(p, "w").write(s)
+    print("object_adapter.gd: LineRenderer left out")
 print("scene_node_state.gd: %d of %d hunks" % apply("scene_node_state.gd", lambda h: True))
+# plugins hear about the resource an asset file became (TextMeshPro's materials, sprite assets
+# and settings are assets of their own)
+print("asset_adapter.gd: %d of %d hunks" % apply("asset_adapter.gd", lambda h: "handle_asset_resource" in added(h)))
 # (not UI either: skybox materials, the order of a scene's roots)
 print("convert_scene.gd: %d of %d hunks" % apply("convert_scene.gd", lambda h: "sky_material" not in added(h) and "scene_roots" not in added(h)))
 
@@ -147,14 +162,16 @@ def commit(paths, message):
 # commit 1: the YAML fix stands on its own
 print("yaml_parser.gd: %d of %d hunks" % apply("yaml_parser.gd", lambda h: True))
 commit(["yaml_parser.gd"], "yaml_parser: single-quoted scalars keep neither their closing quote nor lose doubled quotes\n\n'>>' was read as >>' and '' inside a quoted string was dropped instead of standing for one quote.")
-commit(["object_adapter.gd", "scene_node_state.gd", "convert_scene.gd"],
+commit(["object_adapter.gd", "scene_node_state.gd", "convert_scene.gd", "asset_adapter.gd"],
        "Scene nodes may be any Node: plugin hooks for GameObject nodes and component overrides\n\n"
        "A GameObject is not always a Node3D (a RectTransform becomes a Control), so the node-building\n"
        "functions take and return Node. Plugins may build the node of a GameObject\n"
        "(create_gameobject_node), take the property overrides of a MonoBehaviour on a prefab instance\n"
        "(convert_monobehaviour_properties; the virtual object carries the modified object's file id),\n"
-       "and RectTransform overrides are converted through the UI plugin. Canvas, CanvasRenderer and\n"
-       "CanvasGroup are known component types.")
+       "hear about the resource an asset file became (handle_asset_resource), about animated\n"
+       "m_IsActive (handle_animated_active) and resolve sprite keys of clips (animation_sprite);\n"
+       "RectTransform overrides are converted through the UI plugin. Canvas, CanvasRenderer,\n"
+       "CanvasGroup and Sprite assets are known types.")
 commit(["asset_database.gd"] + UI_FILES,
        "Unity UI: canvases, RectTransform, layout, text, graphics, sprites, selectables, scroll rects\n\n"
        "ui_integration.gd (an importer plugin, on by default: AssetDatabase.convert_ui) converts\n"
